@@ -1,0 +1,106 @@
+const mockStore = require('../data/mockStore');
+const { getPool, isUsingMock } = require('../config/database');
+const { calcularDetalleDias } = require('../services/diasHabilesService');
+
+const diasInhabilesController = {
+  getAll: async (req, res) => {
+    try {
+      if (isUsingMock()) {
+        const sorted = [...mockStore.diasInhabiles].sort((a, b) => a.fecha.localeCompare(b.fecha));
+        return res.json({ success: true, total: sorted.length, data: sorted });
+      } else {
+        const pool = await getPool();
+        const result = await pool.request().query(`
+          SELECT IdDiaInhabil, CONVERT(VARCHAR(10), Fecha, 120) AS Fecha, Descripcion, EsFeriadoOficial, Activo
+          FROM dbo.DiasInhabiles
+          WHERE Activo = 1
+          ORDER BY Fecha ASC
+        `);
+        return res.json({ success: true, total: result.recordset.length, data: result.recordset });
+      }
+    } catch (err) {
+      res.status(500).json({ error: err.message });
+    }
+  },
+
+  create: async (req, res) => {
+    try {
+      const { fecha, descripcion, esFeriadoOficial = true } = req.body;
+      if (!fecha || !descripcion) {
+        return res.status(400).json({ error: 'La fecha y la descripción son requeridas.' });
+      }
+
+      if (isUsingMock()) {
+        const existing = mockStore.diasInhabiles.find(d => d.fecha === fecha);
+        if (existing) {
+          existing.descripcion = descripcion;
+          existing.esFeriadoOficial = Boolean(esFeriadoOficial);
+          existing.activo = true;
+          return res.json({ success: true, message: 'Día inhábil actualizado con éxito.', data: existing });
+        }
+
+        const nuevo = {
+          fecha,
+          descripcion,
+          esFeriadoOficial: Boolean(esFeriadoOficial),
+          activo: true
+        };
+        mockStore.diasInhabiles.push(nuevo);
+        return res.status(201).json({ success: true, message: 'Día inhábil agregado correctamente.', data: nuevo });
+      } else {
+        const pool = await getPool();
+        await pool.request()
+          .input('Fecha', fecha)
+          .input('Descripcion', descripcion)
+          .input('EsFeriado', esFeriadoOficial ? 1 : 0)
+          .query(`
+            MERGE dbo.DiasInhabiles AS Target
+            USING (SELECT @Fecha AS Fecha, @Descripcion AS Descripcion, @EsFeriado AS EsFeriadoOficial) AS Source
+            ON Target.Fecha = Source.Fecha
+            WHEN MATCHED THEN UPDATE SET Descripcion = Source.Descripcion, EsFeriadoOficial = Source.EsFeriadoOficial, Activo = 1
+            WHEN NOT MATCHED THEN INSERT (Fecha, Descripcion, EsFeriadoOficial, Activo) VALUES (Source.Fecha, Source.Descripcion, Source.EsFeriadoOficial, 1);
+          `);
+        return res.status(201).json({ success: true, message: 'Día inhábil guardado en base de datos.' });
+      }
+    } catch (err) {
+      res.status(400).json({ error: err.message });
+    }
+  },
+
+  delete: async (req, res) => {
+    try {
+      const { fecha } = req.params;
+      if (isUsingMock()) {
+        mockStore.diasInhabiles = mockStore.diasInhabiles.filter(d => d.fecha !== fecha);
+        return res.json({ success: true, message: 'Día inhábil eliminado correctamente.' });
+      } else {
+        const pool = await getPool();
+        await pool.request().input('Fecha', fecha).query(`DELETE FROM dbo.DiasInhabiles WHERE Fecha = @Fecha`);
+        return res.json({ success: true, message: 'Día inhábil eliminado de SQL Server.' });
+      }
+    } catch (err) {
+      res.status(500).json({ error: err.message });
+    }
+  },
+
+  calcular: async (req, res) => {
+    try {
+      const { fechaInicio, fechaFin, jornadaLaboralDias = 5 } = req.body;
+      if (!fechaInicio || !fechaFin) {
+        return res.status(400).json({ error: 'Se requiere fechaInicio y fechaFin (formato YYYY-MM-DD)' });
+      }
+
+      const map = mockStore.getDiasInhabilesMap();
+      const resultado = calcularDetalleDias(fechaInicio, fechaFin, map, Number(jornadaLaboralDias));
+
+      return res.json({
+        success: true,
+        ...resultado
+      });
+    } catch (err) {
+      res.status(400).json({ error: err.message });
+    }
+  }
+};
+
+module.exports = diasInhabilesController;

@@ -1,0 +1,11 @@
+{
+  "name": "control-vacaciones-grupo-jama",
+  "version": "1.0.0",
+  "description": "Sistema de Control de Vacaciones - Desarrollo Organizacional Grupo JAMA",
+  "scripts": {
+    "install:all": "npm --prefix server install && npm --prefix client install",
+    "server": "npm --prefix server run dev",
+    "client": "npm --prefix client run dev",
+    "start": "node start-all.js"
+  }
+}
