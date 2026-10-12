@@ -1,11 +1,15 @@
 const mockStore = require('../data/mockStore');
-const { getPool, isUsingMock } = require('../config/database');
+const { getLocalPool, isUsingMock } = require('../config/database');
 const { generarPeriodosVacaciones } = require('../services/lftVacacionesService');
+const ColaboradorModel = require('../models/colaboradorModel');
 
 const colaboradoresController = {
+  /**
+   * Listado paginado de colaboradores con filtros
+   */
   getAll: async (req, res) => {
     try {
-      const { search, departamento, empresa, rolApp, limit = 50, page = 1 } = req.query;
+      const { search, departamento, empresa, empresa_id, empresaId, rolApp, limit = 50, page = 1 } = req.query;
 
       if (isUsingMock()) {
         let list = [...mockStore.colaboradores];
@@ -13,8 +17,8 @@ const colaboradoresController = {
         if (search) {
           const s = search.toLowerCase();
           list = list.filter(c => 
-            c.nombreCompleto.toLowerCase().includes(s) || 
-            c.codigoEmpleado.toLowerCase().includes(s) ||
+            (c.nombreCompleto && c.nombreCompleto.toLowerCase().includes(s)) || 
+            (c.codigoEmpleado && c.codigoEmpleado.toLowerCase().includes(s)) ||
             (c.curp && c.curp.toLowerCase().includes(s))
           );
         }
@@ -23,8 +27,9 @@ const colaboradoresController = {
           list = list.filter(c => c.departamento === departamento);
         }
 
-        if (empresa) {
-          list = list.filter(c => c.empresa === empresa);
+        if (empresa_id || empresa) {
+          const target = String(empresa_id || empresa).toLowerCase();
+          list = list.filter(c => String(c.idEmpresa) === target || (c.empresa && c.empresa.toLowerCase().includes(target)));
         }
 
         if (rolApp) {
@@ -43,23 +48,49 @@ const colaboradoresController = {
           data: paginated
         });
       } else {
-        const pool = await getPool();
+        const pool = await getLocalPool();
         const request = pool.request();
-        let whereClauses = ['Activo = 1'];
+        let whereClauses = ['c.Activo = 1'];
 
         if (search) {
           request.input('Search', `%${search}%`);
-          whereClauses.push('(NombreCompleto LIKE @Search OR CodigoEmpleado LIKE @Search OR CURP LIKE @Search)');
+          whereClauses.push('(c.NombreCompleto LIKE @Search OR c.CodigoEmpleado LIKE @Search OR c.CURP LIKE @Search OR c.RFC LIKE @Search)');
+        }
+
+        const targetEmpresaId = empresa_id || empresaId || (!isNaN(empresa) && empresa !== '' && empresa !== null ? Number(empresa) : null);
+        if (targetEmpresaId) {
+          request.input('IdEmpresa', Number(targetEmpresaId));
+          whereClauses.push('(c.IdEmpresa = @IdEmpresa OR e.IdEmpresa = @IdEmpresa)');
+        } else if (empresa && empresa.trim()) {
+          const empVal = empresa.trim();
+          request.input('EmpresaVal', empVal);
+          request.input('EmpresaLike', `%${empVal}%`);
+          whereClauses.push('(c.Empresa LIKE @EmpresaLike OR @EmpresaVal LIKE \'%\' + c.Empresa + \'%\' OR e.AliasEmpresa LIKE @EmpresaLike OR @EmpresaVal LIKE \'%\' + e.AliasEmpresa + \'%\')');
+        }
+
+        if (departamento) {
+          request.input('Depto', `%${departamento}%`);
+          whereClauses.push('d.Nombre LIKE @Depto');
+        }
+
+        if (rolApp) {
+          request.input('RolApp', rolApp);
+          whereClauses.push('c.RolApp = @RolApp');
         }
 
         const query = `
           SELECT 
-            IdColaborador AS id, CodigoEmpleado, Nombre, ApellidoPaterno, ApellidoMaterno,
-            NombreCompleto, CURP, RFC, Email, Telefono, Empresa, Sucursal, FechaAlta,
-            EstatusNomina, RolApp, JornadaLaboralDias, Activo
-          FROM dbo.Colaboradores
+            c.IdColaborador AS id, c.IdEmpresa, e.AliasEmpresa AS Empresa,
+            c.CodigoEmpleado, c.Subfijo, c.Nombre, c.ApellidoPaterno, c.ApellidoMaterno,
+            c.NombreCompleto, c.CURP, c.RFC, c.NSS, c.Email, c.Telefono,
+            d.Nombre AS Departamento, p.Nombre AS Puesto,
+            c.FechaAlta, c.FechaReingreso, c.EstatusNomina, c.RolApp, c.JornadaLaboralDias, c.Activo
+          FROM dbo.Colaboradores c
+          LEFT JOIN dbo.EmpresasNomipaq e ON e.IdEmpresa = c.IdEmpresa
+          LEFT JOIN dbo.Departamentos d ON d.IdDepartamento = c.IdDepartamento
+          LEFT JOIN dbo.Puestos p ON p.IdPuesto = c.IdPuesto
           WHERE ${whereClauses.join(' AND ')}
-          ORDER BY ApellidoPaterno, Nombre
+          ORDER BY c.ApellidoPaterno, c.Nombre;
         `;
         const result = await request.query(query);
         return res.json({
@@ -74,34 +105,108 @@ const colaboradoresController = {
     }
   },
 
+  /**
+   * Obtiene la ficha técnica completa del colaborador
+   * Incluye aislamiento de confidencialidad en datos financieros
+   */
   getById: async (req, res) => {
     try {
       const { id } = req.params;
-      if (isUsingMock()) {
-        const colab = mockStore.colaboradores.find(c => c.id === Number(id));
-        if (!colab) return res.status(404).json({ error: 'Colaborador no encontrado' });
-        return res.json({ success: true, data: colab });
-      } else {
-        const pool = await getPool();
-        const result = await pool.request()
-          .input('Id', id)
-          .query(`
-            SELECT c.*, d.Nombre AS DepartamentoNombre, p.Nombre AS PuestoNombre,
-                   j.NombreCompleto AS JefeDirectoNombre
-            FROM dbo.Colaboradores c
-            LEFT JOIN dbo.Departamentos d ON d.IdDepartamento = c.IdDepartamento
-            LEFT JOIN dbo.Puestos p ON p.IdPuesto = c.IdPuesto
-            LEFT JOIN dbo.Colaboradores j ON j.IdColaborador = c.IdJefeDirecto
-            WHERE c.IdColaborador = @Id
-          `);
-        if (!result.recordset[0]) return res.status(404).json({ error: 'Colaborador no encontrado' });
-        return res.json({ success: true, data: result.recordset[0] });
-      }
+      const rolSolicitante = req.user ? req.user.rolApp : 'COLABORADOR';
+      const idUsuario = req.user ? req.user.id : null;
+
+      const colaborador = await ColaboradorModel.obtenerDetalleCompleto(Number(id), rolSolicitante, idUsuario);
+      if (!colaborador) return res.status(404).json({ error: 'Colaborador no encontrado.' });
+
+      return res.json({ success: true, data: colaborador });
     } catch (err) {
+      console.error('[colaboradores.getById]', err);
       res.status(500).json({ error: err.message });
     }
   },
 
+  /**
+   * Actualización de datos del colaborador
+   */
+  update: async (req, res) => {
+    try {
+      const { id } = req.params;
+      // Solo ADMIN_DO o el propio colaborador pueden modificar
+      if (req.user.rolApp !== 'ADMIN_DO' && Number(req.user.id) !== Number(id)) {
+        return res.status(403).json({ error: 'No tienes permisos para modificar este colaborador.' });
+      }
+
+      await ColaboradorModel.actualizar(Number(id), req.body);
+      return res.json({ success: true, message: 'Colaborador actualizado exitosamente.' });
+    } catch (err) {
+      console.error('[colaboradores.update]', err);
+      res.status(500).json({ error: err.message });
+    }
+  },
+
+  /**
+   * Registro o actualización de hijo (dbo.ColaboradorHijos)
+   */
+  agregarHijo: async (req, res) => {
+    try {
+      const { id } = req.params;
+      const { numeroHijo, fechaNacimiento, sexo } = req.body;
+      if (!numeroHijo) return res.status(400).json({ error: 'El número de hijo es requerido.' });
+
+      await ColaboradorModel.agregarHijo(Number(id), { numeroHijo, fechaNacimiento, sexo });
+      return res.json({ success: true, message: 'Hijo registrado con éxito.' });
+    } catch (err) {
+      console.error('[colaboradores.agregarHijo]', err);
+      res.status(500).json({ error: err.message });
+    }
+  },
+
+  /**
+   * Registro o actualización de datos financieros confidenciales (dbo.ColaboradorDatosFinancieros)
+   * Solo disponible para Desarrollo Organizacional (ADMIN_DO)
+   */
+  guardarDatosFinancieros: async (req, res) => {
+    try {
+      const { id } = req.params;
+      if (req.user.rolApp !== 'ADMIN_DO') {
+        return res.status(403).json({ error: 'Acceso denegado: solo Desarrollo Organizacional puede gestionar salarios y datos financieros.' });
+      }
+
+      await ColaboradorModel.guardarDatosFinancieros(Number(id), req.body);
+      return res.json({ success: true, message: 'Datos financieros actualizados confidencialmente.' });
+    } catch (err) {
+      console.error('[colaboradores.guardarDatosFinancieros]', err);
+      res.status(500).json({ error: err.message });
+    }
+  },
+
+  /**
+   * Registro de baja laboral (dbo.ColaboradorBajas)
+   * Solo disponible para Desarrollo Organizacional (ADMIN_DO)
+   */
+  registrarBaja: async (req, res) => {
+    try {
+      const { id } = req.params;
+      if (req.user.rolApp !== 'ADMIN_DO') {
+        return res.status(403).json({ error: 'Acceso denegado: solo Desarrollo Organizacional puede registrar bajas.' });
+      }
+
+      const { fechaBaja, tipoBaja, comentarios, renunciaVoluntaria, convenioFiniquito, convenioConfidencialidad } = req.body;
+      if (!fechaBaja) return res.status(400).json({ error: 'La fecha de baja es requerida.' });
+
+      await ColaboradorModel.registrarBaja(Number(id), {
+        fechaBaja, tipoBaja, comentarios, renunciaVoluntaria, convenioFiniquito, convenioConfidencialidad
+      });
+      return res.json({ success: true, message: 'Baja del colaborador registrada correctamente.' });
+    } catch (err) {
+      console.error('[colaboradores.registrarBaja]', err);
+      res.status(500).json({ error: err.message });
+    }
+  },
+
+  /**
+   * Portal del Colaborador: Resumen de saldos y períodos
+   */
   getMiSaldo: async (req, res) => {
     try {
       const idColaborador = req.user.id;
@@ -109,7 +214,6 @@ const colaboradoresController = {
       if (isUsingMock()) {
         const colab = mockStore.colaboradores.find(c => c.id === Number(idColaborador)) || mockStore.colaboradores[0];
         
-        // Calcular solicitudes en trámite
         const enTramite = mockStore.solicitudes
           .filter(s => s.idColaborador === colab.id && ['PENDIENTE_LIDER', 'PENDIENTE_DO'].includes(s.estado))
           .reduce((sum, s) => sum + s.totalDiasLaborables, 0);
@@ -137,27 +241,67 @@ const colaboradoresController = {
           periodos
         });
       } else {
-        const pool = await getPool();
+        const pool = await getLocalPool();
         const colabRes = await pool.request()
           .input('Id', idColaborador)
           .query(`
-            SELECT IdColaborador AS id, CodigoEmpleado, NombreCompleto, FechaAlta,
-                   DATEDIFF(YEAR, FechaAlta, GETDATE()) AS AntiguedadAnios
-            FROM dbo.Colaboradores WHERE IdColaborador = @Id
+            SELECT 
+              c.IdColaborador AS id, c.CodigoEmpleado, c.NombreCompleto, c.FechaAlta,
+              p.Nombre AS Puesto, d.Nombre AS Departamento, e.AliasEmpresa AS Empresa,
+              DATEDIFF(YEAR, c.FechaAlta, GETDATE()) AS AntiguedadAnios
+            FROM dbo.Colaboradores c
+            LEFT JOIN dbo.Puestos p ON p.IdPuesto = c.IdPuesto
+            LEFT JOIN dbo.Departamentos d ON d.IdDepartamento = c.IdDepartamento
+            LEFT JOIN dbo.EmpresasNomipaq e ON e.IdEmpresa = c.IdEmpresa
+            WHERE c.IdColaborador = @Id;
           `);
         
         const saldosRes = await pool.request()
           .input('Id', idColaborador)
           .query(`
-            SELECT * FROM dbo.SaldosVacaciones 
+            SELECT 
+              IdSaldo, IdColaborador, AnioPeriodo, AntiguedadCumplida,
+              DiasCorrespondientes, DiasGozados, DiasPendientes,
+              FechaExpiracionPeriodo, EsCerrado
+            FROM dbo.SaldosVacaciones 
             WHERE IdColaborador = @Id 
-            ORDER BY AnioPeriodo DESC
+            ORDER BY AnioPeriodo DESC;
           `);
 
+        const enTramiteRes = await pool.request()
+          .input('Id', idColaborador)
+          .query(`
+            SELECT ISNULL(SUM(TotalDiasLaborables), 0) AS DiasEnTramite
+            FROM dbo.SolicitudesVacaciones
+            WHERE IdColaborador = @Id AND Estado IN ('PENDIENTE_LIDER', 'PENDIENTE_DO');
+          `);
+
+        const diasEnTramite = enTramiteRes.recordset[0] ? enTramiteRes.recordset[0].DiasEnTramite : 0;
+        const saldos = saldosRes.recordset;
+        const totalCorrespondientes = saldos.reduce((sum, s) => sum + (s.DiasCorrespondientes || 0), 0);
+        const totalGozados = saldos.reduce((sum, s) => sum + (s.DiasGozados || 0), 0);
+        const totalPendientes = saldos.reduce((sum, s) => sum + (s.DiasPendientes || 0), 0);
+        const colab = colabRes.recordset[0] || {};
         return res.json({
           success: true,
-          colaborador: colabRes.recordset[0],
-          periodos: saldosRes.recordset
+          colaborador: {
+            ...colab,
+            id: colab.id,
+            nombreCompleto: colab.NombreCompleto,
+            codigoEmpleado: colab.CodigoEmpleado,
+            puesto: colab.Puesto,
+            departamento: colab.Departamento,
+            empresa: colab.Empresa,
+            fechaAlta: colab.FechaAlta,
+            antiguedadAnios: colab.AntiguedadAnios
+          },
+          resumen: {
+            diasCorrespondientes: totalCorrespondientes,
+            diasGozados: totalGozados,
+            diasEnTramite,
+            diasDisponibles: Math.max(0, totalPendientes - diasEnTramite)
+          },
+          periodos: saldos
         });
       }
     } catch (err) {
@@ -166,40 +310,38 @@ const colaboradoresController = {
     }
   },
 
+  /**
+   * Portal del Líder: Subordinados a su cargo
+   */
   getEquipoLider: async (req, res) => {
     try {
       const idLider = req.user.id;
 
       if (isUsingMock()) {
         let equipo = mockStore.colaboradores.filter(c => c.idJefeDirecto === Number(idLider));
-        
-        // Si el usuario actual es líder pero la asignación estricta devolvió vacío,
-        // mostrar un subconjunto de colaboradores de su empresa/departamento para propósitos de prueba
         if (equipo.length === 0 && (req.user.rolApp === 'LIDER' || req.user.rolApp === 'ADMIN_DO')) {
           equipo = mockStore.colaboradores.slice(0, 8);
         }
-
-        return res.json({
-          success: true,
-          total: equipo.length,
-          data: equipo
-        });
+        return res.json({ success: true, total: equipo.length, data: equipo });
       } else {
-        const pool = await getPool();
+        const pool = await getLocalPool();
         const result = await pool.request()
           .input('IdLider', idLider)
           .query(`
             SELECT 
               c.IdColaborador AS id, c.CodigoEmpleado, c.NombreCompleto,
-              p.Nombre AS Puesto, d.Nombre AS Departamento, c.FechaAlta, c.Email
+              p.Nombre AS Puesto, d.Nombre AS Departamento, e.AliasEmpresa AS Empresa,
+              c.FechaAlta, c.Email
             FROM dbo.Colaboradores c
             LEFT JOIN dbo.Puestos p ON p.IdPuesto = c.IdPuesto
             LEFT JOIN dbo.Departamentos d ON d.IdDepartamento = c.IdDepartamento
-            WHERE c.IdJefeDirecto = @IdLider AND c.Activo = 1
+            LEFT JOIN dbo.EmpresasNomipaq e ON e.IdEmpresa = c.IdEmpresa
+            WHERE c.IdJefeDirecto = @IdLider AND c.Activo = 1;
           `);
         return res.json({ success: true, total: result.recordset.length, data: result.recordset });
       }
     } catch (err) {
+      console.error('[colaboradores.getEquipoLider]', err);
       res.status(500).json({ error: err.message });
     }
   }

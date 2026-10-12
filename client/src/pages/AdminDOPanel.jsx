@@ -96,22 +96,45 @@ export default function AdminDOPanel({ currentUser }) {
     }
   }
 
+  const [syncTask, setSyncTask] = useState(null);
+
   async function handleEjecutarSync() {
-    if (!window.confirm('¿Confirmas la ejecución de la sincronización incremental MERGE desde CONTPAQi Nóminas?')) return;
+    if (!window.confirm('¿Confirmas la sincronización de las 8 bases de datos de CONTPAQi Nóminas hacia DESARROLLO_O?')) return;
     try {
       setSyncLoading(true);
-      const res = await api.ejecutarSync();
+      const res = await api.sincronizarEmpleados();
       if (res.success) {
-        mostrarToast('¡Sincronización completada con éxito! Catálogos y saldos actualizados.');
-        setModalPreview(false);
-        cargarSyncInfo();
-        cargarKardex();
+        mostrarToast('Tarea de sincronización iniciada en segundo plano...');
+        iniciarSondeoTarea(res.taskId);
       }
     } catch (err) {
-      alert('Error en sincronización: ' + err.message);
-    } finally {
+      alert('Error iniciando sincronización: ' + err.message);
       setSyncLoading(false);
     }
+  }
+
+  function iniciarSondeoTarea(taskId) {
+    const intervalo = setInterval(async () => {
+      try {
+        const res = await api.getSyncTaskStatus(taskId);
+        if (res.success && res.task) {
+          setSyncTask(res.task);
+          if (res.task.estado === 'COMPLETED') {
+            clearInterval(intervalo);
+            setSyncLoading(false);
+            mostrarToast('¡Sincronización multi-empresa completada con éxito!');
+            cargarSyncInfo();
+            cargarKardex();
+          } else if (res.task.estado === 'ERROR') {
+            clearInterval(intervalo);
+            setSyncLoading(false);
+            alert('Error en tarea de sincronización: ' + res.task.error);
+          }
+        }
+      } catch (err) {
+        console.error('Error sondeando tarea:', err);
+      }
+    }, 1500);
   }
 
   // 3. Días Inhábiles
@@ -371,45 +394,64 @@ export default function AdminDOPanel({ currentUser }) {
           <div className="p-6 space-y-6">
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               <div className="bg-slate-50 p-5 rounded-2xl border border-slate-200">
-                <span className="text-xs font-bold text-slate-400 uppercase">Origen de Datos</span>
-                <p className="text-base font-extrabold text-slate-900 mt-1">{syncStatus?.source || 'CONTPAQi Nóminas'}</p>
-                <span className="text-[11px] text-slate-500 font-mono block mt-1">BD: {syncStatus?.database}</span>
+                <span className="text-xs font-bold text-slate-400 uppercase">Instancia Remota NOMIPAQ</span>
+                <p className="text-base font-extrabold text-slate-900 mt-1">8 Bases de Datos Desacopladas</p>
+                <span className="text-[11px] text-slate-500 font-mono block mt-1">Conexión directa TCP/IP (Sin MSDTC)</span>
               </div>
 
               <div className="bg-slate-50 p-5 rounded-2xl border border-slate-200">
-                <span className="text-xs font-bold text-slate-400 uppercase">Estado de Enlace SQL</span>
-                <p className="text-base font-extrabold text-emerald-700 mt-1 flex items-center gap-1.5">
-                  <CheckCircle2 className="w-4 h-4 text-emerald-600" />
-                  {syncStatus?.estadoConexion || 'ONLINE'}
+                <span className="text-xs font-bold text-slate-400 uppercase">Base Local Operativa</span>
+                <p className="text-base font-extrabold text-blue-700 mt-1 flex items-center gap-1.5">
+                  <Database className="w-4 h-4 text-blue-600" />
+                  DESARROLLO_O
                 </p>
                 <span className="text-[11px] text-slate-500 block mt-1">
-                  Plantilla vinculada: {syncStatus?.totalColaboradoresSincronizados || 601} registros
+                  Integridad: RolApp e IdJefeDirecto protegidos
                 </span>
               </div>
 
               <div className="bg-slate-50 p-5 rounded-2xl border border-slate-200 flex flex-col justify-between">
                 <div>
-                  <span className="text-xs font-bold text-slate-400 uppercase">Sincronización Manual</span>
-                  <p className="text-xs text-slate-600 mt-1">Dispara el Stored Procedure `sp_SincronizarDesdeNomipaq`</p>
+                  <span className="text-xs font-bold text-slate-400 uppercase">Sincronización en 2do Plano</span>
+                  <p className="text-xs text-slate-600 mt-1">Lectura no transaccional (NOLOCK) + Staging Atómico Local</p>
                 </div>
-                <div className="pt-2 flex items-center gap-2">
-                  <button
-                    onClick={handleVerPreview}
-                    disabled={syncLoading}
-                    className="flex-1 px-3 py-2 rounded-xl bg-slate-200 hover:bg-slate-300 text-slate-800 font-bold text-xs transition-all"
-                  >
-                    Ver Cambios
-                  </button>
+                <div className="pt-2">
                   <button
                     onClick={handleEjecutarSync}
                     disabled={syncLoading}
-                    className="flex-1 px-3 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs transition-all shadow-xs"
+                    className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white font-bold text-xs transition-all shadow-xs"
                   >
-                    {syncLoading ? 'Ejecutando...' : 'Sincronizar MERGE'}
+                    <RefreshCw className={`w-3.5 h-3.5 ${syncLoading ? 'animate-spin' : ''}`} />
+                    {syncLoading ? 'Sincronizando 8 Empresas...' : 'Sincronizar 8 Empresas (Background Task)'}
                   </button>
                 </div>
               </div>
             </div>
+
+            {/* Barra de Progreso en Segundo Plano */}
+            {syncTask && (
+              <div className="bg-blue-50/80 p-4 rounded-2xl border border-blue-200 space-y-2 animate-in fade-in">
+                <div className="flex items-center justify-between text-xs">
+                  <span className="font-bold text-blue-900 flex items-center gap-1.5">
+                    <Sparkles className="w-4 h-4 text-blue-600" />
+                    Tarea: {syncTask.taskId} ({syncTask.estado})
+                  </span>
+                  <span className="font-mono text-blue-700 font-bold">
+                    {syncTask.basesCompletadas} de {syncTask.totalBases} bases completadas
+                  </span>
+                </div>
+                <div className="w-full bg-blue-200 h-2.5 rounded-full overflow-hidden">
+                  <div 
+                    className="bg-blue-600 h-full transition-all duration-500 rounded-full"
+                    style={{ width: `${(syncTask.basesCompletadas / syncTask.totalBases) * 100}%` }}
+                  />
+                </div>
+                <div className="flex items-center justify-between text-[11px] text-blue-800">
+                  <span className="truncate max-w-md">Procesando: <strong>{syncTask.empresaActual}</strong></span>
+                  <span>Insertados: <strong>+{syncTask.totales.insertados}</strong> | Actualizados: <strong>~{syncTask.totales.actualizados}</strong></span>
+                </div>
+              </div>
+            )}
 
             {/* Bitácora de Sincronización */}
             <div className="space-y-3">

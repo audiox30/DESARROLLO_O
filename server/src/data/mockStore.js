@@ -5,7 +5,19 @@ const { calcularDetalleDias } = require('../services/diasHabilesService');
 
 const SEED_DATA_PATH = path.resolve(__dirname, 'seedData.json');
 
-// 1. Días Inhábiles Iniciales (LFT Art. 74 México y Asuetos)
+// Catálogo de las 8 Empresas de CONTPAQi Nóminas en Grupo JAMA
+const EMPRESAS_NOMIPAQ_CATALOGO = [
+  { idEmpresa: 1, nombreBaseDatos: 'ctCEMENTOS_MOCTEZ', aliasEmpresa: 'CEMENTOS MOCTEZUMA', activa: true },
+  { idEmpresa: 2, nombreBaseDatos: 'ctCONSTRUJAMA_DE_', aliasEmpresa: 'CONSTRUJAMA DE MEXICO S.A. DE C.V.', activa: true },
+  { idEmpresa: 3, nombreBaseDatos: 'ctCONTROLADORA_JA', aliasEmpresa: 'CONTROLADORA JAMA, S.C.', activa: true },
+  { idEmpresa: 4, nombreBaseDatos: 'ctDISTRIBUIDOR_DE', aliasEmpresa: 'DISTRIBUIDOR DE CEMENTO DEL OCCIDENTE, S.A. DE C.V.', activa: true },
+  { idEmpresa: 5, nombreBaseDatos: 'ctDISTRIBUIDORA_J', aliasEmpresa: 'DISTRIBUIDORA JAMA', activa: true },
+  { idEmpresa: 6, nombreBaseDatos: 'ctIMPULSORA_DE_NE', aliasEmpresa: 'IMPULSORA DE NEGOCIOS', activa: true },
+  { idEmpresa: 7, nombreBaseDatos: 'ctLATINO_CONCRETO', aliasEmpresa: 'LATINO CONCRETOS', activa: true },
+  { idEmpresa: 8, nombreBaseDatos: 'ctTRAMO_DEL_CENTR', aliasEmpresa: 'TRAMO DEL CENTRO', activa: true }
+];
+
+// Días Inhábiles Iniciales (LFT Art. 74 México y Asuetos)
 const festivosOficialesMexico = [
   // 2024
   { fecha: '2024-01-01', descripcion: 'Año Nuevo', esFeriadoOficial: true, activo: true },
@@ -55,6 +67,7 @@ const festivosOficialesMexico = [
 
 class MockStore {
   constructor() {
+    this.empresasNomipaq = [...EMPRESAS_NOMIPAQ_CATALOGO];
     this.departamentos = [];
     this.puestos = [];
     this.colaboradores = [];
@@ -73,12 +86,26 @@ class MockStore {
         const data = JSON.parse(raw);
         this.departamentos = data.departamentos || [];
         this.puestos = data.puestos || [];
+        
+        // Mapear cada colaborador a una de las 8 razones sociales
         this.colaboradores = (data.colaboradores || []).map(c => {
           const antiguedad = calcularAntiguedad(c.fechaAlta);
           const diasCorrespondientes = calcularDiasLFT(antiguedad);
           const diasGozados = c.diasGozados || 0;
+          
+          let idEmpresa = 2; // Default Construjama
+          const empNombre = (c.empresa || '').toUpperCase();
+          if (empNombre.includes('CONTROLADORA')) idEmpresa = 3;
+          else if (empNombre.includes('DISTRIBUIDOR DE CEMENTO') || empNombre.includes('DICOSA')) idEmpresa = 4;
+          else if (empNombre.includes('DISTRIBUIDORA JAMA')) idEmpresa = 5;
+          else if (empNombre.includes('CEMENTO')) idEmpresa = 1;
+          else if (empNombre.includes('IMPULSORA')) idEmpresa = 6;
+          else if (empNombre.includes('LATINO')) idEmpresa = 7;
+          else if (empNombre.includes('TRAMO')) idEmpresa = 8;
+
           return {
             ...c,
+            idEmpresa,
             antiguedadAnios: antiguedad,
             diasCorrespondientes,
             diasGozados,
@@ -87,18 +114,16 @@ class MockStore {
             saldos: generarPeriodosVacaciones(c.fechaAlta, diasGozados)
           };
         });
-        console.log(`[MockStore] Cargados ${this.colaboradores.length} colaboradores reales de Grupo JAMA.`);
+        console.log(`[MockStore-DESARROLLO_O] Cargados ${this.colaboradores.length} colaboradores en 8 empresas.`);
       } catch (err) {
-        console.error('[MockStore] Error cargando seedData.json:', err);
+        console.error('[MockStore-DESARROLLO_O] Error cargando seedData.json:', err);
       }
     }
 
-    // Inicializar algunas solicitudes de muestra para visualización inmediata
     this.initSampleSolicitudes();
   }
 
   initSampleSolicitudes() {
-    // Buscar colaborador Benito Salazar y su líder Mary Araiza
     const benito = this.colaboradores.find(c => c.codigoEmpleado === 'CONS-100') || this.colaboradores[0];
     const mirna = this.colaboradores.find(c => c.codigoEmpleado === 'DICO-107') || this.colaboradores[1];
     const mary = this.colaboradores.find(c => c.codigoEmpleado === 'CONS-103') || this.colaboradores[2];
@@ -108,6 +133,7 @@ class MockStore {
         idSolicitud: 1,
         folio: 'VAC-2026-00001',
         idColaborador: benito.id,
+        idEmpresa: benito.idEmpresa || 2,
         colaboradorNombre: benito.nombreCompleto,
         colaboradorCodigo: benito.codigoEmpleado,
         colaboradorPuesto: benito.puesto,
@@ -144,6 +170,7 @@ class MockStore {
         idSolicitud: 2,
         folio: 'VAC-2026-00002',
         idColaborador: mirna.id,
+        idEmpresa: mirna.idEmpresa || 4,
         colaboradorNombre: mirna.nombreCompleto,
         colaboradorCodigo: mirna.codigoEmpleado,
         colaboradorPuesto: mirna.puesto,
@@ -181,7 +208,7 @@ class MockStore {
           aprobadorNombre: mary ? mary.nombreCompleto : 'MARIA DE JESUS ARAIZA',
           nivelAprobacion: 'LIDER_DIRECTO',
           accion: 'APROBADA',
-          comentarios: 'Autorizado por Gerencia de Sucursal. Enviado a VoBo de DO.',
+          comentarios: 'Autorizado por Gerencia. Enviado a VoBo de DO.',
           metodoAutorizacion: 'TEAMS',
           fechaAccion: '2026-09-16T14:10:00Z'
         }
@@ -192,11 +219,143 @@ class MockStore {
   getDiasInhabilesMap() {
     const map = {};
     for (const d of this.diasInhabiles) {
-      if (d.activo) {
-        map[d.fecha] = d;
-      }
+      if (d.activo) map[d.fecha] = d;
     }
     return map;
+  }
+
+  // Generador de staging contingente para una base específica
+  generarStagingEmpresa(idEmpresa, nombreBD, aliasEmpresa) {
+    const empColabs = this.colaboradores.filter(c => c.idEmpresa === idEmpresa);
+    const departamentos = [
+      { codigo: 'D01', nombre: 'ADMINISTRACION' },
+      { codigo: 'D02', nombre: 'LOGISTICA' },
+      { codigo: 'D03', nombre: 'VENTAS' },
+      { codigo: 'D04', nombre: 'OPERACIONES' }
+    ];
+    const puestos = [
+      { codigo: 'P01', nombre: 'GERENTE DE SUCURSAL' },
+      { codigo: 'P02', nombre: 'ENCARGADO DE SUCURSAL' },
+      { codigo: 'P05', nombre: 'MONTACARGUISTA 6' }
+    ];
+
+    const empleados = (empColabs.length > 0 ? empColabs : this.colaboradores.slice(0, 15)).map(c => ({
+      codigoEmpleado: c.codigoEmpleado,
+      nombre: c.nombre,
+      apellidoPaterno: c.apellidoPaterno,
+      apellidoMaterno: c.apellidoMaterno || '',
+      curp: c.curp || '',
+      rfc: c.rfc || '',
+      email: c.email || '',
+      empresa: aliasEmpresa,
+      sucursal: c.sucursal || 'CENTRAL',
+      fechaAlta: c.fechaAlta,
+      fechaReingreso: c.fechaReingreso || null,
+      estatusNomina: c.estatusNomina || 'A',
+      codigoDepartamento: 'D01',
+      codigoPuesto: 'P01'
+    }));
+
+    return { departamentos, puestos, empleados };
+  }
+
+  // Sincronización Multi-Empresa con preservación estricta de IdJefeDirecto y RolApp
+  aplicarSincronizacionMultiEmpresa(idEmpresa, nombreBD, datos, idUsuario = null) {
+    let insertados = 0;
+    let actualizados = 0;
+
+    for (const emp of datos.empleados) {
+      // Búsqueda por llave única natural compuesta: (IdEmpresa, CodigoEmpleado)
+      const index = this.colaboradores.findIndex(c => 
+        c.idEmpresa === Number(idEmpresa) && c.codigoEmpleado === emp.codigoEmpleado
+      );
+
+      if (index >= 0) {
+        // MATCHED: Actualizar datos de nómina preservando IdJefeDirecto y RolApp
+        const existente = this.colaboradores[index];
+        this.colaboradores[index] = {
+          ...existente,
+          nombre: emp.nombre,
+          apellidoPaterno: emp.apellidoPaterno,
+          apellidoMaterno: emp.apellidoMaterno,
+          nombreCompleto: `${emp.nombre} ${emp.apellidoPaterno} ${emp.apellidoMaterno}`.trim(),
+          curp: emp.curp,
+          rfc: emp.rfc,
+          email: emp.email || existente.email,
+          empresa: emp.empresa || existente.empresa,
+          sucursal: emp.sucursal || existente.sucursal,
+          fechaAlta: emp.fechaAlta,
+          fechaReingreso: emp.fechaReingreso,
+          estatusNomina: emp.estatusNomina,
+          activo: emp.estatusNomina === 'A',
+          // REGLA CRUCIAL: IdJefeDirecto y RolApp SE CONSERVAN
+          idJefeDirecto: existente.idJefeDirecto,
+          rolApp: existente.rolApp,
+          ultimaSincronizacion: new Date().toISOString()
+        };
+        actualizados++;
+      } else {
+        // NOT MATCHED: Insertar nuevo colaborador inicializando rol y jefe nulo
+        const antiguedad = calcularAntiguedad(emp.fechaAlta);
+        const diasCorrespondientes = calcularDiasLFT(antiguedad);
+
+        const nuevoColab = {
+          id: this.colaboradores.length + 1,
+          idEmpresa: Number(idEmpresa),
+          codigoEmpleado: emp.codigoEmpleado,
+          nombre: emp.nombre,
+          apellidoPaterno: emp.apellidoPaterno,
+          apellidoMaterno: emp.apellidoMaterno,
+          nombreCompleto: `${emp.nombre} ${emp.apellidoPaterno} ${emp.apellidoMaterno}`.trim(),
+          curp: emp.curp,
+          rfc: emp.rfc,
+          email: emp.email || `${emp.codigoEmpleado.toLowerCase()}@grupojama.com`,
+          empresa: emp.empresa,
+          sucursal: emp.sucursal,
+          fechaAlta: emp.fechaAlta,
+          fechaReingreso: emp.fechaReingreso,
+          estatusNomina: emp.estatusNomina,
+          idDepartamento: null,
+          idPuesto: null,
+          idJefeDirecto: null, // Nuevo colaborador: sin jefe asignado localmente
+          rolApp: 'COLABORADOR', // Rol base por defecto
+          activo: emp.estatusNomina === 'A',
+          antiguedadAnios: antiguedad,
+          diasCorrespondientes,
+          diasGozados: 0,
+          diasDisponibles: diasCorrespondientes,
+          jornadaLaboralDias: 5,
+          saldos: generarPeriodosVacaciones(emp.fechaAlta, 0),
+          ultimaSincronizacion: new Date().toISOString()
+        };
+        this.colaboradores.push(nuevoColab);
+        insertados++;
+      }
+    }
+
+    const log = {
+      idSync: this.bitacoraSync.length + 1,
+      fechaEjecucion: new Date().toISOString(),
+      tipoEjecucion: 'MANUAL',
+      idEmpresa,
+      nombreBaseDatos: nombreBD,
+      idUsuarioEjecuto: idUsuario,
+      registrosInsertados: insertados,
+      registrosActualizados: actualizados,
+      registrosDesactivados: 0,
+      detalleLog: `Sincronización multi-empresa completada para ${nombreBD}.`,
+      exitoso: true
+    };
+    this.bitacoraSync.unshift(log);
+
+    return {
+      exito: 1,
+      idEmpresa,
+      baseDatos: nombreBD,
+      registrosInsertados: insertados,
+      registrosActualizados: actualizados,
+      mensaje: `Sincronización multi-empresa exitosa en ${nombreBD}.`
+    };
   }
 
   // Métodos de Solicitudes
@@ -211,7 +370,6 @@ class MockStore {
       throw new Error('El rango seleccionado no contiene ningún día hábil laborable.');
     }
 
-    // Validar saldo
     const solicitudesEnTramite = this.solicitudes.filter(s => 
       s.idColaborador === colab.id && ['PENDIENTE_LIDER', 'PENDIENTE_DO'].includes(s.estado)
     );
@@ -222,7 +380,6 @@ class MockStore {
       throw new Error(`Saldo insuficiente. Días disponibles: ${disponibleReal}, Días solicitados: ${detalle.totalDiasLaborables}.`);
     }
 
-    // Validar traslape
     const traslape = this.solicitudes.find(s => 
       s.idColaborador === colab.id &&
       ['PENDIENTE_LIDER', 'PENDIENTE_DO', 'APROBADA'].includes(s.estado) &&
@@ -240,6 +397,7 @@ class MockStore {
       idSolicitud: this.solicitudes.length + 1,
       folio,
       idColaborador: colab.id,
+      idEmpresa: colab.idEmpresa,
       colaboradorNombre: colab.nombreCompleto,
       colaboradorCodigo: colab.codigoEmpleado,
       colaboradorPuesto: colab.puesto,
@@ -283,7 +441,6 @@ class MockStore {
     const esDO = aprobador && aprobador.rolApp === 'ADMIN_DO';
 
     if (solicitud.estado === 'PENDIENTE_LIDER' && !esDO) {
-      // Líder aprueba -> pasa a DO para VoBo final
       solicitud.estado = 'PENDIENTE_DO';
       this.historialAprobaciones.push({
         idAprobacion: this.historialAprobaciones.length + 1,
@@ -297,17 +454,14 @@ class MockStore {
         fechaAccion: new Date().toISOString()
       });
     } else {
-      // Aprobación final por DO
       solicitud.estado = 'APROBADA';
       solicitud.fechaResolucion = new Date().toISOString();
       solicitud.idAprobadorFinal = aprobador ? aprobador.id : null;
 
-      // Descontar saldo del colaborador
       const colab = this.colaboradores.find(c => c.id === solicitud.idColaborador);
       if (colab) {
         colab.diasGozados += solicitud.totalDiasLaborables;
         colab.diasDisponibles = Math.max(0, colab.diasCorrespondientes - colab.diasGozados);
-        // Descontar en saldos por períodos (FIFO)
         let diasRestantes = solicitud.totalDiasLaborables;
         if (colab.saldos) {
           for (const s of colab.saldos) {
@@ -329,7 +483,7 @@ class MockStore {
         aprobadorNombre: aprobador ? aprobador.nombreCompleto : 'DESARROLLO ORGANIZACIONAL',
         nivelAprobacion: 'DESARROLLO_ORGANIZACIONAL',
         accion: 'APROBADA',
-        comentarios: comentarios || 'VoBo otorgado por DO. Impacto reflejado en expediente de nómina.',
+        comentarios: comentarios || 'VoBo otorgado por DO. Reflejado en nómina.',
         metodoAutorizacion: metodo,
         fechaAccion: new Date().toISOString()
       });
@@ -392,33 +546,14 @@ class MockStore {
       aprobadorNombre: colab ? colab.nombreCompleto : 'COLABORADOR',
       nivelAprobacion: 'COLABORADOR',
       accion: 'CANCELADA',
-      comentarios: 'Solicitud cancelada por el propio colaborador',
+      comentarios: 'Solicitud cancelada por el colaborador',
       metodoAutorizacion: 'WEB',
       fechaAccion: new Date().toISOString()
     });
 
     return solicitud;
   }
-
-  // Sincronización NOMIPAQ (simulación o real)
-  sincronizarNomipaq(tipo = 'MANUAL', idUsuario = null) {
-    const fecha = new Date().toISOString();
-    const log = {
-      idSync: this.bitacoraSync.length + 1,
-      fechaEjecucion: fecha,
-      tipoEjecucion: tipo,
-      idUsuarioEjecuto: idUsuario,
-      registrosInsertados: 3,
-      registrosActualizados: 12,
-      registrosDesactivados: 0,
-      detalleLog: 'Sincronización incremental MERGE ejecutada. Catálogos actualizados desde tablas NOMIPAQ nom10001, nom10002, nom10003.',
-      exitoso: true
-    };
-    this.bitacoraSync.unshift(log);
-    return log;
-  }
 }
 
 const mockStore = new MockStore();
-
 module.exports = mockStore;

@@ -1,12 +1,85 @@
+const nomipaqSyncService = require('../services/nomipaqSyncService');
 const mockStore = require('../data/mockStore');
-const { getPool, isUsingMock } = require('../config/database');
+const { getLocalPool, isUsingMock } = require('../config/database');
 
 const syncController = {
+  /**
+   * Endpoint requerido: POST /api/admin/sincronizar-empleados
+   * Ejecuta la rutina multi-empresa desacoplada como tarea en segundo plano (BackgroundTasks)
+   */
+  sincronizarEmpleados: async (req, res) => {
+    try {
+      const idUsuario = req.user ? req.user.id : null;
+
+      // Iniciar tarea en segundo plano
+      const task = nomipaqSyncService.iniciarSincronizacionSegundoPlano(idUsuario);
+
+      // Responder de inmediato (HTTP 202 Accepted)
+      return res.status(202).json({
+        success: true,
+        message: 'Sincronización multi-empresa iniciada en segundo plano.',
+        taskId: task.taskId,
+        estado: task.estado,
+        totalBases: task.totalBases,
+        basesProgramadas: [
+          'ctCEMENTOS_MOCTEZ',
+          'ctCONSTRUJAMA_DE_',
+          'ctCONTROLADORA_JA',
+          'ctDISTRIBUIDOR_DE',
+          'ctDISTRIBUIDORA_J',
+          'ctIMPULSORA_DE_NE',
+          'ctLATINO_CONCRETO',
+          'ctTRAMO_DEL_CENTR'
+        ],
+        statusEndpoint: `/api/admin/sincronizar-empleados/status/${task.taskId}`
+      });
+    } catch (err) {
+      console.error('[syncController.sincronizarEmpleados]', err);
+      res.status(500).json({ error: err.message });
+    }
+  },
+
+  /**
+   * Consulta del estado de la tarea en segundo plano
+   */
+  getTaskStatus: async (req, res) => {
+    try {
+      const { taskId } = req.params;
+      const task = nomipaqSyncService.obtenerEstadoTarea(taskId);
+
+      if (!task) {
+        return res.status(404).json({ error: 'Tarea no encontrada o ya finalizada y archivada.' });
+      }
+
+      return res.json({
+        success: true,
+        task
+      });
+    } catch (err) {
+      res.status(500).json({ error: err.message });
+    }
+  },
+
+  /**
+   * Estado general del enlace multi-empresa
+   */
   getStatus: async (req, res) => {
     try {
-      const isMock = isUsingMock();
+      const poolLocal = await getLocalPool();
+      let empresas = [];
+
+      if (poolLocal && !isUsingMock()) {
+        const empRes = await poolLocal.request().query(`
+          SELECT IdEmpresa, NombreBaseDatos, AliasEmpresa, Activa, UltimaSincronizacion 
+          FROM dbo.EmpresasNomipaq ORDER BY IdEmpresa
+        `);
+        empresas = empRes.recordset;
+      } else {
+        empresas = mockStore.empresasNomipaq;
+      }
+
       const lastSync = mockStore.bitacoraSync[0] || {
-        fechaEjecucion: '2026-10-12T08:00:00Z',
+        fechaEjecucion: new Date().toISOString(),
         exitoso: true,
         registrosInsertados: 601,
         registrosActualizados: 0
@@ -14,92 +87,36 @@ const syncController = {
 
       res.json({
         success: true,
-        source: 'CONTPAQi Nóminas (NOMIPAQ)',
-        database: process.env.NOMIPAQ_DB || 'nomipaq_jama',
-        tablasFuente: ['nom10001 (Empleados)', 'nom10002 (Puestos)', 'nom10003 (Departamentos)'],
-        targetDatabase: process.env.DB_NAME || 'ControlVacaciones_DO',
-        isMockMode: isMock,
-        totalColaboradoresSincronizados: mockStore.colaboradores.length,
+        baseDatosLocal: 'DESARROLLO_O',
+        totalEmpresas: empresas.length,
+        empresas,
+        isMockMode: isUsingMock(),
         ultimaSincronizacion: lastSync.fechaEjecucion,
-        estadoConexion: 'CONECTADO Y DISPONIBLE'
+        estadoEnlace: 'CONFIGURADO - MULTI-EMPRESA'
       });
     } catch (err) {
       res.status(500).json({ error: err.message });
     }
   },
 
-  preview: async (req, res) => {
-    try {
-      // Vista previa de cambios detectados en NOMIPAQ
-      const previewData = {
-        nuevosEmpleados: [
-          { codigoEmpleado: 'NUEVO-801', nombre: 'CARLOS ALBERTO MEDINA', puesto: 'AUXILIAR DE OPERACIONES', departamento: 'OPERACIONES', empresa: 'CONSTRUJAMA' }
-        ],
-        actualizacionesPuestos: [
-          { codigoEmpleado: 'CONS-100', nombre: 'BENITO SALAZAR GRIMALDO', puestoAnterior: 'Montacarguista 5', puestoNuevo: 'Montacarguista 6' }
-        ],
-        bajasDetectadas: []
-      };
-
-      return res.json({
-        success: true,
-        summary: {
-          insertar: previewData.nuevosEmpleados.length,
-          actualizar: previewData.actualizacionesPuestos.length,
-          bajas: previewData.bajasDetectadas.length
-        },
-        preview: previewData
-      });
-    } catch (err) {
-      res.status(500).json({ error: err.message });
-    }
-  },
-
-  execute: async (req, res) => {
-    try {
-      const idUsuario = req.user ? req.user.id : null;
-
-      if (isUsingMock()) {
-        const log = mockStore.sincronizarNomipaq('MANUAL', idUsuario);
-        return res.json({
-          success: true,
-          message: 'Sincronización incremental MERGE ejecutada exitosamente.',
-          resultado: log
-        });
-      } else {
-        const pool = await getPool();
-        const request = pool.request();
-        request.input('TipoEjecucion', 'MANUAL');
-        request.input('IdUsuarioEjecuto', idUsuario);
-        request.input('NomipaqDbName', process.env.NOMIPAQ_DB || 'nomipaq_jama');
-
-        const result = await request.execute('dbo.sp_SincronizarDesdeNomipaq');
-        return res.json({
-          success: true,
-          message: 'Sincronización con CONTPAQi Nóminas completada en SQL Server.',
-          resultado: result.recordset[0]
-        });
-      }
-    } catch (err) {
-      console.error('[sync.execute]', err);
-      res.status(500).json({ error: err.message });
-    }
-  },
-
+  /**
+   * Bitácora de auditoría de sincronizaciones
+   */
   getLogs: async (req, res) => {
     try {
-      if (isUsingMock()) {
+      const poolLocal = await getLocalPool();
+
+      if (poolLocal && !isUsingMock()) {
+        const result = await poolLocal.request().query(`
+          SELECT TOP 30 * FROM dbo.BitacoraSincronizacionNomipaq ORDER BY FechaEjecucion DESC
+        `);
+        return res.json({ success: true, total: result.recordset.length, data: result.recordset });
+      } else {
         return res.json({
           success: true,
           total: mockStore.bitacoraSync.length,
           data: mockStore.bitacoraSync
         });
-      } else {
-        const pool = await getPool();
-        const result = await pool.request().query(`
-          SELECT TOP 20 * FROM dbo.BitacoraSincronizacionNomipaq ORDER BY FechaEjecucion DESC
-        `);
-        return res.json({ success: true, total: result.recordset.length, data: result.recordset });
       }
     } catch (err) {
       res.status(500).json({ error: err.message });

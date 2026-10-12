@@ -1,168 +1,129 @@
 # Sistema de Control de Vacaciones (Desarrollo Organizacional)
 **Organización:** Grupo JAMA  
 **Entorno:** Red Local (LAN / Intranet On-Premise)  
-**Base de Datos:** Microsoft SQL Server (`ControlVacaciones_DO`)  
-**Fuente de Datos:** CONTPAQi Nóminas (`nom10001`, `nom10002`, `nom10003`)  
+**Base de Datos Operativa Local:** Microsoft SQL Server (`DESARROLLO_O`)  
+**Servidor Remoto Desacoplado:** CONTPAQi Nóminas (8 Razones Sociales sin Linked Server ni MSDTC)  
 **Normativa Laboral:** Ley Federal del Trabajo (LFT México - Reforma Vacaciones Dignas 2023+)  
 
 ---
 
-## 1. Arquitectura Técnica y Desacoplamiento
+## 1. Arquitectura Técnica e Integración Multi-Empresa
 
-El sistema implementa una arquitectura desacoplada para garantizar máxima disponibilidad en la intranet corporativa sin interferir con las operaciones transaccionales del ERP CONTPAQi Nóminas:
+El sistema opera con dos motores SQL Server completamente independientes comunicados por el backend a través de TCP/IP nativo:
 
 ```
-[CONTPAQi Nóminas] (Solo Lectura)
-  ├── nom10001 (Empleados)
-  ├── nom10002 (Puestos)
-  └── nom10003 (Departamentos)
+[SERVIDOR REMOTO CONTPAQi NÓMINAS] (Lectura No Transaccional con NOLOCK)
+  ├── 1. ctCEMENTOS_MOCTEZ      (Cementos Moctezuma)
+  ├── 2. ctCONSTRUJAMA_DE_      (Construjama de México S.A. de C.V.)
+  ├── 3. ctCONTROLADORA_JA      (Controladora JAMA, S.C.)
+  ├── 4. ctDISTRIBUIDOR_DE      (Distribuidor de Cemento del Occidente S.A. de C.V. - DICOSA)
+  ├── 5. ctDISTRIBUIDORA_J      (Distribuidora JAMA)
+  ├── 6. ctIMPULSORA_DE_NE      (Impulsora de Negocios)
+  ├── 7. ctLATINO_CONCRETO      (Latino Concretos)
+  └── 8. ctTRAMO_DEL_CENTR      (Tramo del Centro)
           │
-          │ (Vistas Desacopladas vw_Nomipaq_*)
+          │ (Extracción segura: SET TRANSACTION ISOLATION LEVEL READ UNCOMMITTED)
           ▼
-[Base de Datos Operativa: ControlVacaciones_DO] (Microsoft SQL Server)
-  ├── Departamentos
-  ├── Puestos
-  ├── Colaboradores (con atributos locales: RolApp, IdJefeDirecto)
-  ├── DiasInhabiles (Festivos oficiales LFT México 2024-2027)
-  ├── SaldosVacaciones (Cálculo histórico por períodos LFT)
-  ├── SolicitudesVacaciones (Folios consecutivos, rangos de fechas)
-  └── HistorialAprobaciones (Trazabilidad inmutable: Web / Teams)
+[BACKEND REST API (Node.js / Express)]
+  ├── Servicio de Sincronización Desacoplado (`nomipaqSyncService.js`)
+  ├── Tareas en Segundo Plano (`POST /api/admin/sincronizar-empleados`)
+  ├── Consulta no bloqueante con WITH (NOLOCK) sobre nom10001, nom10002, nom10003
+  └── Staging local temporal (#StagingEmpleados) con sentencias MERGE
           │
-          │ (Pool de conexiones MSSQL / Transacciones atómicas)
+          │ (Escritura Atómica Local con BEGIN TRANSACTION / COMMIT / ROLLBACK)
           ▼
-[Backend REST API: Node.js / Express]
-  ├── Cálculo de días hábiles omitiendo descansos y festivos
-  ├── Validación estricta de saldos contra sobregiros
-  ├── MERGE incremental conservando jerarquías locales
-  └── Generador de tarjetas adaptables para Microsoft Teams
-          │
-          │ (REST JSON / CORS Intranet)
-          ▼
-[Frontend Web Responsive: React + Vite + Tailwind CSS]
-  ├── Portal del Colaborador (Autoservicio, simulador, kárdex)
-  ├── Bandeja del Líder (Aprobación 1-clic, rechazo obligatorio)
-  └── Panel DO (Admin, Sincronizador NOMIPAQ, exportación nómina)
+[BASE DE DATOS LOCAL: DESARROLLO_O] (Microsoft SQL Server)
+  ├── dbo.EmpresasNomipaq       (Catálogo de las 8 razones sociales)
+  ├── dbo.Departamentos         (FK: IdEmpresa, Código)
+  ├── dbo.Puestos               (FK: IdEmpresa, Código)
+  ├── dbo.Colaboradores         (Llave Compuesta: IdEmpresa + CodigoEmpleado)
+  │    └── Integridad: NUNCA se sobreescribe IdJefeDirecto ni RolApp
+  ├── dbo.DiasInhabiles         (Festivos oficiales LFT México 2024-2027)
+  ├── dbo.SaldosVacaciones      (Devengo acumulado por períodos anuales LFT)
+  ├── dbo.SolicitudesVacaciones (Folios consecutivos, validación de sobregiro)
+  └── dbo.BitacoraSincronizacionNomipaq (Auditoría inmutable de ingestas)
 ```
 
 ---
 
-## 2. Estructura del Proyecto
+## 2. Ajustes al Modelo de Datos (`DESARROLLO_O`)
 
-```
-C:\_DESARROLLO\DESARROLLO_O\
-├── database/
-│   ├── 01_schema.sql                # DDL: Tablas, PKs, FKs, Índices y Restricciones
-│   ├── 02_functions_and_sps.sql     # fn_CalcularDiasHabiles, sp_CalcularSaldosVacaciones, sp_SincronizarNomipaq
-│   ├── 03_seed_data.sql             # Festivos oficiales México LFT 2024-2027 y cuentas demo
-│   ├── 04_mock_nomipaq_source.sql   # Esquema fuente NOMIPAQ y vistas desacopladas
-│   └── extract_excel_catalogo.py    # ETL para extraer los 601 colaboradores de Grupo JAMA
-├── server/
-│   ├── src/
-│   │   ├── config/database.js       # Pool de conexiones a SQL Server con fallback local
-│   │   ├── controllers/             # Controladores REST modulares
-│   │   ├── services/                # LFT Vacaciones Dignas y motor de días hábiles
-│   │   ├── middleware/              # Seguridad JWT y validación de roles
-│   │   ├── routes/api.js            # Enrutador de la API
-│   │   └── app.js                   # Servidor Express y host del portal unificado
-│   ├── .env                         # Variables de entorno SQL Server
-│   └── package.json
-├── client/
-│   ├── src/
-│   │   ├── components/              # Calendario interactivo, StatCards, Kárdex, Modales
-│   │   ├── pages/                   # Portal Colaborador, Líder y Admin DO
-│   │   └── api/client.js            # Cliente fetch con soporte CSV
-│   └── dist/                        # Build de producción para intranet
-├── start-app.bat                    # Script ejecutable 1-clic para Windows
-└── README.md
-```
+1. **Catálogo de Empresas:** `dbo.EmpresasNomipaq` (`IdEmpresa`, `NombreBaseDatos`, `AliasEmpresa`, `Activa`, `UltimaSincronizacion`).
+2. **Llaves Foráneas Multi-Empresa:** `IdEmpresa` incorporado en `dbo.Departamentos`, `dbo.Puestos` y `dbo.Colaboradores`.
+3. **Llave Natural Compuesta:** `(IdEmpresa, CodigoEmpleado)` garantiza la unicidad de cada trabajador entre las diferentes empresas del grupo.
+4. **Regla de Integridad en el MERGE:** Al actualizar un colaborador existente desde CONTPAQi Nóminas, **se protegen estrictamente `IdJefeDirecto` y `RolApp`**, preservando la gobernanza interna definida en la aplicación web.
 
 ---
 
-## 3. Despliegue de Base de Datos en Microsoft SQL Server
+## 3. Despliegue de Base de Datos en SQL Server
 
-Para desplegar la base de datos en su servidor local o instancia corporativa de SQL Server (a través de SQL Server Management Studio o Azure Data Studio), ejecute los scripts en orden:
+Ejecute los scripts de la carpeta `database/` en SQL Server Management Studio (SSMS):
 
-1. `database/01_schema.sql`: Crea la base de datos `ControlVacaciones_DO`, tablas con índices clustered/non-clustered y constraints.
-2. `database/02_functions_and_sps.sql`: Registra la función escalar `fn_CalcularDiasHabiles`, `fn_CalcularDiasLFT`, la función en tabla `tvf_ObtenerDetalleDiasSolicitud` y los Stored Procedures `sp_CalcularSaldosVacaciones`, `sp_SincronizarDesdeNomipaq` y `sp_RegistrarSolicitudVacaciones`.
-3. `database/03_seed_data.sql`: Carga el catálogo de días festivos oficiales de México (Art. 74 LFT) para 2024, 2025, 2026 y 2027, y usuarios de prueba.
-4. `database/04_mock_nomipaq_source.sql`: Crea las vistas de extracción de solo lectura hacia la base de NOMIPAQ (`vw_Nomipaq_Empleados`, `vw_Nomipaq_Puestos`, `vw_Nomipaq_Departamentos`).
+1. [**`01_schema.sql`**](file:///C:/_DESARROLLO/DESARROLLO_O/database/01_schema.sql): Crea la base de datos `DESARROLLO_O`, tablas, llaves foráneas, índices no agrupados y restricciones de llave compuesta.
+2. [**`02_functions_and_sps.sql`**](file:///C:/_DESARROLLO/DESARROLLO_O/database/02_functions_and_sps.sql): Instala las funciones `fn_CalcularDiasLFT`, `fn_CalcularDiasHabiles`, `tvf_ObtenerDetalleDiasSolicitud`, y los procedimientos `sp_CalcularSaldosVacaciones`, `sp_AplicarStagingNomipaq`, `sp_RegistrarSolicitudVacaciones` y `sp_ProcesarAprobacionSolicitud`.
+3. [**`03_seed_data.sql`**](file:///C:/_DESARROLLO/DESARROLLO_O/database/03_seed_data.sql): Inicializa las 8 razones sociales en `dbo.EmpresasNomipaq`, los festivos oficiales de México (2024-2027) y cuentas demo.
 
 ---
 
-## 4. Configuración del Servidor (.env)
+## 4. Configuración de Cadenas de Conexión (`server/.env`)
 
-Abra el archivo `server/.env` y configure las credenciales de su instancia de SQL Server:
+El archivo [**`server/.env`**](file:///C:/_DESARROLLO/DESARROLLO_O/server/.env) cuenta con parámetros separados para cada servidor:
 
 ```env
 PORT=5000
 NODE_ENV=production
 
-# Conexión a Microsoft SQL Server
-DB_SERVER=localhost
-DB_PORT=1433
-DB_NAME=ControlVacaciones_DO
-DB_USER=sa
-DB_PASSWORD=TuPasswordSeguro123!
-DB_ENCRYPT=false
-DB_TRUST_SERVER_CERTIFICATE=true
+# -----------------------------------------------------------------------
+# 1. SERVIDOR LOCAL (Base de datos operativa: DESARROLLO_O)
+# -----------------------------------------------------------------------
+LOCAL_DB_SERVER=localhost
+LOCAL_DB_PORT=1433
+LOCAL_DB_NAME=DESARROLLO_O
+LOCAL_DB_USER=sa
+LOCAL_DB_PASSWORD=TuPasswordLocalSeguro123!
+LOCAL_DB_ENCRYPT=false
+LOCAL_DB_TRUST_SERVER_CERTIFICATE=true
 
-# Base de datos fuente CONTPAQi Nóminas
-NOMIPAQ_DB=nomipaq_jama
+# -----------------------------------------------------------------------
+# 2. SERVIDOR REMOTO CONTPAQi NÓMINAS (Instancia independiente de Nóminas)
+# -----------------------------------------------------------------------
+NOMIPAQ_REMOTE_SERVER=192.168.1.50
+NOMIPAQ_REMOTE_PORT=1433
+NOMIPAQ_REMOTE_USER=sa_nomipaq
+NOMIPAQ_REMOTE_PASSWORD=TuPasswordNomipaqRemoto123!
+NOMIPAQ_REMOTE_ENCRYPT=false
+NOMIPAQ_REMOTE_TRUST_SERVER_CERTIFICATE=true
 
-# Clave de seguridad JWT
-JWT_SECRET=jama_secret_vacaciones_do_2026_jwt_token
+# Lista de las 8 bases de datos remotas en CONTPAQi Nóminas
+NOMIPAQ_DATABASES=ctCEMENTOS_MOCTEZ,ctCONSTRUJAMA_DE_,ctCONTROLADORA_JA,ctDISTRIBUIDOR_DE,ctDISTRIBUIDORA_J,ctIMPULSORA_DE_NE,ctLATINO_CONCRETO,ctTRAMO_DEL_CENTR
 
-# Fallback automático a motor local si SQL Server no está levantado
+# -----------------------------------------------------------------------
+# 3. SEGURIDAD Y RESILIENCIA
+# -----------------------------------------------------------------------
+JWT_SECRET=jama_secret_vacaciones_desarrollo_o_2026_jwt_token
 USE_MOCK_FALLBACK=true
 ```
 
 ---
 
-## 5. Ejecución Rápida en Windows
+## 5. Endpoints de Sincronización en Segundo Plano
+
+- **Iniciar Sincronización Multi-Empresa:**
+  `POST /api/admin/sincronizar-empleados`
+  - Responde de inmediato con `HTTP 202 Accepted` y el `taskId` generado.
+  - Ejecuta la extracción de las 8 bases de datos remotas en segundo plano sin congelar la interfaz ni bloquear el servidor.
+- **Consultar Estado del Progreso:**
+  `GET /api/admin/sincronizar-empleados/status/:taskId`
+  - Devuelve el progreso detallado (ej. `3/8 bases completadas`, empresa actual en proceso, conteo de insertados y actualizados).
+- **Consultar Bitácora Histórica:**
+  `GET /api/sync-nomipaq/logs`
+
+---
+
+## 6. Ejecución y Acceso
 
 Haga doble clic en el archivo:
-```
-start-app.bat
-```
-O desde la consola PowerShell / CMD:
-```powershell
-cd C:\_DESARROLLO\DESARROLLO_O\server
-node src/app.js
-```
-El portal estará disponible inmediatamente en:  
-**http://localhost:5000**
+👉 [**`C:\_DESARROLLO\DESARROLLO_O\start-app.bat`**](file:///C:/_DESARROLLO/DESARROLLO_O/start-app.bat)
 
----
-
-## 6. Módulos y Flujos de Autorización
-
-### A. Portal del Colaborador (Autoservicio)
-- **Vista de saldos en tiempo real:** Días por Ley LFT, disfrutados, en trámite y saldo neto disponible.
-- **Simulador de días hábiles:** Selector interactivo de rango de fechas con desglose automático que excluye fines de semana y festivos oficiales (LFT Art. 74).
-- **Registro con Folio Consecutivo:** Generación de folio único (ej. `VAC-2026-00001`) y validación inmediata contra sobregiros.
-- **Kárdex Histórico:** Detalle de períodos por año cumplido y fechas de expiración (18 meses conforme a LFT Art. 81).
-
-### B. Portal del Líder / Gerencia
-- **Bandeja de solicitudes pendientes:** Filtradas automáticamente según `IdJefeDirecto`.
-- **Aprobación en 1 Clic:** Envío al siguiente nivel de aprobación o aplicación formal.
-- **Rechazo con Motivo Obligatorio:** Formulario con validación estricta que exige justificación para notificar al colaborador.
-- **Integración con Microsoft Teams:** Generador de tarjetas adaptables (Adaptive Cards) para autorizaciones ágiles.
-- **Directorio de equipo:** Consulta del saldo actual de la plantilla a su cargo.
-
-### C. Panel de Desarrollo Organizacional (Admin DO)
-- **Bandeja Global & VoBo Final:** Supervisión de todas las solicitudes de Grupo JAMA con filtros por Empresa, Sucursal, Departamento y Estado.
-- **Centro de Sincronización NOMIPAQ:**
-  - Diagnóstico de enlace con tablas `nom10001`, `nom10002` y `nom10003`.
-  - Previsualización de cambios pendientes (nuevas altas, cambios de puesto).
-  - Botón de disparo manual del Stored Procedure de sincronización incremental (`MERGE`).
-  - Bitácora inmutable de auditoría.
-- **Administrador de Días Inhábiles:** Registro de feriados oficiales y asuetos corporativos.
-- **Kárdex General y Exportación:** Listado completo de los 601 colaboradores con botón de descarga a archivo CSV/Excel para el departamento de nómina.
-
----
-
-## 7. Cuentas de Demostración Rápida
-Utilice el selector interactivo en la cabecera del portal para alternar instantáneamente entre los 3 roles:
-1. **Colaborador:** Benito Salazar (`CONS-100`) - Montacarguista 6 (San Luis, Construjama).
-2. **Líder:** Mary Araiza (`CONS-103`) - Gerente de Sucursal (Guadalajara).
-3. **Admin DO:** Tania Ramírez (`DO-010`) - Especialista de Desarrollo Organizacional.
+O abra su navegador en:
+👉 **`http://localhost:5000`**

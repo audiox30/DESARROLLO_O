@@ -1,15 +1,15 @@
 -- =================================================================================
 -- PROYECTO: Control de Vacaciones (Desarrollo Organizacional) - Grupo JAMA
 -- ARCHIVO: 02_functions_and_sps.sql
--- DESCRIPCIÓN: Funciones de cálculo LFT y días hábiles, y Stored Procedures (MERGE y Flujos)
--- MOTOR: Microsoft SQL Server 2016+
+-- DESCRIPCIÓN: Funciones de cálculo LFT, Procedimiento de Staging y Flujos de Autorización
+-- BASE DE DATOS: DESARROLLO_O
 -- =================================================================================
 
-USE ControlVacaciones_DO;
+USE DESARROLLO_O;
 GO
 
 -- =================================================================================
--- 1. FUNCIÓN ESCALAR: Días correspondientes según Ley Federal del Trabajo (LFT - Vacaciones Dignas)
+-- 1. FUNCIÓN ESCALAR: Días correspondientes según Ley Federal del Trabajo (LFT México)
 -- =================================================================================
 CREATE OR ALTER FUNCTION dbo.fn_CalcularDiasLFT
 (
@@ -52,8 +52,7 @@ END;
 GO
 
 -- =================================================================================
--- 2. FUNCIÓN ESCALAR: Cálculo de días hábiles entre dos fechas
---    Omitiendo sábados (según jornada), domingos y registros activos en DiasInhabiles
+-- 2. FUNCIÓN ESCALAR: Cálculo de días hábiles entre dos fechas (omite festivos y descansos)
 -- =================================================================================
 CREATE OR ALTER FUNCTION dbo.fn_CalcularDiasHabiles
 (
@@ -69,7 +68,6 @@ BEGIN
 
     DECLARE @DiasHabiles INT = 0;
 
-    -- CTE recursiva o tabla de números para recorrer el rango día a día de forma determinista
     ;WITH CalendarioRango AS (
         SELECT @FechaInicio AS FechaActual
         UNION ALL
@@ -80,16 +78,11 @@ BEGIN
     SELECT @DiasHabiles = COUNT(*)
     FROM CalendarioRango c
     CROSS APPLY (
-        -- @@DATEFIRST independiente usando cálculo modular de fecha
-        -- 1 = Domingo, 2 = Lunes, ..., 6 = Viernes, 7 = Sábado
         SELECT (DATEPART(WEEKDAY, c.FechaActual) + @@DATEFIRST - 1) % 7 AS DiaSemanaNormalizado
     ) w
     WHERE 
-        -- Excluir Domingo (siempre descanso legal)
-        w.DiaSemanaNormalizado <> 1
-        -- Si la jornada es de 5 días, excluir también Sábado (0 o 7 según módulo)
-        AND (@JornadaLaboralDias = 6 OR w.DiaSemanaNormalizado <> 0)
-        -- Excluir días festivos o inhábiles corporativos activos
+        w.DiaSemanaNormalizado <> 1 -- Excluir Domingo
+        AND (@JornadaLaboralDias = 6 OR w.DiaSemanaNormalizado <> 0) -- Excluir Sábado en jornada de 5 días
         AND NOT EXISTS (
             SELECT 1 
             FROM dbo.DiasInhabiles d 
@@ -102,7 +95,7 @@ END;
 GO
 
 -- =================================================================================
--- 3. FUNCIÓN TABLA EN LÍNEA (TVF): Desglose día por día para visualización en portal
+-- 3. FUNCIÓN TABLA EN LÍNEA (TVF): Desglose día por día para el portal de colaborador
 -- =================================================================================
 CREATE OR ALTER FUNCTION dbo.tvf_ObtenerDetalleDiasSolicitud
 (
@@ -125,8 +118,8 @@ RETURN
         c.Fecha,
         DATENAME(WEEKDAY, c.Fecha) AS NombreDiaSemana,
         CASE 
-            WHEN ((DATEPART(WEEKDAY, c.Fecha) + @@DATEFIRST - 1) % 7) = 1 THEN 1 -- Domingo
-            WHEN ((DATEPART(WEEKDAY, c.Fecha) + @@DATEFIRST - 1) % 7) = 0 THEN 1 -- Sábado
+            WHEN ((DATEPART(WEEKDAY, c.Fecha) + @@DATEFIRST - 1) % 7) = 1 THEN 1
+            WHEN ((DATEPART(WEEKDAY, c.Fecha) + @@DATEFIRST - 1) % 7) = 0 THEN 1
             ELSE 0
         END AS EsFinDeSemana,
         CASE WHEN d.Fecha IS NOT NULL THEN 1 ELSE 0 END AS EsDiaInhabil,
@@ -137,9 +130,9 @@ RETURN
         END) AS DescripcionDia,
         ISNULL(d.EsFeriadoOficial, 0) AS EsFeriadoOficial,
         CASE 
-            WHEN ((DATEPART(WEEKDAY, c.Fecha) + @@DATEFIRST - 1) % 7) = 1 THEN 0 -- Domingo descanso
-            WHEN @JornadaLaboralDias = 5 AND ((DATEPART(WEEKDAY, c.Fecha) + @@DATEFIRST - 1) % 7) = 0 THEN 0 -- Sábado en 5 días
-            WHEN d.Fecha IS NOT NULL AND d.Activo = 1 THEN 0 -- Festivo
+            WHEN ((DATEPART(WEEKDAY, c.Fecha) + @@DATEFIRST - 1) % 7) = 1 THEN 0
+            WHEN @JornadaLaboralDias = 5 AND ((DATEPART(WEEKDAY, c.Fecha) + @@DATEFIRST - 1) % 7) = 0 THEN 0
+            WHEN d.Fecha IS NOT NULL AND d.Activo = 1 THEN 0
             ELSE 1
         END AS EsDiaLaborableEfectivo
     FROM CalendarioRango c
@@ -148,10 +141,10 @@ RETURN
 GO
 
 -- =================================================================================
--- 4. STORED PROCEDURE: Cálculo de saldos por colaborador o global conforme a LFT
+-- 4. STORED PROCEDURE: Cálculo de saldos devengados por colaborador conforme a LFT
 -- =================================================================================
 CREATE OR ALTER PROCEDURE dbo.sp_CalcularSaldosVacaciones
-    @IdColaborador INT = NULL -- NULL = Recalcular toda la plantilla activa
+    @IdColaborador INT = NULL
 AS
 BEGIN
     SET NOCOUNT ON;
@@ -162,13 +155,11 @@ BEGIN
     BEGIN TRY
         BEGIN TRANSACTION;
 
-        -- Cursor o CTE para calcular los períodos devengados
         ;WITH PeriodosCalculados AS (
             SELECT 
                 c.IdColaborador,
                 c.FechaAlta,
                 ISNULL(c.FechaReingreso, c.FechaAlta) AS FechaBaseAntiguedad,
-                -- Años cumplidos respecto al último aniversario
                 DATEDIFF(YEAR, ISNULL(c.FechaReingreso, c.FechaAlta), @FechaHoy) - 
                     CASE 
                         WHEN DATEADD(YEAR, DATEDIFF(YEAR, ISNULL(c.FechaReingreso, c.FechaAlta), @FechaHoy), ISNULL(c.FechaReingreso, c.FechaAlta)) > @FechaHoy 
@@ -188,7 +179,6 @@ BEGIN
                 dbo.fn_CalcularDiasLFT(pc.AntiguedadAnios) AS DiasCorrespondientes,
                 DATEADD(YEAR, pc.AntiguedadAnios, pc.FechaBaseAntiguedad) AS FechaInicioPeriodo,
                 DATEADD(DAY, -1, DATEADD(YEAR, pc.AntiguedadAnios + 1, pc.FechaBaseAntiguedad)) AS FechaFinPeriodo,
-                -- 18 meses para gozarlas conforme al Art. 81 LFT
                 DATEADD(MONTH, 18, DATEADD(YEAR, pc.AntiguedadAnios + 1, pc.FechaBaseAntiguedad)) AS FechaExpiracionPeriodo
             FROM PeriodosCalculados pc
             WHERE pc.AntiguedadAnios >= 1
@@ -224,13 +214,16 @@ END;
 GO
 
 -- =================================================================================
--- 5. STORED PROCEDURE: Sincronización incremental (MERGE) desde NOMIPAQ
---    Preserva roles de app, jerarquías de jefe directo locales y configuraciones
+-- 5. STORED PROCEDURE: Aplicación Atómica de Staging desde Backend (MERGE Multi-Empresa)
+--    Regla de Integridad Estricta: NUNCA sobreescribir IdJefeDirecto ni RolApp
 -- =================================================================================
-CREATE OR ALTER PROCEDURE dbo.sp_SincronizarDesdeNomipaq
-    @TipoEjecucion      VARCHAR(20) = 'MANUAL', -- 'MANUAL' o 'AUTOMATICA'
+CREATE OR ALTER PROCEDURE dbo.sp_AplicarStagingNomipaq
+    @IdEmpresa          INT,
+    @TipoEjecucion      VARCHAR(20) = 'MANUAL',
     @IdUsuarioEjecuto   INT = NULL,
-    @NomipaqDbName      VARCHAR(100) = 'nomipaq_jama'
+    @JsonDepartamentos  NVARCHAR(MAX),
+    @JsonPuestos        NVARCHAR(MAX),
+    @JsonEmpleados      NVARCHAR(MAX)
 AS
 BEGIN
     SET NOCOUNT ON;
@@ -239,125 +232,211 @@ BEGIN
     DECLARE @Insertados INT = 0;
     DECLARE @Actualizados INT = 0;
     DECLARE @Desactivados INT = 0;
-    DECLARE @LogMensaje NVARCHAR(MAX) = N'';
+    DECLARE @NombreBD VARCHAR(100);
+
+    SELECT @NombreBD = NombreBaseDatos FROM dbo.EmpresasNomipaq WHERE IdEmpresa = @IdEmpresa;
+
+    IF @NombreBD IS NULL
+        THROW 50020, 'La empresa especificada no existe en dbo.EmpresasNomipaq.', 1;
 
     BEGIN TRY
         BEGIN TRANSACTION;
 
-        -- 5.1 MERGE DE DEPARTAMENTOS desde nom10003
-        -- Si la base de nomipaq está en la misma instancia o vista federada
-        IF OBJECT_ID(N'dbo.vw_Nomipaq_Departamentos', N'V') IS NOT NULL
-        BEGIN
-            MERGE dbo.Departamentos AS Target
-            USING dbo.vw_Nomipaq_Departamentos AS Source
-            ON (Target.CodigoNomipaq = Source.CodigoNomipaq)
-            WHEN MATCHED AND Target.Nombre <> Source.Nombre THEN
-                UPDATE SET Target.Nombre = Source.Nombre, Target.FechaModificacion = SYSDATETIME()
-            WHEN NOT MATCHED THEN
-                INSERT (CodigoNomipaq, Nombre, Activo, FechaCreacion)
-                VALUES (Source.CodigoNomipaq, Source.Nombre, 1, SYSDATETIME());
-        END
+        -- 5.1 Tablas Temporales de Staging en memoria de la sesión
+        CREATE TABLE #StagingDeptos (
+            CodigoNomipaq VARCHAR(20),
+            Nombre VARCHAR(150)
+        );
 
-        -- 5.2 MERGE DE PUESTOS desde nom10002
-        IF OBJECT_ID(N'dbo.vw_Nomipaq_Puestos', N'V') IS NOT NULL
-        BEGIN
-            MERGE dbo.Puestos AS Target
-            USING dbo.vw_Nomipaq_Puestos AS Source
-            ON (Target.CodigoNomipaq = Source.CodigoNomipaq)
-            WHEN MATCHED AND Target.Nombre <> Source.Nombre THEN
-                UPDATE SET Target.Nombre = Source.Nombre, Target.FechaModificacion = SYSDATETIME()
-            WHEN NOT MATCHED THEN
-                INSERT (CodigoNomipaq, Nombre, Activo, FechaCreacion)
-                VALUES (Source.CodigoNomipaq, Source.Nombre, 1, SYSDATETIME());
-        END
+        CREATE TABLE #StagingPuestos (
+            CodigoNomipaq VARCHAR(20),
+            Nombre VARCHAR(150)
+        );
 
-        -- 5.3 MERGE DE COLABORADORES desde nom10001
-        -- REGLA DE NEGOCIO: No sobreescribir RolApp ni IdJefeDirecto si ya han sido asignados localmente
-        IF OBJECT_ID(N'dbo.vw_Nomipaq_Empleados', N'V') IS NOT NULL
-        BEGIN
-            -- Tabla temporal para capturar acciones
-            DECLARE @MergeOutput TABLE (Accion VARCHAR(20));
+        CREATE TABLE #StagingEmpleados (
+            CodigoEmpleado      VARCHAR(30),
+            Nombre              VARCHAR(100),
+            ApellidoPaterno     VARCHAR(100),
+            ApellidoMaterno     VARCHAR(100),
+            CURP                VARCHAR(18),
+            RFC                 VARCHAR(13),
+            Email               VARCHAR(150),
+            Empresa             VARCHAR(150),
+            Sucursal            VARCHAR(100),
+            FechaAlta           DATE,
+            FechaReingreso      DATE,
+            EstatusNomina       VARCHAR(10),
+            CodigoDepartamento  VARCHAR(20),
+            CodigoPuesto        VARCHAR(20)
+        );
 
-            MERGE dbo.Colaboradores AS Target
-            USING dbo.vw_Nomipaq_Empleados AS Source
-            ON (Target.CodigoEmpleado = Source.CodigoEmpleado)
-            WHEN MATCHED THEN
-                UPDATE SET 
-                    Target.Nombre = Source.Nombre,
-                    Target.ApellidoPaterno = Source.ApellidoPaterno,
-                    Target.ApellidoMaterno = Source.ApellidoMaterno,
-                    Target.CURP = Source.CURP,
-                    Target.RFC = Source.RFC,
-                    Target.Email = ISNULL(Target.Email, Source.Email),
-                    Target.FechaAlta = Source.FechaAlta,
-                    Target.FechaReingreso = Source.FechaReingreso,
-                    Target.EstatusNomina = Source.EstatusNomina,
-                    Target.Empresa = ISNULL(Source.Empresa, Target.Empresa),
-                    Target.Sucursal = ISNULL(Source.Sucursal, Target.Sucursal),
-                    Target.IdDepartamento = ISNULL(Source.IdDepartamentoLocal, Target.IdDepartamento),
-                    Target.IdPuesto = ISNULL(Source.IdPuestoLocal, Target.IdPuesto),
-                    Target.Activo = CASE WHEN Source.EstatusNomina = 'A' THEN 1 ELSE 0 END,
-                    Target.UltimaSincronizacion = SYSDATETIME(),
-                    Target.FechaModificacion = SYSDATETIME()
-            WHEN NOT MATCHED BY TARGET THEN
-                INSERT (
-                    CodigoEmpleado, Nombre, ApellidoPaterno, ApellidoMaterno,
-                    CURP, RFC, Email, Empresa, Sucursal, FechaAlta, FechaReingreso,
-                    EstatusNomina, IdDepartamento, IdPuesto, IdJefeDirecto,
-                    RolApp, Activo, UltimaSincronizacion, FechaCreacion
-                )
-                VALUES (
-                    Source.CodigoEmpleado, Source.Nombre, Source.ApellidoPaterno, Source.ApellidoMaterno,
-                    Source.CURP, Source.RFC, Source.Email, Source.Empresa, Source.Sucursal, Source.FechaAlta, Source.FechaReingreso,
-                    Source.EstatusNomina, Source.IdDepartamentoLocal, Source.IdPuestoLocal, NULL,
-                    'COLABORADOR', CASE WHEN Source.EstatusNomina = 'A' THEN 1 ELSE 0 END,
-                    SYSDATETIME(), SYSDATETIME()
-                )
-            OUTPUT $action INTO @MergeOutput;
+        -- Poblar desde JSON recibido del backend
+        INSERT INTO #StagingDeptos (CodigoNomipaq, Nombre)
+        SELECT CodigoNomipaq, Nombre
+        FROM OPENJSON(@JsonDepartamentos)
+        WITH (
+            CodigoNomipaq VARCHAR(20) '$.codigo',
+            Nombre VARCHAR(150) '$.nombre'
+        );
 
-            SELECT @Insertados = COUNT(*) FROM @MergeOutput WHERE Accion = 'INSERT';
-            SELECT @Actualizados = COUNT(*) FROM @MergeOutput WHERE Accion = 'UPDATE';
-        END
+        INSERT INTO #StagingPuestos (CodigoNomipaq, Nombre)
+        SELECT CodigoNomipaq, Nombre
+        FROM OPENJSON(@JsonPuestos)
+        WITH (
+            CodigoNomipaq VARCHAR(20) '$.codigo',
+            Nombre VARCHAR(150) '$.nombre'
+        );
 
-        -- 5.4 Actualización automática de saldos LFT tras sincronizar
-        EXEC dbo.sp_CalcularSaldosVacaciones @IdColaborador = NULL;
+        INSERT INTO #StagingEmpleados (
+            CodigoEmpleado, Nombre, ApellidoPaterno, ApellidoMaterno,
+            CURP, RFC, Email, Empresa, Sucursal, FechaAlta, FechaReingreso,
+            EstatusNomina, CodigoDepartamento, CodigoPuesto
+        )
+        SELECT 
+            CodigoEmpleado, Nombre, ApellidoPaterno, ApellidoMaterno,
+            CURP, RFC, Email, Empresa, Sucursal, FechaAlta, FechaReingreso,
+            EstatusNomina, CodigoDepartamento, CodigoPuesto
+        FROM OPENJSON(@JsonEmpleados)
+        WITH (
+            CodigoEmpleado VARCHAR(30) '$.codigoEmpleado',
+            Nombre VARCHAR(100) '$.nombre',
+            ApellidoPaterno VARCHAR(100) '$.apellidoPaterno',
+            ApellidoMaterno VARCHAR(100) '$.apellidoMaterno',
+            CURP VARCHAR(18) '$.curp',
+            RFC VARCHAR(13) '$.rfc',
+            Email VARCHAR(150) '$.email',
+            Empresa VARCHAR(150) '$.empresa',
+            Sucursal VARCHAR(100) '$.sucursal',
+            FechaAlta DATE '$.fechaAlta',
+            FechaReingreso DATE '$.fechaReingreso',
+            EstatusNomina VARCHAR(10) '$.estatusNomina',
+            CodigoDepartamento VARCHAR(20) '$.codigoDepartamento',
+            CodigoPuesto VARCHAR(20) '$.codigoPuesto'
+        );
 
-        SET @LogMensaje = CONCAT(N'Sincronización finalizada con éxito. Insertados: ', @Insertados, N', Actualizados: ', @Actualizados);
+        -- 5.2 MERGE Departamentos por Empresa
+        MERGE dbo.Departamentos AS Target
+        USING #StagingDeptos AS Source
+        ON (Target.IdEmpresa = @IdEmpresa AND Target.CodigoNomipaq = Source.CodigoNomipaq)
+        WHEN MATCHED AND Target.Nombre <> Source.Nombre THEN
+            UPDATE SET Target.Nombre = Source.Nombre, Target.FechaModificacion = SYSDATETIME()
+        WHEN NOT MATCHED THEN
+            INSERT (IdEmpresa, CodigoNomipaq, Nombre, Activo, FechaCreacion)
+            VALUES (@IdEmpresa, Source.CodigoNomipaq, Source.Nombre, 1, SYSDATETIME());
+
+        -- 5.3 MERGE Puestos por Empresa
+        MERGE dbo.Puestos AS Target
+        USING #StagingPuestos AS Source
+        ON (Target.IdEmpresa = @IdEmpresa AND Target.CodigoNomipaq = Source.CodigoNomipaq)
+        WHEN MATCHED AND Target.Nombre <> Source.Nombre THEN
+            UPDATE SET Target.Nombre = Source.Nombre, Target.FechaModificacion = SYSDATETIME()
+        WHEN NOT MATCHED THEN
+            INSERT (IdEmpresa, CodigoNomipaq, Nombre, Activo, FechaCreacion)
+            VALUES (@IdEmpresa, Source.CodigoNomipaq, Source.Nombre, 1, SYSDATETIME());
+
+        -- 5.4 MERGE Colaboradores (Llave compuesta: IdEmpresa, CodigoEmpleado)
+        -- REGLA ESTRICTA: NUNCA SOBREESCRIBIR IdJefeDirecto NI RolApp
+        DECLARE @MergeOutput TABLE (Accion VARCHAR(20));
+
+        MERGE dbo.Colaboradores AS Target
+        USING (
+            SELECT 
+                s.CodigoEmpleado, s.Nombre, s.ApellidoPaterno, s.ApellidoMaterno,
+                s.CURP, s.RFC, s.Email, s.Empresa, s.Sucursal, s.FechaAlta, s.FechaReingreso,
+                s.EstatusNomina,
+                d.IdDepartamento,
+                p.IdPuesto
+            FROM #StagingEmpleados s
+            LEFT JOIN dbo.Departamentos d ON d.IdEmpresa = @IdEmpresa AND d.CodigoNomipaq = s.CodigoDepartamento
+            LEFT JOIN dbo.Puestos p ON p.IdEmpresa = @IdEmpresa AND p.CodigoNomipaq = s.CodigoPuesto
+        ) AS Source
+        ON (Target.IdEmpresa = @IdEmpresa AND Target.CodigoEmpleado = Source.CodigoEmpleado)
+        WHEN MATCHED THEN
+            UPDATE SET 
+                Target.Nombre = Source.Nombre,
+                Target.ApellidoPaterno = Source.ApellidoPaterno,
+                Target.ApellidoMaterno = Source.ApellidoMaterno,
+                Target.CURP = Source.CURP,
+                Target.RFC = Source.RFC,
+                Target.Email = ISNULL(Target.Email, Source.Email),
+                Target.Empresa = ISNULL(Source.Empresa, Target.Empresa),
+                Target.Sucursal = ISNULL(Source.Sucursal, Target.Sucursal),
+                Target.FechaAlta = Source.FechaAlta,
+                Target.FechaReingreso = Source.FechaReingreso,
+                Target.EstatusNomina = Source.EstatusNomina,
+                Target.IdDepartamento = ISNULL(Source.IdDepartamento, Target.IdDepartamento),
+                Target.IdPuesto = ISNULL(Source.IdPuesto, Target.IdPuesto),
+                Target.Activo = CASE WHEN Source.EstatusNomina = 'A' THEN 1 ELSE 0 END,
+                Target.UltimaSincronizacion = SYSDATETIME(),
+                Target.FechaModificacion = SYSDATETIME()
+                -- NOTA: IdJefeDirecto y RolApp NO SE MODIFICAN AQUÍ (Preservación local)
+        WHEN NOT MATCHED BY TARGET THEN
+            INSERT (
+                IdEmpresa, CodigoEmpleado, Nombre, ApellidoPaterno, ApellidoMaterno,
+                CURP, RFC, Email, Empresa, Sucursal, FechaAlta, FechaReingreso,
+                EstatusNomina, IdDepartamento, IdPuesto, IdJefeDirecto,
+                RolApp, Activo, UltimaSincronizacion, FechaCreacion
+            )
+            VALUES (
+                @IdEmpresa, Source.CodigoEmpleado, Source.Nombre, Source.ApellidoPaterno, Source.ApellidoMaterno,
+                Source.CURP, Source.RFC, Source.Email, Source.Empresa, Source.Sucursal, Source.FechaAlta, Source.FechaReingreso,
+                Source.EstatusNomina, Source.IdDepartamento, Source.IdPuesto, NULL,
+                'COLABORADOR', CASE WHEN Source.EstatusNomina = 'A' THEN 1 ELSE 0 END,
+                SYSDATETIME(), SYSDATETIME()
+            )
+        OUTPUT $action INTO @MergeOutput;
+
+        SELECT @Insertados = COUNT(*) FROM @MergeOutput WHERE Accion = 'INSERT';
+        SELECT @Actualizados = COUNT(*) FROM @MergeOutput WHERE Accion = 'UPDATE';
+
+        -- 5.5 Actualizar última sincronización de la empresa
+        UPDATE dbo.EmpresasNomipaq
+        SET UltimaSincronizacion = SYSDATETIME()
+        WHERE IdEmpresa = @IdEmpresa;
+
+        -- 5.6 Recalcular saldos de vacaciones para la empresa sincronizada
+        EXEC dbo.sp_CalcularSaldosVacaciones;
+
+        -- 5.7 Registrar Bitácora de Auditoría
+        DECLARE @LogMsg NVARCHAR(MAX) = CONCAT('Sincronización exitosa [', @NombreBD, ']. Insertados: ', @Insertados, ', Actualizados: ', @Actualizados);
 
         INSERT INTO dbo.BitacoraSincronizacionNomipaq (
-            FechaEjecucion, TipoEjecucion, IdUsuarioEjecuto, 
-            RegistrosInsertados, RegistrosActualizados, RegistrosDesactivados, 
-            DetalleLog, Exitoso
+            FechaEjecucion, TipoEjecucion, IdEmpresa, NombreBaseDatos,
+            IdUsuarioEjecuto, RegistrosInsertados, RegistrosActualizados,
+            RegistrosDesactivados, DetalleLog, Exitoso
         )
         VALUES (
-            SYSDATETIME(), @TipoEjecucion, @IdUsuarioEjecuto, 
-            @Insertados, @Actualizados, @Desactivados, 
-            @LogMensaje, 1
+            SYSDATETIME(), @TipoEjecucion, @IdEmpresa, @NombreBD,
+            @IdUsuarioEjecuto, @Insertados, @Actualizados, 0, @LogMsg, 1
         );
+
+        -- Limpiar temporales
+        DROP TABLE #StagingEmpleados;
+        DROP TABLE #StagingDeptos;
+        DROP TABLE #StagingPuestos;
 
         COMMIT TRANSACTION;
 
         SELECT 
-            1 AS Exito, 
-            @Insertados AS RegistrosInsertados, 
-            @Actualizados AS RegistrosActualizados, 
-            @LogMensaje AS Mensaje;
-
+            1 AS Exito,
+            @IdEmpresa AS IdEmpresa,
+            @NombreBD AS BaseDatos,
+            @Insertados AS RegistrosInsertados,
+            @Actualizados AS RegistrosActualizados,
+            @LogMsg AS Mensaje;
     END TRY
     BEGIN CATCH
         IF @@TRANCOUNT > 0 ROLLBACK TRANSACTION;
-
-        SET @LogMensaje = CONCAT(N'Error en sincronización NOMIPAQ: ', ERROR_MESSAGE());
-
+        
+        DECLARE @Err NVARCHAR(MAX) = ERROR_MESSAGE();
         INSERT INTO dbo.BitacoraSincronizacionNomipaq (
-            FechaEjecucion, TipoEjecucion, IdUsuarioEjecuto, 
-            RegistrosInsertados, RegistrosActualizados, RegistrosDesactivados, 
-            DetalleLog, Exitoso
+            FechaEjecucion, TipoEjecucion, IdEmpresa, NombreBaseDatos,
+            IdUsuarioEjecuto, RegistrosInsertados, RegistrosActualizados,
+            RegistrosDesactivados, DetalleLog, Exitoso
         )
         VALUES (
-            SYSDATETIME(), @TipoEjecucion, @IdUsuarioEjecuto, 
-            0, 0, 0, 
-            @LogMensaje, 0
+            SYSDATETIME(), @TipoEjecucion, @IdEmpresa, @NombreBD,
+            @IdUsuarioEjecuto, 0, 0, 0, CONCAT('Error: ', @Err), 0
         );
 
         THROW;
@@ -366,7 +445,7 @@ END;
 GO
 
 -- =================================================================================
--- 6. STORED PROCEDURE: Crear Solicitud de Vacaciones con Validación y Bloqueo
+-- 6. STORED PROCEDURE: Registrar Solicitud de Vacaciones
 -- =================================================================================
 CREATE OR ALTER PROCEDURE dbo.sp_RegistrarSolicitudVacaciones
     @IdColaborador      INT,
@@ -383,7 +462,6 @@ BEGIN
     BEGIN TRY
         BEGIN TRANSACTION;
 
-        -- Validar colaborador activo
         DECLARE @Activo BIT, @Jornada INT, @IdJefe INT;
         SELECT @Activo = Activo, @Jornada = JornadaLaboralDias, @IdJefe = IdJefeDirecto
         FROM dbo.Colaboradores
@@ -392,14 +470,12 @@ BEGIN
         IF @Activo IS NULL OR @Activo = 0
             THROW 50001, 'El colaborador especificado no está activo en el sistema.', 1;
 
-        -- Calcular días hábiles
         DECLARE @DiasLaborables DECIMAL(4,1);
         SET @DiasLaborables = dbo.fn_CalcularDiasHabiles(@FechaInicio, @FechaFin, @Jornada);
 
         IF @DiasLaborables <= 0
             THROW 50002, 'El rango seleccionado no contiene ningún día hábil laborable.', 1;
 
-        -- Validar saldo acumulado disponible (Total pendientes - Solicitudes actualmente pendientes)
         DECLARE @SaldoDisponible DECIMAL(5,1) = 0.0;
         SELECT @SaldoDisponible = ISNULL(SUM(DiasPendientes), 0.0)
         FROM dbo.SaldosVacaciones
@@ -416,7 +492,6 @@ BEGIN
             THROW 50003, @MsgErr, 1;
         END
 
-        -- Validar solapamiento con otras solicitudes aprobadas o en trámite
         IF EXISTS (
             SELECT 1 
             FROM dbo.SolicitudesVacaciones
@@ -429,7 +504,6 @@ BEGIN
             THROW 50004, 'Ya existe una solicitud en trámite o aprobada en este rango de fechas.', 1;
         END
 
-        -- Generar Folio consecutivo (Ej: VAC-2026-00042)
         DECLARE @AnioActual INT = YEAR(SYSDATETIME());
         DECLARE @Consecutivo INT;
         SELECT @Consecutivo = COUNT(*) + 1 
@@ -438,7 +512,6 @@ BEGIN
 
         SET @FolioGenerado = CONCAT('VAC-', @AnioActual, '-', RIGHT('00000' + CAST(@Consecutivo AS VARCHAR(5)), 5));
 
-        -- Insertar Solicitud
         INSERT INTO dbo.SolicitudesVacaciones (
             Folio, IdColaborador, FechaCreacion, FechaInicio, 
             FechaFin, TotalDiasLaborables, MotivoComentarios, Estado
@@ -450,7 +523,6 @@ BEGIN
 
         SET @IdSolicitudCreada = SCOPE_IDENTITY();
 
-        -- Registrar en Bitácora de Aprobaciones
         INSERT INTO dbo.HistorialAprobaciones (
             IdSolicitud, IdAprobador, NivelAprobacion, Accion, Comentarios, MetodoAutorizacion
         )
@@ -475,7 +547,7 @@ CREATE OR ALTER PROCEDURE dbo.sp_ProcesarAprobacionSolicitud
     @IdAprobador            INT,
     @Accion                 VARCHAR(20),      -- 'APROBADA', 'RECHAZADA'
     @Comentarios            VARCHAR(500) = NULL,
-    @MetodoAutorizacion     VARCHAR(20) = 'WEB', -- 'WEB' o 'TEAMS'
+    @MetodoAutorizacion     VARCHAR(20) = 'WEB',
     @DireccionIP            VARCHAR(45) = NULL
 AS
 BEGIN
@@ -485,7 +557,6 @@ BEGIN
     BEGIN TRY
         BEGIN TRANSACTION;
 
-        -- Validar solicitud
         DECLARE @EstadoActual VARCHAR(25), @IdColaborador INT, @Dias DECIMAL(4,1);
         SELECT 
             @EstadoActual = Estado, 
@@ -500,12 +571,9 @@ BEGIN
         IF @EstadoActual NOT IN ('PENDIENTE_LIDER', 'PENDIENTE_DO')
             THROW 50011, 'La solicitud no se encuentra en un estado pendiente de aprobación.', 1;
 
-        -- Validar datos del aprobador
-        DECLARE @RolAprobador VARCHAR(20), @IdJefeColaborador INT;
+        DECLARE @RolAprobador VARCHAR(20);
         SELECT @RolAprobador = RolApp FROM dbo.Colaboradores WHERE IdColaborador = @IdAprobador;
-        SELECT @IdJefeColaborador = IdJefeDirecto FROM dbo.Colaboradores WHERE IdColaborador = @IdColaborador;
 
-        -- Regla estricta: Rechazo requiere comentario obligatorio
         IF @Accion = 'RECHAZADA' AND (LTRIM(RTRIM(ISNULL(@Comentarios, ''))) = '')
             THROW 50012, 'El motivo de rechazo es obligatorio para registrar la resolución.', 1;
 
@@ -530,7 +598,6 @@ BEGIN
         END
         ELSE IF @Accion = 'APROBADA'
         BEGIN
-            -- Si es Líder y falta visto bueno de DO
             IF @EstadoActual = 'PENDIENTE_LIDER' AND @RolAprobador <> 'ADMIN_DO'
             BEGIN
                 UPDATE dbo.SolicitudesVacaciones
@@ -548,7 +615,6 @@ BEGIN
             END
             ELSE
             BEGIN
-                -- Aprobación final (VoBo de DO o Líder Admin)
                 UPDATE dbo.SolicitudesVacaciones
                 SET 
                     Estado = 'APROBADA',
