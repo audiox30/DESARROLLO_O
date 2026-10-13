@@ -329,19 +329,20 @@ export default function ReportesAnaliticaPage({ currentUser }) {
                   <th className="py-3 px-4">Fecha Alta</th>
                   <th className="py-3 px-4 text-center">Antigüedad</th>
                   <th className="py-3 px-4">Jefe Directo</th>
+                  <th className="py-3 px-4 text-center">Hijos</th>
                   <th className="py-3 px-4 text-center">Estatus</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100 text-slate-600">
                 {loading ? (
                   <tr>
-                    <td colSpan="10" className="py-12 text-center text-slate-400">
+                    <td colSpan="11" className="py-12 text-center text-slate-400">
                       Cargando padrón organizacional...
                     </td>
                   </tr>
                 ) : padronData.length === 0 ? (
                   <tr>
-                    <td colSpan="10" className="py-12 text-center text-slate-400">
+                    <td colSpan="11" className="py-12 text-center text-slate-400">
                       No hay colaboradores que coincidan con los filtros.
                     </td>
                   </tr>
@@ -359,6 +360,15 @@ export default function ReportesAnaliticaPage({ currentUser }) {
                         {r.AntiguedadAnios} años
                       </td>
                       <td className="py-3 px-4 text-amber-900 font-medium">{r.JefeDirecto}</td>
+                      <td className="py-3 px-4 text-center">
+                        {r.TotalHijos > 0 ? (
+                          <span className="inline-flex items-center px-2 py-0.5 rounded-full font-bold text-[10px] bg-purple-100 text-purple-800">
+                            {r.TotalHijos} {r.TotalHijos === 1 ? 'hijo' : 'hijos'}
+                          </span>
+                        ) : (
+                          <span className="text-slate-400 text-[11px]">—</span>
+                        )}
+                      </td>
                       <td className="py-3 px-4 text-center">
                         <span className={`px-2 py-0.5 rounded-full font-bold text-[10px] ${
                           r.EstatusSistema === 'ACTIVO' ? 'bg-emerald-100 text-emerald-800' : 'bg-rose-100 text-rose-800'

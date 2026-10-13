@@ -1,25 +1,40 @@
 import React, { useState, useEffect } from 'react';
-import { Calendar as CalendarIcon, Clock, CheckCircle, AlertTriangle, Info, CalendarDays } from 'lucide-react';
+import { Calendar as CalendarIcon, Clock, CheckCircle, AlertTriangle, Info, CalendarDays, ShieldCheck } from 'lucide-react';
 import { api } from '../api/client';
 
 export default function CalendarioVacaciones({ onDateSelect, saldoDisponible = 0 }) {
-  // Por defecto, sugerir fechas próximas hábiles
   const [fechaInicio, setFechaInicio] = useState('');
   const [fechaFin, setFechaFin] = useState('');
   const [calculo, setCalculo] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [diasInhabilesList, setDiasInhabilesList] = useState([]);
 
-  // Sugerir rango inicial razonable (próximo lunes a viernes)
+  // Cargar catálogo de días festivos oficiales
+  useEffect(() => {
+    async function loadFeriados() {
+      try {
+        const res = await api.getDiasInhabiles();
+        if (res.success && Array.isArray(res.data)) {
+          setDiasInhabilesList(res.data);
+        }
+      } catch (err) {
+        console.error('Error al cargar días inhábiles:', err);
+      }
+    }
+    loadFeriados();
+  }, []);
+
+  // Sugerir rango inicial estándar Grupo JAMA: Próximo Lunes a Sábado (6 días laborables)
   useEffect(() => {
     const hoy = new Date();
     const proximoLunes = new Date(hoy);
     proximoLunes.setDate(hoy.getDate() + ((1 + 7 - hoy.getDay()) % 7 || 7));
-    const proximoViernes = new Date(proximoLunes);
-    proximoViernes.setDate(proximoLunes.getDate() + 4);
+    const proximoSabado = new Date(proximoLunes);
+    proximoSabado.setDate(proximoLunes.getDate() + 5);
 
     const f1 = proximoLunes.toISOString().split('T')[0];
-    const f2 = proximoViernes.toISOString().split('T')[0];
+    const f2 = proximoSabado.toISOString().split('T')[0];
     setFechaInicio(f1);
     setFechaFin(f2);
   }, []);
@@ -29,17 +44,57 @@ export default function CalendarioVacaciones({ onDateSelect, saldoDisponible = 0
       if (fechaInicio > fechaFin) {
         setError('La fecha de fin no puede ser anterior a la fecha de inicio.');
         setCalculo(null);
+        if (onDateSelect) onDateSelect(null);
         return;
       }
+
+      // Validar que inicio y fin no sean domingo (descanso semanal obligatorio)
+      const [y1, m1, d1] = fechaInicio.split('-').map(Number);
+      const [y2, m2, d2] = fechaFin.split('-').map(Number);
+      const dt1 = new Date(Date.UTC(y1, m1 - 1, d1, 12, 0, 0));
+      const dt2 = new Date(Date.UTC(y2, m2 - 1, d2, 12, 0, 0));
+
+      if (dt1.getUTCDay() === 0) {
+        setError('La fecha de inicio no puede ser Domingo. En Grupo JAMA los domingos son descanso obligatorio semanal; selecciona de lunes a sábado.');
+        setCalculo(null);
+        if (onDateSelect) onDateSelect(null);
+        return;
+      }
+
+      if (dt2.getUTCDay() === 0) {
+        setError('La fecha de fin no puede ser Domingo. En Grupo JAMA los domingos son descanso obligatorio semanal; selecciona de lunes a sábado.');
+        setCalculo(null);
+        if (onDateSelect) onDateSelect(null);
+        return;
+      }
+
+      // Validar si inicio o fin coinciden con feriados oficiales
+      const feriadoInicio = diasInhabilesList.find(d => d.Fecha === fechaInicio || d.fecha === fechaInicio);
+      if (feriadoInicio) {
+        setError(`La fecha de inicio (${fechaInicio}) es un día festivo oficial (${feriadoInicio.Descripcion || feriadoInicio.descripcion}). Selecciona un día laborable.`);
+        setCalculo(null);
+        if (onDateSelect) onDateSelect(null);
+        return;
+      }
+
+      const feriadoFin = diasInhabilesList.find(d => d.Fecha === fechaFin || d.fecha === fechaFin);
+      if (feriadoFin) {
+        setError(`La fecha de fin (${fechaFin}) es un día festivo oficial (${feriadoFin.Descripcion || feriadoFin.descripcion}). Selecciona un día laborable.`);
+        setCalculo(null);
+        if (onDateSelect) onDateSelect(null);
+        return;
+      }
+
       setError('');
       calcularDias();
     }
-  }, [fechaInicio, fechaFin]);
+  }, [fechaInicio, fechaFin, diasInhabilesList]);
 
   async function calcularDias() {
     try {
       setLoading(true);
-      const res = await api.calcularDiasHabiles({ fechaInicio, fechaFin, jornadaLaboralDias: 5 });
+      // Jornada estándar Grupo JAMA: 6 días (Lunes a Sábado)
+      const res = await api.calcularDiasHabiles({ fechaInicio, fechaFin, jornadaLaboralDias: 6 });
       if (res.success) {
         setCalculo(res);
         if (onDateSelect) {
@@ -69,8 +124,15 @@ export default function CalendarioVacaciones({ onDateSelect, saldoDisponible = 0
             <CalendarDays className="w-5 h-5" />
           </div>
           <div>
-            <h3 className="text-sm font-bold text-slate-900">Simulador y Selector de Período</h3>
-            <p className="text-xs text-slate-500">Descuenta automáticamente fines de semana y festivos oficiales LFT</p>
+            <div className="flex items-center gap-2">
+              <h3 className="text-sm font-bold text-slate-900">Simulador y Selector de Período</h3>
+              <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold bg-blue-100 text-blue-800">
+                Jornada Lunes a Sábado
+              </span>
+            </div>
+            <p className="text-xs text-slate-500">
+              Los sábados son días laborables y consumen vacaciones. Solo se descuentan domingos y festivos oficiales.
+            </p>
           </div>
         </div>
       </div>
@@ -121,13 +183,13 @@ export default function CalendarioVacaciones({ onDateSelect, saldoDisponible = 0
             <div className="bg-white p-2.5 rounded-lg border border-slate-200/60 shadow-2xs">
               <span className="text-[11px] font-bold text-slate-400 uppercase">Días Hábiles</span>
               <p className="text-2xl font-black text-blue-700 mt-0.5">{calculo.totalDiasLaborables}</p>
-              <span className="text-[10px] text-slate-500 font-medium">A descontar de saldo</span>
+              <span className="text-[10px] text-blue-600 font-semibold">Lunes a Sábado</span>
             </div>
 
             <div className="bg-white p-2.5 rounded-lg border border-slate-200/60 shadow-2xs">
-              <span className="text-[11px] font-bold text-slate-400 uppercase">Fines de Semana</span>
+              <span className="text-[11px] font-bold text-slate-400 uppercase">Descansos</span>
               <p className="text-2xl font-black text-slate-600 mt-0.5">{calculo.totalFinesDeSemana}</p>
-              <span className="text-[10px] text-slate-500 font-medium">No se descuentan</span>
+              <span className="text-[10px] text-slate-500 font-medium">Solo Domingos</span>
             </div>
 
             <div className="bg-white p-2.5 rounded-lg border border-slate-200/60 shadow-2xs">
@@ -170,6 +232,11 @@ export default function CalendarioVacaciones({ onDateSelect, saldoDisponible = 0
                   <div className="flex items-center gap-2">
                     <span className="font-mono text-[11px] text-slate-500">{d.fecha}</span>
                     <span className="font-bold">{d.nombreDia}</span>
+                    {d.diaSemanaIndex === 6 && d.esLaborable && (
+                      <span className="text-[10px] px-1.5 py-0.5 rounded bg-blue-200/80 text-blue-900 font-bold">
+                        Sábado Laborable
+                      </span>
+                    )}
                     {d.esDiaInhabil && (
                       <span className="text-[10px] px-1.5 py-0.5 rounded bg-amber-200/70 text-amber-900 font-bold">
                         {d.descripcion}
@@ -184,7 +251,7 @@ export default function CalendarioVacaciones({ onDateSelect, saldoDisponible = 0
                       </span>
                     ) : (
                       <span className="text-[11px] text-slate-500 italic">
-                        {d.esFinDeSemana ? 'Descanso Semanal' : 'Asueto Inhábil'}
+                        {d.diaSemanaIndex === 0 ? 'Descanso Semanal (Domingo)' : d.descripcion}
                       </span>
                     )}
                   </div>

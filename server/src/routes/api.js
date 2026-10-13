@@ -66,7 +66,9 @@ router.get('/colaboradores/saldo', authMiddleware, colaboradoresController.getMi
 router.get('/colaboradores/equipo', authMiddleware, requireRole('LIDER', 'ADMIN_DO'), colaboradoresController.getEquipoLider);
 router.get('/colaboradores/:id', authMiddleware, checkHierarchyOrSelf, colaboradoresController.getById);
 router.put('/colaboradores/:id', authMiddleware, checkHierarchyOrSelf, colaboradoresController.update);
+router.get('/colaboradores/:id/hijos', authMiddleware, checkHierarchyOrSelf, colaboradoresController.getHijos);
 router.post('/colaboradores/:id/hijos', authMiddleware, checkHierarchyOrSelf, colaboradoresController.agregarHijo);
+router.delete('/colaboradores/:id/hijos/:idHijo', authMiddleware, requireRole('ADMIN_DO', 'SUPERADMIN', 'SISTEMAS'), colaboradoresController.eliminarHijo);
 router.post('/colaboradores/:id/financieros', authMiddleware, requireRole('ADMIN_DO'), colaboradoresController.guardarDatosFinancieros);
 router.post('/colaboradores/:id/bajas', authMiddleware, requireRole('ADMIN_DO'), colaboradoresController.registrarBaja);
 

@@ -5,7 +5,7 @@
 
 const DIAS_SEMANA = ['Domingo', 'Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado'];
 
-function calcularDetalleDias(fechaInicioStr, fechaFinStr, diasInhabilesMap = {}, jornadaLaboralDias = 5) {
+function calcularDetalleDias(fechaInicioStr, fechaFinStr, diasInhabilesMap = {}, jornadaLaboralDias = 6) {
   const [y1, m1, d1] = fechaInicioStr.split('-').map(Number);
   const [y2, m2, d2] = fechaFinStr.split('-').map(Number);
 
@@ -42,9 +42,15 @@ function calcularDetalleDias(fechaInicioStr, fechaFinStr, diasInhabilesMap = {},
     const esLaborable = !esFinDeSemana && !esDiaInhabil;
 
     let descripcion = 'Día Laborable Regular';
-    if (esDomingo) descripcion = 'Descanso Semanal (Domingo)';
-    else if (esSabado && jornadaLaboralDias === 5) descripcion = 'Descanso Semanal (Sábado)';
-    else if (esDiaInhabil) descripcion = festivo.descripcion || 'Día Festivo / Asueto';
+    if (esDiaInhabil) {
+      descripcion = festivo.descripcion || 'Día Festivo / Asueto';
+    } else if (esDomingo) {
+      descripcion = 'Descanso Semanal (Domingo)';
+    } else if (esSabado && jornadaLaboralDias === 5) {
+      descripcion = 'Descanso Semanal (Sábado)';
+    } else if (esSabado && jornadaLaboralDias >= 6) {
+      descripcion = 'Día Laborable Regular (Sábado)';
+    }
 
     if (esFinDeSemana) totalFinesDeSemana++;
     if (esDiaInhabil) totalFestivos++;

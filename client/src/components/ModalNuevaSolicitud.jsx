@@ -140,7 +140,7 @@ export default function ModalNuevaSolicitud({ isOpen, onClose, onSuccess, saldoD
                 <div className="text-xs text-slate-500">
                   {rangoSeleccionado?.totalDiasLaborables > 0 ? (
                     <span>
-                      Total a solicitar: <strong className="text-blue-700 font-bold">{rangoSeleccionado.totalDiasLaborables} días hábiles</strong>
+                      Total a solicitar: <strong className="text-blue-700 font-bold">{rangoSeleccionado.totalDiasLaborables} días hábiles (Lun-Sáb)</strong>
                     </span>
                   ) : (
                     <span>Selecciona el rango de fechas para continuar</span>

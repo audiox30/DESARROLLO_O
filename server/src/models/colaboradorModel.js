@@ -195,6 +195,26 @@ class ColaboradorModel {
   /**
    * Gestión de Hijos (dbo.ColaboradorHijos)
    */
+  static async obtenerHijos(idColaborador) {
+    const pool = await getLocalPool();
+    if (!pool || isUsingMock()) {
+      return (mockStore.colaboradorHijos || []).filter(h => h.idColaborador === Number(idColaborador));
+    }
+
+    const request = pool.request();
+    request.input('IdColaborador', Number(idColaborador));
+    const result = await request.query(`
+      SELECT 
+        IdHijo, NumeroHijo, 
+        CONVERT(VARCHAR(10), FechaNacimiento, 120) AS FechaNacimiento, 
+        Sexo, FechaRegistro
+      FROM dbo.ColaboradorHijos
+      WHERE IdColaborador = @IdColaborador
+      ORDER BY NumeroHijo ASC;
+    `);
+    return result.recordset;
+  }
+
   static async agregarHijo(idColaborador, { numeroHijo, fechaNacimiento, sexo }) {
     const pool = await getLocalPool();
     if (!pool || isUsingMock()) return { success: true };
@@ -217,6 +237,25 @@ class ColaboradorModel {
     `;
 
     await request.query(query);
+    return { success: true };
+  }
+
+  static async eliminarHijo(idColaborador, idHijo) {
+    const pool = await getLocalPool();
+    if (!pool || isUsingMock()) {
+      mockStore.colaboradorHijos = (mockStore.colaboradorHijos || []).filter(h => 
+        !(h.idColaborador === Number(idColaborador) && (h.idHijo === Number(idHijo) || h.IdHijo === Number(idHijo)))
+      );
+      return { success: true };
+    }
+
+    const request = pool.request();
+    request.input('IdColaborador', Number(idColaborador));
+    request.input('IdHijo', Number(idHijo));
+    await request.query(`
+      DELETE FROM dbo.ColaboradorHijos
+      WHERE IdHijo = @IdHijo AND IdColaborador = @IdColaborador;
+    `);
     return { success: true };
   }
 

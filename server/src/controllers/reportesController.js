@@ -60,6 +60,7 @@ const reportesController = {
           CASE WHEN c.Activo = 1 THEN 'ACTIVO' ELSE 'BAJA' END AS EstatusSistema,
           ISNULL(c.Telefono, '—') AS Telefono,
           ISNULL(c.Email, '—') AS Email,
+          (SELECT COUNT(*) FROM dbo.ColaboradorHijos h WHERE h.IdColaborador = c.IdColaborador) AS TotalHijos,
           ISNULL(c.DiasDescanso, 'Domingos') AS DiasDescanso
         FROM dbo.Colaboradores c
         LEFT JOIN dbo.EmpresasNomipaq e ON e.IdEmpresa = c.IdEmpresa
@@ -85,6 +86,7 @@ const reportesController = {
           'Fecha de Alta': r.FechaAlta,
           'Antigüedad (Años)': r.AntiguedadAnios,
           'Jefe Directo': r.JefeDirecto,
+          'No. de Hijos': r.TotalHijos || 0,
           'Estatus Nómina': r.EstatusNomina,
           'Rol en App': r.RolApp,
           'Teléfono': r.Telefono,

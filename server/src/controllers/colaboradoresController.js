@@ -145,6 +145,20 @@ const colaboradoresController = {
   },
 
   /**
+   * Consulta de hijos de un colaborador (dbo.ColaboradorHijos)
+   */
+  getHijos: async (req, res) => {
+    try {
+      const { id } = req.params;
+      const hijos = await ColaboradorModel.obtenerHijos(Number(id));
+      return res.json({ success: true, total: hijos.length, data: hijos });
+    } catch (err) {
+      console.error('[colaboradores.getHijos]', err);
+      res.status(500).json({ error: err.message });
+    }
+  },
+
+  /**
    * Registro o actualización de hijo (dbo.ColaboradorHijos)
    */
   agregarHijo: async (req, res) => {
@@ -154,9 +168,25 @@ const colaboradoresController = {
       if (!numeroHijo) return res.status(400).json({ error: 'El número de hijo es requerido.' });
 
       await ColaboradorModel.agregarHijo(Number(id), { numeroHijo, fechaNacimiento, sexo });
-      return res.json({ success: true, message: 'Hijo registrado con éxito.' });
+      const hijos = await ColaboradorModel.obtenerHijos(Number(id));
+      return res.json({ success: true, message: 'Hijo registrado con éxito.', data: hijos });
     } catch (err) {
       console.error('[colaboradores.agregarHijo]', err);
+      res.status(500).json({ error: err.message });
+    }
+  },
+
+  /**
+   * Eliminación de hijo (dbo.ColaboradorHijos)
+   */
+  eliminarHijo: async (req, res) => {
+    try {
+      const { id, idHijo } = req.params;
+      await ColaboradorModel.eliminarHijo(Number(id), Number(idHijo));
+      const hijos = await ColaboradorModel.obtenerHijos(Number(id));
+      return res.json({ success: true, message: 'Hijo eliminado con éxito.', data: hijos });
+    } catch (err) {
+      console.error('[colaboradores.eliminarHijo]', err);
       res.status(500).json({ error: err.message });
     }
   },

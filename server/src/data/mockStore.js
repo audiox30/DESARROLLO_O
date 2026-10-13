@@ -110,7 +110,7 @@ class MockStore {
             diasCorrespondientes,
             diasGozados,
             diasDisponibles: Math.max(0, diasCorrespondientes - diasGozados),
-            jornadaLaboralDias: 5,
+            jornadaLaboralDias: 6,
             saldos: generarPeriodosVacaciones(c.fechaAlta, diasGozados)
           };
         });
@@ -324,7 +324,7 @@ class MockStore {
           diasCorrespondientes,
           diasGozados: 0,
           diasDisponibles: diasCorrespondientes,
-          jornadaLaboralDias: 5,
+          jornadaLaboralDias: 6,
           saldos: generarPeriodosVacaciones(emp.fechaAlta, 0),
           ultimaSincronizacion: new Date().toISOString()
         };
@@ -363,8 +363,19 @@ class MockStore {
     const colab = this.colaboradores.find(c => c.id === Number(idColaborador));
     if (!colab) throw new Error('Colaborador no encontrado.');
 
+    const [y1, m1, d1] = fechaInicio.split('-').map(Number);
+    const [y2, m2, d2] = fechaFin.split('-').map(Number);
+    const dt1 = new Date(Date.UTC(y1, m1 - 1, d1, 12, 0, 0));
+    const dt2 = new Date(Date.UTC(y2, m2 - 1, d2, 12, 0, 0));
+    if (dt1.getUTCDay() === 0) {
+      throw new Error('La fecha de inicio no puede ser un Domingo (día de descanso semanal obligatorio).');
+    }
+    if (dt2.getUTCDay() === 0) {
+      throw new Error('La fecha de fin no puede ser un Domingo (día de descanso semanal obligatorio).');
+    }
+
     const map = this.getDiasInhabilesMap();
-    const detalle = calcularDetalleDias(fechaInicio, fechaFin, map, colab.jornadaLaboralDias || 5);
+    const detalle = calcularDetalleDias(fechaInicio, fechaFin, map, colab.jornadaLaboralDias || 6);
 
     if (detalle.totalDiasLaborables <= 0) {
       throw new Error('El rango seleccionado no contiene ningún día hábil laborable.');

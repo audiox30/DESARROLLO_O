@@ -11,9 +11,8 @@ const diasInhabilesController = {
       } else {
         const pool = await getPool();
         const result = await pool.request().query(`
-          SELECT IdDiaInhabil, CONVERT(VARCHAR(10), Fecha, 120) AS Fecha, Descripcion, EsFeriadoOficial, Activo
+          SELECT CONVERT(VARCHAR(10), Fecha, 120) AS Fecha, Descripcion, EsFeriadoOficial, CAST(1 AS BIT) AS Activo
           FROM dbo.DiasInhabiles
-          WHERE Activo = 1
           ORDER BY Fecha ASC
         `);
         return res.json({ success: true, total: result.recordset.length, data: result.recordset });
@@ -57,8 +56,8 @@ const diasInhabilesController = {
             MERGE dbo.DiasInhabiles AS Target
             USING (SELECT @Fecha AS Fecha, @Descripcion AS Descripcion, @EsFeriado AS EsFeriadoOficial) AS Source
             ON Target.Fecha = Source.Fecha
-            WHEN MATCHED THEN UPDATE SET Descripcion = Source.Descripcion, EsFeriadoOficial = Source.EsFeriadoOficial, Activo = 1
-            WHEN NOT MATCHED THEN INSERT (Fecha, Descripcion, EsFeriadoOficial, Activo) VALUES (Source.Fecha, Source.Descripcion, Source.EsFeriadoOficial, 1);
+            WHEN MATCHED THEN UPDATE SET Descripcion = Source.Descripcion, EsFeriadoOficial = Source.EsFeriadoOficial
+            WHEN NOT MATCHED THEN INSERT (Fecha, Descripcion, EsFeriadoOficial) VALUES (Source.Fecha, Source.Descripcion, Source.EsFeriadoOficial);
           `);
         return res.status(201).json({ success: true, message: 'Día inhábil guardado en base de datos.' });
       }
@@ -85,12 +84,28 @@ const diasInhabilesController = {
 
   calcular: async (req, res) => {
     try {
-      const { fechaInicio, fechaFin, jornadaLaboralDias = 5 } = req.body;
+      const { fechaInicio, fechaFin, jornadaLaboralDias = 6 } = req.body;
       if (!fechaInicio || !fechaFin) {
         return res.status(400).json({ error: 'Se requiere fechaInicio y fechaFin (formato YYYY-MM-DD)' });
       }
 
-      const map = mockStore.getDiasInhabilesMap();
+      let map = {};
+      if (isUsingMock()) {
+        map = mockStore.getDiasInhabilesMap();
+      } else {
+        const pool = await getPool();
+        const result = await pool.request().query(`
+          SELECT CONVERT(VARCHAR(10), Fecha, 120) AS Fecha, Descripcion, EsFeriadoOficial
+          FROM dbo.DiasInhabiles
+        `);
+        for (const row of result.recordset) {
+          map[row.Fecha] = {
+            descripcion: row.Descripcion,
+            esFeriadoOficial: Boolean(row.EsFeriadoOficial)
+          };
+        }
+      }
+
       const resultado = calcularDetalleDias(fechaInicio, fechaFin, map, Number(jornadaLaboralDias));
 
       return res.json({

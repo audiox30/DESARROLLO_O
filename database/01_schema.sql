@@ -102,7 +102,7 @@ BEGIN
         IdPuesto            INT NULL,
         IdJefeDirecto       INT NULL, -- Exclusivo de la aplicación (NUNCA sobreescribir en MERGE)
         RolApp              VARCHAR(20) NOT NULL CONSTRAINT DF_Colaboradores_RolApp DEFAULT ('COLABORADOR'), -- Exclusivo (NUNCA sobreescribir)
-        JornadaLaboralDias  INT NOT NULL CONSTRAINT DF_Colaboradores_Jornada DEFAULT (5),
+        JornadaLaboralDias  INT NOT NULL CONSTRAINT DF_Colaboradores_Jornada DEFAULT (6), -- Jornada Estándar Grupo JAMA (Lunes a Sábado)
         Activo              BIT NOT NULL CONSTRAINT DF_Colaboradores_Activo DEFAULT (1),
         
         -- Campos adicionales del Catálogo Maestro de DO (Excel ACTIVOS y BAJAS)

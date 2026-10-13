@@ -58,7 +58,7 @@ CREATE OR ALTER FUNCTION dbo.fn_CalcularDiasHabiles
 (
     @FechaInicio        DATE,
     @FechaFin           DATE,
-    @JornadaLaboralDias INT = 5 -- 5 = Lunes a Viernes; 6 = Lunes a Sábado
+    @JornadaLaboralDias INT = 6 -- Estándar Grupo JAMA: 6 = Lunes a Sábado
 )
 RETURNS DECIMAL(4,1)
 AS
@@ -78,15 +78,17 @@ BEGIN
     SELECT @DiasHabiles = COUNT(*)
     FROM CalendarioRango c
     CROSS APPLY (
+        -- Fórmula normalizada independiente de @@DATEFIRST:
+        -- 0 = Domingo, 1 = Lunes, 2 = Martes, 3 = Miércoles, 4 = Jueves, 5 = Viernes, 6 = Sábado
         SELECT (DATEPART(WEEKDAY, c.FechaActual) + @@DATEFIRST - 1) % 7 AS DiaSemanaNormalizado
     ) w
     WHERE 
-        w.DiaSemanaNormalizado <> 1 -- Excluir Domingo
-        AND (@JornadaLaboralDias = 6 OR w.DiaSemanaNormalizado <> 0) -- Excluir Sábado en jornada de 5 días
+        w.DiaSemanaNormalizado <> 0 -- Excluir exclusivamente Domingo
+        AND (@JornadaLaboralDias = 6 OR w.DiaSemanaNormalizado <> 6) -- En jornada de 5 días se excluiría Sábado (6)
         AND NOT EXISTS (
             SELECT 1 
             FROM dbo.DiasInhabiles d 
-            WHERE d.Fecha = c.FechaActual AND d.Activo = 1
+            WHERE d.Fecha = c.FechaActual
         )
     OPTION (MAXRECURSION 366);
 
@@ -101,7 +103,7 @@ CREATE OR ALTER FUNCTION dbo.tvf_ObtenerDetalleDiasSolicitud
 (
     @FechaInicio        DATE,
     @FechaFin           DATE,
-    @JornadaLaboralDias INT = 5
+    @JornadaLaboralDias INT = 6
 )
 RETURNS TABLE
 AS
@@ -118,25 +120,25 @@ RETURN
         c.Fecha,
         DATENAME(WEEKDAY, c.Fecha) AS NombreDiaSemana,
         CASE 
-            WHEN ((DATEPART(WEEKDAY, c.Fecha) + @@DATEFIRST - 1) % 7) = 1 THEN 1
-            WHEN ((DATEPART(WEEKDAY, c.Fecha) + @@DATEFIRST - 1) % 7) = 0 THEN 1
+            WHEN ((DATEPART(WEEKDAY, c.Fecha) + @@DATEFIRST - 1) % 7) = 0 THEN 1 -- Domingo
+            WHEN @JornadaLaboralDias = 5 AND ((DATEPART(WEEKDAY, c.Fecha) + @@DATEFIRST - 1) % 7) = 6 THEN 1 -- Sábado
             ELSE 0
         END AS EsFinDeSemana,
         CASE WHEN d.Fecha IS NOT NULL THEN 1 ELSE 0 END AS EsDiaInhabil,
         ISNULL(d.Descripcion, CASE 
-            WHEN ((DATEPART(WEEKDAY, c.Fecha) + @@DATEFIRST - 1) % 7) = 1 THEN 'Descanso Semanal (Domingo)'
-            WHEN ((DATEPART(WEEKDAY, c.Fecha) + @@DATEFIRST - 1) % 7) = 0 THEN 'Descanso Semanal (Sábado)'
+            WHEN ((DATEPART(WEEKDAY, c.Fecha) + @@DATEFIRST - 1) % 7) = 0 THEN 'Descanso Semanal (Domingo)'
+            WHEN ((DATEPART(WEEKDAY, c.Fecha) + @@DATEFIRST - 1) % 7) = 6 THEN 'Día Laborable Regular (Sábado)'
             ELSE 'Día Laborable Regular'
         END) AS DescripcionDia,
         ISNULL(d.EsFeriadoOficial, 0) AS EsFeriadoOficial,
         CASE 
-            WHEN ((DATEPART(WEEKDAY, c.Fecha) + @@DATEFIRST - 1) % 7) = 1 THEN 0
-            WHEN @JornadaLaboralDias = 5 AND ((DATEPART(WEEKDAY, c.Fecha) + @@DATEFIRST - 1) % 7) = 0 THEN 0
-            WHEN d.Fecha IS NOT NULL AND d.Activo = 1 THEN 0
+            WHEN ((DATEPART(WEEKDAY, c.Fecha) + @@DATEFIRST - 1) % 7) = 0 THEN 0 -- Domingo descanso
+            WHEN @JornadaLaboralDias = 5 AND ((DATEPART(WEEKDAY, c.Fecha) + @@DATEFIRST - 1) % 7) = 6 THEN 0
+            WHEN d.Fecha IS NOT NULL THEN 0
             ELSE 1
         END AS EsDiaLaborableEfectivo
     FROM CalendarioRango c
-    LEFT JOIN dbo.DiasInhabiles d ON d.Fecha = c.Fecha AND d.Activo = 1
+    LEFT JOIN dbo.DiasInhabiles d ON d.Fecha = c.Fecha
 );
 GO
 
@@ -463,12 +465,22 @@ BEGIN
         BEGIN TRANSACTION;
 
         DECLARE @Activo BIT, @Jornada INT, @IdJefe INT;
-        SELECT @Activo = Activo, @Jornada = JornadaLaboralDias, @IdJefe = IdJefeDirecto
+        SELECT 
+            @Activo = Activo, 
+            @Jornada = ISNULL(JornadaLaboralDias, 6), 
+            @IdJefe = IdJefeDirecto
         FROM dbo.Colaboradores
         WHERE IdColaborador = @IdColaborador;
 
         IF @Activo IS NULL OR @Activo = 0
             THROW 50001, 'El colaborador especificado no está activo en el sistema.', 1;
+
+        -- Validar que fecha de inicio y fin no sean domingo
+        IF ((DATEPART(WEEKDAY, @FechaInicio) + @@DATEFIRST - 1) % 7) = 0
+            THROW 50005, 'La fecha de inicio no puede ser un Domingo (día de descanso semanal obligatorio).', 1;
+
+        IF ((DATEPART(WEEKDAY, @FechaFin) + @@DATEFIRST - 1) % 7) = 0
+            THROW 50006, 'La fecha de fin no puede ser un Domingo (día de descanso semanal obligatorio).', 1;
 
         DECLARE @DiasLaborables DECIMAL(4,1);
         SET @DiasLaborables = dbo.fn_CalcularDiasHabiles(@FechaInicio, @FechaFin, @Jornada);

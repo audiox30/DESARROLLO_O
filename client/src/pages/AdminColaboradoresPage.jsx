@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { 
   Users, Search, Filter, RefreshCw, KeyRound, Edit3, 
   ShieldCheck, AlertCircle, CheckCircle2, X, Phone, Heart, 
-  Clock, Shield, ArrowUpDown, Copy, Check
+  Clock, Shield, ArrowUpDown, Copy, Check, Baby, Trash2, Plus, Calendar
 } from 'lucide-react';
 import { api } from '../api/client';
 
@@ -32,6 +32,18 @@ export default function AdminColaboradoresPage() {
   const [resetResult, setResetResult] = useState(null);
   const [guardandoReset, setGuardandoReset] = useState(false);
   const [copied, setCopied] = useState(false);
+
+  // Modal de Hijos
+  const [colabHijos, setColabHijos] = useState(null);
+  const [hijosList, setHijosList] = useState([]);
+  const [loadingHijos, setLoadingHijos] = useState(false);
+  const [guardandoHijo, setGuardandoHijo] = useState(false);
+  const [errorHijos, setErrorHijos] = useState('');
+  const [nuevoHijo, setNuevoHijo] = useState({
+    numeroHijo: 1,
+    fechaNacimiento: '',
+    sexo: 'M'
+  });
 
   // Toast
   const [toast, setToast] = useState('');
@@ -188,6 +200,93 @@ export default function AdminColaboradoresPage() {
     }
   }
 
+  async function abrirModalHijos(colab) {
+    setColabHijos(colab);
+    setLoadingHijos(true);
+    setErrorHijos('');
+    try {
+      const res = await api.getHijosColaborador(colab.IdColaborador);
+      if (res.success) {
+        setHijosList(res.data || []);
+        setNuevoHijo({
+          numeroHijo: (res.data?.length || 0) + 1,
+          fechaNacimiento: '',
+          sexo: 'M'
+        });
+      }
+    } catch (err) {
+      console.error('Error al cargar hijos del colaborador:', err);
+      setErrorHijos(err.message || 'Error cargando catálogo de hijos.');
+    } finally {
+      setLoadingHijos(false);
+    }
+  }
+
+  async function handleAgregarHijo(e) {
+    e.preventDefault();
+    if (!colabHijos) return;
+    setErrorHijos('');
+    try {
+      setGuardandoHijo(true);
+      const res = await api.agregarHijoColaborador(colabHijos.IdColaborador, nuevoHijo);
+      if (res.success) {
+        mostrarToast('Hijo registrado exitosamente.');
+        setHijosList(res.data || []);
+        setNuevoHijo({
+          numeroHijo: (res.data?.length || 0) + 1,
+          fechaNacimiento: '',
+          sexo: 'M'
+        });
+        setColaboradores(prev => prev.map(c => 
+          c.IdColaborador === colabHijos.IdColaborador 
+            ? { ...c, TotalHijos: res.data?.length || ((c.TotalHijos || 0) + 1) } 
+            : c
+        ));
+      }
+    } catch (err) {
+      setErrorHijos(err.message || 'Error guardando hijo.');
+    } finally {
+      setGuardandoHijo(false);
+    }
+  }
+
+  async function handleEliminarHijo(idHijo) {
+    if (!window.confirm('¿Seguro que deseas eliminar este registro de hijo?')) return;
+    try {
+      const res = await api.eliminarHijoColaborador(colabHijos.IdColaborador, idHijo);
+      if (res.success) {
+        mostrarToast('Hijo eliminado exitosamente.');
+        setHijosList(res.data || []);
+        setNuevoHijo(prev => ({
+          ...prev,
+          numeroHijo: (res.data?.length || 0) + 1
+        }));
+        setColaboradores(prev => prev.map(c => 
+          c.IdColaborador === colabHijos.IdColaborador 
+            ? { ...c, TotalHijos: res.data?.length || Math.max(0, (c.TotalHijos || 1) - 1) } 
+            : c
+        ));
+      }
+    } catch (err) {
+      alert('Error eliminando hijo: ' + err.message);
+    }
+  }
+
+  function calcularEdad(fechaNacStr) {
+    if (!fechaNacStr) return 'No registrada';
+    const parts = fechaNacStr.split('-');
+    if (parts.length !== 3) return fechaNacStr;
+    const nac = new Date(Date.UTC(Number(parts[0]), Number(parts[1]) - 1, Number(parts[2]), 12, 0, 0));
+    if (isNaN(nac.getTime())) return 'Fecha inválida';
+    const hoy = new Date();
+    let edad = hoy.getUTCFullYear() - nac.getUTCFullYear();
+    const m = hoy.getUTCMonth() - nac.getUTCMonth();
+    if (m < 0 || (m === 0 && hoy.getUTCDate() < nac.getUTCDate())) {
+      edad--;
+    }
+    return edad >= 0 ? `${edad} ${edad === 1 ? 'año' : 'años'}` : '—';
+  }
+
   return (
     <div className="space-y-6">
       
@@ -287,6 +386,7 @@ export default function AdminColaboradoresPage() {
                 <th className="py-3 px-4">Departamento / Puesto</th>
                 <th className="py-3 px-4">Jefe Directo (Aprobador)</th>
                 <th className="py-3 px-4">Rol App</th>
+                <th className="py-3 px-4 text-center">Hijos</th>
                 <th className="py-3 px-4">Estatus</th>
                 <th className="py-3 px-4 text-right">Acciones</th>
               </tr>
@@ -294,7 +394,7 @@ export default function AdminColaboradoresPage() {
             <tbody className="divide-y divide-slate-100 text-slate-600">
               {loading ? (
                 <tr>
-                  <td colSpan="8" className="py-12 text-center text-slate-400">
+                  <td colSpan="9" className="py-12 text-center text-slate-400">
                     <div className="flex items-center justify-center gap-2">
                       <div className="w-5 h-5 border-2 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
                       <span>Consultando catálogo de colaboradores...</span>
@@ -303,7 +403,7 @@ export default function AdminColaboradoresPage() {
                 </tr>
               ) : colaboradores.length === 0 ? (
                 <tr>
-                  <td colSpan="8" className="py-12 text-center text-slate-400">
+                  <td colSpan="9" className="py-12 text-center text-slate-400">
                     No se encontraron colaboradores con los filtros especificados.
                   </td>
                 </tr>
@@ -344,6 +444,28 @@ export default function AdminColaboradoresPage() {
                         {c.RolApp}
                       </span>
                     </td>
+                    <td className="py-3 px-4 text-center">
+                      {c.TotalHijos > 0 ? (
+                        <button
+                          type="button"
+                          onClick={() => abrirModalHijos(c)}
+                          className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-bold bg-purple-50 hover:bg-purple-100 text-purple-700 border border-purple-200 transition cursor-pointer"
+                          title="Ver y gestionar hijos"
+                        >
+                          <Baby className="w-3.5 h-3.5" />
+                          <span>{c.TotalHijos} {c.TotalHijos === 1 ? 'hijo' : 'hijos'}</span>
+                        </button>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={() => abrirModalHijos(c)}
+                          className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg text-[11px] text-slate-400 hover:text-purple-600 hover:bg-purple-50 transition cursor-pointer"
+                          title="Registrar hijos"
+                        >
+                          <span className="text-slate-300 hover:text-purple-600">+ 0</span>
+                        </button>
+                      )}
+                    </td>
                     <td className="py-3 px-4">
                       <span className={`inline-flex items-center gap-1 font-bold text-[11px] ${
                         c.Activo ? 'text-emerald-700' : 'text-rose-600'
@@ -354,6 +476,14 @@ export default function AdminColaboradoresPage() {
                     </td>
                     <td className="py-3 px-4 text-right">
                       <div className="flex items-center justify-end gap-1.5">
+                        <button
+                          onClick={() => abrirModalHijos(c)}
+                          title="Ver y Gestionar Hijos / Dependientes"
+                          className="flex items-center gap-1 px-2.5 py-1 bg-slate-100 hover:bg-purple-50 text-slate-700 hover:text-purple-700 rounded-lg text-xs font-semibold transition cursor-pointer"
+                        >
+                          <Baby className="w-3.5 h-3.5" />
+                          <span>Hijos</span>
+                        </button>
                         <button
                           onClick={() => abrirModalEditar(c)}
                           title="Editar Información Complementaria (Jefe, Descanso, Emergencia)"
@@ -565,6 +695,31 @@ export default function AdminColaboradoresPage() {
                   />
                 </div>
 
+                {/* Hijos / Dependientes Familiares */}
+                <div className="sm:col-span-2 p-3.5 bg-purple-50/70 border border-purple-200 rounded-2xl flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <div className="p-2 bg-purple-100 text-purple-700 rounded-xl">
+                      <Baby className="w-5 h-5" />
+                    </div>
+                    <div>
+                      <span className="text-xs font-bold text-purple-900 block">Hijos y Dependientes Registrados</span>
+                      <span className="text-[11px] text-purple-700">
+                        {colabEditar.TotalHijos > 0 
+                          ? `${colabEditar.TotalHijos} ${colabEditar.TotalHijos === 1 ? 'hijo registrado' : 'hijos registrados'} en el sistema` 
+                          : 'Sin hijos registrados actualmente'}
+                      </span>
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => abrirModalHijos(colabEditar)}
+                    className="flex items-center gap-1.5 px-3 py-1.5 bg-purple-700 hover:bg-purple-800 text-white rounded-xl text-xs font-bold transition shadow-xs cursor-pointer"
+                  >
+                    <Baby className="w-3.5 h-3.5" />
+                    <span>Ver / Gestionar Hijos ({colabEditar.TotalHijos || 0})</span>
+                  </button>
+                </div>
+
               </div>
 
               <div className="pt-4 border-t border-slate-100 flex items-center justify-between">
@@ -693,6 +848,194 @@ export default function AdminColaboradoresPage() {
                 </div>
               </form>
             )}
+          </div>
+        </div>
+      )}
+
+      {/* MODAL 3: GESTIÓN Y CONSULTA DE HIJOS / DEPENDIENTES */}
+      {colabHijos && (
+        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 overflow-y-auto">
+          <div className="bg-white rounded-3xl max-w-2xl w-full p-6 shadow-2xl border border-slate-100 my-8 animate-in fade-in zoom-in duration-100">
+            {/* Modal Header */}
+            <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+              <div className="flex items-center gap-3">
+                <div className="p-2.5 bg-purple-100 text-purple-700 rounded-2xl">
+                  <Baby className="w-6 h-6" />
+                </div>
+                <div>
+                  <div className="flex items-center gap-2">
+                    <h3 className="font-black text-slate-900 text-base">Hijos y Dependientes Registrados</h3>
+                    <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-purple-100 text-purple-800">
+                      {hijosList.length} {hijosList.length === 1 ? 'hijo' : 'hijos'}
+                    </span>
+                  </div>
+                  <p className="text-xs text-slate-500 font-medium">
+                    {colabHijos.NombreCompleto} <span className="font-mono text-slate-400">({colabHijos.CodigoEmpleado} • {colabHijos.Empresa})</span>
+                  </p>
+                </div>
+              </div>
+              <button 
+                onClick={() => setColabHijos(null)} 
+                className="text-slate-400 hover:text-slate-600 p-1 rounded-xl hover:bg-slate-100 transition cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {errorHijos && (
+              <div className="mt-3 p-3 bg-rose-50 border border-rose-200 text-rose-800 rounded-xl text-xs flex items-center gap-2">
+                <AlertCircle className="w-4 h-4 shrink-0 text-rose-600" />
+                <span>{errorHijos}</span>
+              </div>
+            )}
+
+            {/* Listado de Hijos */}
+            <div className="mt-4 space-y-3">
+              <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block">
+                Descendientes Registrados en Base de Datos (dbo.ColaboradorHijos)
+              </span>
+
+              {loadingHijos ? (
+                <div className="py-8 text-center text-slate-400 text-xs">
+                  <RefreshCw className="w-5 h-5 animate-spin mx-auto mb-2 text-purple-600" />
+                  Cargando información de hijos...
+                </div>
+              ) : hijosList.length === 0 ? (
+                <div className="p-6 bg-slate-50 rounded-2xl border border-dashed border-slate-200 text-center text-slate-400 text-xs">
+                  <Baby className="w-8 h-8 mx-auto mb-1.5 text-slate-300" />
+                  Este colaborador no tiene hijos registrados actualmente en el sistema.
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 max-h-60 overflow-y-auto pr-1">
+                  {hijosList.map((hijo) => {
+                    const edadTexto = calcularEdad(hijo.FechaNacimiento);
+                    const isMasc = hijo.Sexo === 'M';
+                    const isFem = hijo.Sexo === 'F';
+                    return (
+                      <div 
+                        key={hijo.IdHijo || hijo.NumeroHijo}
+                        className="p-3.5 rounded-2xl border border-slate-200 bg-white hover:border-purple-200 hover:shadow-xs transition flex items-center justify-between gap-3"
+                      >
+                        <div className="flex items-center gap-2.5">
+                          <div className={`w-8 h-8 rounded-xl flex items-center justify-center font-bold text-xs ${
+                            isMasc ? 'bg-blue-100 text-blue-700' :
+                            isFem ? 'bg-pink-100 text-pink-700' :
+                            'bg-slate-100 text-slate-700'
+                          }`}>
+                            #{hijo.NumeroHijo}
+                          </div>
+                          <div>
+                            <div className="flex items-center gap-1.5">
+                              <span className="font-bold text-slate-900 text-xs">
+                                Hijo #{hijo.NumeroHijo}
+                              </span>
+                              <span className={`px-1.5 py-0.2 rounded text-[10px] font-bold ${
+                                isMasc ? 'bg-blue-50 text-blue-700 border border-blue-200' :
+                                isFem ? 'bg-pink-50 text-pink-700 border border-pink-200' :
+                                'bg-slate-100 text-slate-600'
+                              }`}>
+                                {isMasc ? 'Masculino' : isFem ? 'Femenino' : 'No especificado'}
+                              </span>
+                            </div>
+                            <div className="text-[11px] text-slate-500 mt-0.5 flex items-center gap-2">
+                              <span>Nac: <strong className="text-slate-700">{hijo.FechaNacimiento || 'No registrada'}</strong></span>
+                              {hijo.FechaNacimiento && (
+                                <span className="text-purple-700 font-semibold">• {edadTexto}</span>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+
+                        <button
+                          type="button"
+                          onClick={() => handleEliminarHijo(hijo.IdHijo)}
+                          title="Eliminar registro de hijo"
+                          className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition cursor-pointer"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+
+            {/* Formulario para Agregar Nuevo Hijo */}
+            <form onSubmit={handleAgregarHijo} className="mt-5 p-4 rounded-2xl bg-purple-50/50 border border-purple-100 space-y-3">
+              <div className="flex items-center gap-1.5 text-purple-900 font-bold text-xs">
+                <Plus className="w-4 h-4 text-purple-700" />
+                <span>Registrar Nuevo Hijo para este Colaborador</span>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                <div>
+                  <label className="block text-[11px] font-bold text-slate-600 mb-1">
+                    No. de Hijo
+                  </label>
+                  <input
+                    type="number"
+                    min="1"
+                    required
+                    value={nuevoHijo.numeroHijo}
+                    onChange={(e) => setNuevoHijo({ ...nuevoHijo, numeroHijo: Number(e.target.value) })}
+                    className="w-full px-3 py-1.5 bg-white border border-slate-300 rounded-xl text-xs font-bold text-slate-900 focus:ring-2 focus:ring-purple-600 outline-none"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-[11px] font-bold text-slate-600 mb-1">
+                    Fecha de Nacimiento
+                  </label>
+                  <input
+                    type="date"
+                    value={nuevoHijo.fechaNacimiento}
+                    onChange={(e) => setNuevoHijo({ ...nuevoHijo, fechaNacimiento: e.target.value })}
+                    className="w-full px-3 py-1.5 bg-white border border-slate-300 rounded-xl text-xs text-slate-900 focus:ring-2 focus:ring-purple-600 outline-none"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-[11px] font-bold text-slate-600 mb-1">
+                    Sexo
+                  </label>
+                  <select
+                    value={nuevoHijo.sexo}
+                    onChange={(e) => setNuevoHijo({ ...nuevoHijo, sexo: e.target.value })}
+                    className="w-full px-3 py-1.5 bg-white border border-slate-300 rounded-xl text-xs font-semibold text-slate-900 focus:ring-2 focus:ring-purple-600 outline-none"
+                  >
+                    <option value="M">Masculino (M)</option>
+                    <option value="F">Femenino (F)</option>
+                    <option value="X">No especificado</option>
+                  </select>
+                </div>
+              </div>
+
+              <div className="flex justify-end pt-1">
+                <button
+                  type="submit"
+                  disabled={guardandoHijo}
+                  className="flex items-center gap-1.5 px-4 py-2 bg-purple-700 hover:bg-purple-800 disabled:opacity-50 text-white rounded-xl text-xs font-bold transition shadow-xs cursor-pointer"
+                >
+                  <Plus className="w-3.5 h-3.5" />
+                  <span>{guardandoHijo ? 'Registrando...' : 'Agregar Hijo a Expediente'}</span>
+                </button>
+              </div>
+            </form>
+
+            {/* Footer */}
+            <div className="mt-5 pt-3 border-t border-slate-100 flex items-center justify-between">
+              <span className="text-[11px] text-slate-400">
+                Información protegida en tabla relacional <code className="font-mono bg-slate-100 px-1 py-0.5 rounded text-slate-600">dbo.ColaboradorHijos</code>.
+              </span>
+              <button
+                type="button"
+                onClick={() => setColabHijos(null)}
+                className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl text-xs transition cursor-pointer"
+              >
+                Cerrar
+              </button>
+            </div>
           </div>
         </div>
       )}

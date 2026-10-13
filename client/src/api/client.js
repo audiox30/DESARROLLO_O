@@ -81,6 +81,9 @@ export const api = {
   getEquipoLider: () => request('/colaboradores/equipo'),
   getColaborador: (id) => request(`/colaboradores/${id}`),
   getKardexColaborador: (id) => request(`/saldos/colaborador/${id}`),
+  getHijosColaborador: (id) => request(`/colaboradores/${id}/hijos`),
+  agregarHijoColaborador: (id, data) => request(`/colaboradores/${id}/hijos`, { method: 'POST', body: JSON.stringify(data) }),
+  eliminarHijoColaborador: (id, idHijo) => request(`/colaboradores/${id}/hijos/${idHijo}`, { method: 'DELETE' }),
 
   // Solicitudes
   crearSolicitud: (data) => request('/solicitudes', { method: 'POST', body: JSON.stringify(data) }),

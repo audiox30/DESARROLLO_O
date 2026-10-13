@@ -78,6 +78,7 @@ const adminColaboradoresController = {
           c.DiasDescanso, c.CentroCostos, c.TipoNomina,
           c.AvisarEmergencia, c.ParentescoEmergencia, c.TelefonoEmergencia,
           c.TipoSangre, c.AlergiasPadecimientos,
+          (SELECT COUNT(*) FROM dbo.ColaboradorHijos h WHERE h.IdColaborador = c.IdColaborador) AS TotalHijos,
           u.IdUsuario, u.Username, u.DebeCambiarPassword,
           u.Activo AS UsuarioActivo, u.UltimoAcceso
         FROM dbo.Colaboradores c
