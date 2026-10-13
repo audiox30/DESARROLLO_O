@@ -82,7 +82,7 @@ const colaboradoresController = {
           SELECT 
             c.IdColaborador AS id, c.IdEmpresa, e.AliasEmpresa AS Empresa,
             c.CodigoEmpleado, c.Subfijo, c.Nombre, c.ApellidoPaterno, c.ApellidoMaterno,
-            c.NombreCompleto, c.CURP, c.RFC, c.NSS, c.Email, c.Telefono,
+            c.NombreCompleto, c.CURP, c.RFC, c.NSS, c.Email, c.EmailCorporativo, c.Telefono,
             d.Nombre AS Departamento, p.Nombre AS Puesto,
             c.FechaAlta, c.FechaReingreso, c.EstatusNomina, c.RolApp, c.JornadaLaboralDias, c.Activo
           FROM dbo.Colaboradores c
@@ -131,8 +131,10 @@ const colaboradoresController = {
   update: async (req, res) => {
     try {
       const { id } = req.params;
-      // Solo ADMIN_DO o el propio colaborador pueden modificar
-      if (req.user.rolApp !== 'ADMIN_DO' && Number(req.user.id) !== Number(id)) {
+      // Solo ADMIN_DO, SUPERADMIN, SISTEMAS o el propio colaborador pueden modificar
+      const rol = req.user ? req.user.rolApp : null;
+      const esAdmin = rol === 'ADMIN_DO' || rol === 'SUPERADMIN' || rol === 'SISTEMAS';
+      if (!esAdmin && Number(req.user.id) !== Number(id)) {
         return res.status(403).json({ error: 'No tienes permisos para modificar este colaborador.' });
       }
 
@@ -164,10 +166,27 @@ const colaboradoresController = {
   agregarHijo: async (req, res) => {
     try {
       const { id } = req.params;
-      const { numeroHijo, fechaNacimiento, sexo } = req.body;
-      if (!numeroHijo) return res.status(400).json({ error: 'El número de hijo es requerido.' });
+      const { 
+        numeroHijo, 
+        numero_hijo, 
+        nombre, 
+        nombreCompleto, 
+        fechaNacimiento, 
+        fecha_nacimiento, 
+        sexo 
+      } = req.body;
 
-      await ColaboradorModel.agregarHijo(Number(id), { numeroHijo, fechaNacimiento, sexo });
+      const num = numeroHijo || numero_hijo;
+      const nom = (nombre || nombreCompleto || '').trim();
+      const fn = fechaNacimiento || fecha_nacimiento || null;
+
+      await ColaboradorModel.agregarHijo(Number(id), { 
+        numeroHijo: num, 
+        nombre: nom, 
+        fechaNacimiento: fn, 
+        sexo 
+      });
+
       const hijos = await ColaboradorModel.obtenerHijos(Number(id));
       return res.json({ success: true, message: 'Hijo registrado con éxito.', data: hijos });
     } catch (err) {
@@ -260,7 +279,8 @@ const colaboradoresController = {
             departamento: colab.departamento,
             empresa: colab.empresa,
             fechaAlta: colab.fechaAlta,
-            antiguedadAnios: colab.antiguedadAnios
+            antiguedadAnios: colab.antiguedadAnios,
+            diasDescanso: colab.diasDescanso || 'DOMINGO'
           },
           resumen: {
             diasCorrespondientes: colab.diasCorrespondientes,
@@ -276,7 +296,7 @@ const colaboradoresController = {
           .input('Id', idColaborador)
           .query(`
             SELECT 
-              c.IdColaborador AS id, c.CodigoEmpleado, c.NombreCompleto, c.FechaAlta,
+              c.IdColaborador AS id, c.CodigoEmpleado, c.NombreCompleto, c.FechaAlta, c.DiasDescanso,
               p.Nombre AS Puesto, d.Nombre AS Departamento, e.AliasEmpresa AS Empresa,
               DATEDIFF(YEAR, c.FechaAlta, GETDATE()) AS AntiguedadAnios
             FROM dbo.Colaboradores c
@@ -323,7 +343,8 @@ const colaboradoresController = {
             departamento: colab.Departamento,
             empresa: colab.Empresa,
             fechaAlta: colab.FechaAlta,
-            antiguedadAnios: colab.AntiguedadAnios
+            antiguedadAnios: colab.AntiguedadAnios,
+            diasDescanso: colab.DiasDescanso || 'DOMINGO'
           },
           resumen: {
             diasCorrespondientes: totalCorrespondientes,

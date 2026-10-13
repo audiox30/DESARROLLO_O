@@ -2,7 +2,28 @@ import React, { useState, useEffect } from 'react';
 import { Calendar as CalendarIcon, Clock, CheckCircle, AlertTriangle, Info, CalendarDays, ShieldCheck } from 'lucide-react';
 import { api } from '../api/client';
 
-export default function CalendarioVacaciones({ onDateSelect, saldoDisponible = 0 }) {
+const DIAS_NOMBRES = ['Domingo', 'Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado'];
+
+function getIndicesDescanso(descanso) {
+  const set = new Set();
+  if (descanso) {
+    let tokens = Array.isArray(descanso) ? descanso : String(descanso).split(/[,;\/yY]+/);
+    for (let t of tokens) {
+      const n = String(t).trim().toUpperCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+      if (n.includes('DOM')) set.add(0);
+      else if (n.includes('LUN')) set.add(1);
+      else if (n.includes('MAR')) set.add(2);
+      else if (n.includes('MIE')) set.add(3);
+      else if (n.includes('JUE')) set.add(4);
+      else if (n.includes('VIE')) set.add(5);
+      else if (n.includes('SAB')) set.add(6);
+    }
+  }
+  if (set.size === 0) set.add(0); // Domingo por defecto
+  return set;
+}
+
+export default function CalendarioVacaciones({ onDateSelect, saldoDisponible = 0, diasDescanso = 'DOMINGO' }) {
   const [fechaInicio, setFechaInicio] = useState('');
   const [fechaFin, setFechaFin] = useState('');
   const [calculo, setCalculo] = useState(null);
@@ -25,7 +46,7 @@ export default function CalendarioVacaciones({ onDateSelect, saldoDisponible = 0
     loadFeriados();
   }, []);
 
-  // Sugerir rango inicial estándar Grupo JAMA: Próximo Lunes a Sábado (6 días laborables)
+  // Sugerir rango inicial estándar Grupo JAMA: Próximo Lunes a Sábado
   useEffect(() => {
     const hoy = new Date();
     const proximoLunes = new Date(hoy);
@@ -48,21 +69,24 @@ export default function CalendarioVacaciones({ onDateSelect, saldoDisponible = 0
         return;
       }
 
-      // Validar que inicio y fin no sean domingo (descanso semanal obligatorio)
+      // Validar que inicio y fin no coincidan con descanso programado del colaborador
       const [y1, m1, d1] = fechaInicio.split('-').map(Number);
       const [y2, m2, d2] = fechaFin.split('-').map(Number);
       const dt1 = new Date(Date.UTC(y1, m1 - 1, d1, 12, 0, 0));
       const dt2 = new Date(Date.UTC(y2, m2 - 1, d2, 12, 0, 0));
+      const indicesDescanso = getIndicesDescanso(diasDescanso);
 
-      if (dt1.getUTCDay() === 0) {
-        setError('La fecha de inicio no puede ser Domingo. En Grupo JAMA los domingos son descanso obligatorio semanal; selecciona de lunes a sábado.');
+      if (indicesDescanso.has(dt1.getUTCDay())) {
+        const nombreDia = DIAS_NOMBRES[dt1.getUTCDay()];
+        setError(`La fecha de inicio (${fechaInicio}) no puede ser ${nombreDia}, ya que está asignado como tu día de descanso semanal programado.`);
         setCalculo(null);
         if (onDateSelect) onDateSelect(null);
         return;
       }
 
-      if (dt2.getUTCDay() === 0) {
-        setError('La fecha de fin no puede ser Domingo. En Grupo JAMA los domingos son descanso obligatorio semanal; selecciona de lunes a sábado.');
+      if (indicesDescanso.has(dt2.getUTCDay())) {
+        const nombreDia = DIAS_NOMBRES[dt2.getUTCDay()];
+        setError(`La fecha de fin (${fechaFin}) no puede ser ${nombreDia}, ya que está asignado como tu día de descanso semanal programado.`);
         setCalculo(null);
         if (onDateSelect) onDateSelect(null);
         return;
@@ -88,13 +112,17 @@ export default function CalendarioVacaciones({ onDateSelect, saldoDisponible = 0
       setError('');
       calcularDias();
     }
-  }, [fechaInicio, fechaFin, diasInhabilesList]);
+  }, [fechaInicio, fechaFin, diasInhabilesList, diasDescanso]);
 
   async function calcularDias() {
     try {
       setLoading(true);
-      // Jornada estándar Grupo JAMA: 6 días (Lunes a Sábado)
-      const res = await api.calcularDiasHabiles({ fechaInicio, fechaFin, jornadaLaboralDias: 6 });
+      const res = await api.calcularDiasHabiles({ 
+        fechaInicio, 
+        fechaFin, 
+        diasDescanso, 
+        jornadaLaboralDias: 6 
+      });
       if (res.success) {
         setCalculo(res);
         if (onDateSelect) {
@@ -116,6 +144,10 @@ export default function CalendarioVacaciones({ onDateSelect, saldoDisponible = 0
 
   const excedeSaldo = calculo && calculo.totalDiasLaborables > saldoDisponible;
 
+  const descansoTexto = Array.isArray(diasDescanso) 
+    ? diasDescanso.join(', ') 
+    : (diasDescanso || 'Domingo');
+
   return (
     <div className="bg-white rounded-2xl border border-slate-200/80 shadow-xs p-5">
       <div className="flex items-center justify-between pb-4 border-b border-slate-100">
@@ -127,11 +159,11 @@ export default function CalendarioVacaciones({ onDateSelect, saldoDisponible = 0
             <div className="flex items-center gap-2">
               <h3 className="text-sm font-bold text-slate-900">Simulador y Selector de Período</h3>
               <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold bg-blue-100 text-blue-800">
-                Jornada Lunes a Sábado
+                Descanso: {descansoTexto}
               </span>
             </div>
             <p className="text-xs text-slate-500">
-              Los sábados son días laborables y consumen vacaciones. Solo se descuentan domingos y festivos oficiales.
+              Cómputo personalizado según tus días de descanso registrados ({descansoTexto}) y días festivos oficiales.
             </p>
           </div>
         </div>
@@ -183,13 +215,13 @@ export default function CalendarioVacaciones({ onDateSelect, saldoDisponible = 0
             <div className="bg-white p-2.5 rounded-lg border border-slate-200/60 shadow-2xs">
               <span className="text-[11px] font-bold text-slate-400 uppercase">Días Hábiles</span>
               <p className="text-2xl font-black text-blue-700 mt-0.5">{calculo.totalDiasLaborables}</p>
-              <span className="text-[10px] text-blue-600 font-semibold">Lunes a Sábado</span>
+              <span className="text-[10px] text-blue-600 font-semibold">Días a descontar</span>
             </div>
 
             <div className="bg-white p-2.5 rounded-lg border border-slate-200/60 shadow-2xs">
               <span className="text-[11px] font-bold text-slate-400 uppercase">Descansos</span>
               <p className="text-2xl font-black text-slate-600 mt-0.5">{calculo.totalFinesDeSemana}</p>
-              <span className="text-[10px] text-slate-500 font-medium">Solo Domingos</span>
+              <span className="text-[10px] text-slate-500 font-medium truncate max-w-[120px] mx-auto block">{descansoTexto}</span>
             </div>
 
             <div className="bg-white p-2.5 rounded-lg border border-slate-200/60 shadow-2xs">

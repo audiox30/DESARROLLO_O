@@ -1,11 +1,66 @@
 const { getLocalPool, isUsingMock } = require('../config/database');
 const mockStore = require('../data/mockStore');
+const emailService = require('../services/emailService');
+
+function formatearSolicitud(s) {
+  if (!s) return s;
+  const id = Number(s.IdSolicitud ?? s.idSolicitud ?? s.id);
+  const folio = s.Folio ?? s.folio ?? (id ? `VAC-${id}` : '');
+  
+  const fechaInicioStr = s.FechaInicio 
+    ? (typeof s.FechaInicio === 'string' ? s.FechaInicio.substring(0, 10) : new Date(s.FechaInicio).toISOString().substring(0, 10))
+    : (s.fechaInicio || '');
+  const fechaFinStr = s.FechaFin 
+    ? (typeof s.FechaFin === 'string' ? s.FechaFin.substring(0, 10) : new Date(s.FechaFin).toISOString().substring(0, 10))
+    : (s.fechaFin || '');
+  const fechaCreacionStr = s.FechaCreacion 
+    ? (typeof s.FechaCreacion === 'string' ? s.FechaCreacion : new Date(s.FechaCreacion).toISOString())
+    : (s.fechaCreacion || new Date().toISOString());
+
+  const totalDias = Number(s.TotalDiasLaborables ?? s.totalDiasLaborables ?? s.diasHabiles ?? s.total_dias ?? 0);
+  const estado = s.Estado ?? s.estado ?? 'PENDIENTE_LIDER';
+  const motivoComentarios = s.MotivoComentarios ?? s.motivoComentarios ?? '';
+  const motivoRechazo = s.MotivoRechazo ?? s.motivoRechazo ?? null;
+  const fechaResolucion = s.FechaResolucion ?? s.fechaResolucion ?? null;
+
+  return {
+    ...s,
+    // CamelCase normalizado
+    idSolicitud: id,
+    id: id,
+    folio,
+    fechaInicio: fechaInicioStr,
+    fechaFin: fechaFinStr,
+    totalDiasLaborables: totalDias,
+    diasHabiles: totalDias,
+    total_dias: totalDias,
+    fechaCreacion: fechaCreacionStr,
+    estado,
+    estatus: estado,
+    motivoComentarios,
+    motivoRechazo,
+    fechaResolucion,
+    colaboradorNombre: s.ColaboradorNombre || s.NombreCompleto || s.colaboradorNombre || '',
+    codigoEmpleado: s.CodigoEmpleado || s.codigoEmpleado || '',
+    // PascalCase para compatibilidad
+    IdSolicitud: id,
+    Folio: folio,
+    FechaInicio: fechaInicioStr,
+    FechaFin: fechaFinStr,
+    TotalDiasLaborables: totalDias,
+    FechaCreacion: fechaCreacionStr,
+    Estado: estado,
+    MotivoComentarios: motivoComentarios,
+    MotivoRechazo: motivoRechazo,
+    FechaResolucion: fechaResolucion
+  };
+}
 
 const liderController = {
   /**
    * GET /api/lider/solicitudes-pendientes
-   * Bandeja de entrada para líderes:
-   * Solo muestra solicitudes de colaboradores donde IdJefeDirecto sea el Id del líder autenticado (o si es ADMIN_DO)
+   * Bandeja de entrada para líderes y gerentes:
+   * Muestra solicitudes pendientes de Nivel 1 (Jefe Directo) o Nivel 2 (Segundo Aprobador / Gerente)
    */
   getSolicitudesPendientes: async (req, res) => {
     try {
@@ -14,10 +69,10 @@ const liderController = {
 
       if (isUsingMock()) {
         const pendientes = mockStore.solicitudes.filter(s => 
-          s.estado === 'PENDIENTE_LIDER' && 
-          (s.idJefeDirecto === Number(idLider) || rol === 'LIDER' || rol === 'ADMIN_DO')
+          (s.estado === 'PENDIENTE_LIDER' || s.estado === 'PENDIENTE_GERENTE') && 
+          (s.idJefeDirecto === Number(idLider) || s.idAprobadorSegundo === Number(idLider) || rol === 'LIDER' || rol === 'ADMIN_DO')
         );
-        return res.json({ success: true, total: pendientes.length, data: pendientes });
+        return res.json({ success: true, total: pendientes.length, data: pendientes.map(formatearSolicitud) });
       }
 
       const pool = await getLocalPool();
@@ -26,13 +81,23 @@ const liderController = {
         .input('Rol', rol)
         .query(`
           SELECT 
-            s.IdSolicitud, s.Folio, s.IdColaborador, s.FechaCreacion,
-            s.FechaInicio, s.FechaFin, s.TotalDiasLaborables, s.MotivoComentarios,
+            s.IdSolicitud, s.Folio, s.IdColaborador, 
+            CONVERT(VARCHAR(19), s.FechaCreacion, 120) AS FechaCreacion,
+            CONVERT(VARCHAR(10), s.FechaInicio, 23) AS FechaInicio, 
+            CONVERT(VARCHAR(10), s.FechaFin, 23) AS FechaFin, 
+            ISNULL(s.TotalDiasLaborables, 0) AS TotalDiasLaborables, 
+            s.MotivoComentarios,
             s.Estado,
             c.CodigoEmpleado, c.Subfijo, c.NombreCompleto, c.Email, c.Empresa, c.Sucursal,
             p.Nombre AS Puesto, d.Nombre AS Departamento,
             ISNULL(sal.DiasPendientes, 0) AS DiasPendientesColaborador,
-            ISNULL(sal.DiasCorrespondientes, 0) AS DiasCorrespondientesColaborador
+            ISNULL(sal.DiasCorrespondientes, 0) AS DiasCorrespondientesColaborador,
+            CASE 
+              WHEN s.Estado = 'PENDIENTE_GERENTE' THEN 2 
+              ELSE 1 
+            END AS NivelAprobacionRequerido,
+            c.IdJefeDirecto,
+            c.IdAprobadorSegundo
           FROM dbo.SolicitudesVacaciones s
           JOIN dbo.Colaboradores c ON c.IdColaborador = s.IdColaborador
           LEFT JOIN dbo.Puestos p ON p.IdPuesto = c.IdPuesto
@@ -44,15 +109,18 @@ const liderController = {
             FROM dbo.SaldosVacaciones sv
             WHERE sv.IdColaborador = c.IdColaborador AND sv.EsCerrado = 0
           ) sal
-          WHERE s.Estado = 'PENDIENTE_LIDER'
-            AND (c.IdJefeDirecto = @IdLider OR @Rol = 'ADMIN_DO')
+          WHERE 
+            (@Rol IN ('ADMIN_DO', 'SUPERADMIN', 'SISTEMAS') AND s.Estado IN ('PENDIENTE_LIDER', 'PENDIENTE_GERENTE'))
+            OR (s.Estado = 'PENDIENTE_LIDER' AND c.IdJefeDirecto = @IdLider)
+            OR (s.Estado = 'PENDIENTE_GERENTE' AND c.IdAprobadorSegundo = @IdLider)
           ORDER BY s.FechaCreacion ASC
         `);
 
+      const data = result.recordset.map(formatearSolicitud);
       return res.json({
         success: true,
-        total: result.recordset.length,
-        data: result.recordset
+        total: data.length,
+        data
       });
     } catch (err) {
       console.error('[lider.getSolicitudesPendientes]', err);
@@ -99,12 +167,12 @@ const liderController = {
 
       const pool = await getLocalPool();
 
-      // Validar existencia de la solicitud y alcance jerárquico
+      // Validar existencia de la solicitud y alcance jerárquico multinivel
       const solRes = await pool.request()
         .input('Id', id)
         .query(`
           SELECT s.IdSolicitud, s.Estado, s.IdColaborador, s.Folio,
-                 c.IdJefeDirecto, c.NombreCompleto
+                 c.IdJefeDirecto, c.IdAprobadorSegundo, c.NombreCompleto
           FROM dbo.SolicitudesVacaciones s
           JOIN dbo.Colaboradores c ON c.IdColaborador = s.IdColaborador
           WHERE s.IdSolicitud = @Id
@@ -115,21 +183,27 @@ const liderController = {
         return res.status(404).json({ error: 'Solicitud de vacaciones no encontrada.' });
       }
 
-      if (solicitud.Estado !== 'PENDIENTE_LIDER') {
+      if (!['PENDIENTE_LIDER', 'PENDIENTE_GERENTE'].includes(solicitud.Estado)) {
         return res.status(400).json({ 
-          error: `La solicitud no está pendiente de aprobación por el líder (Estado actual: ${solicitud.Estado}).` 
+          error: `La solicitud no se encuentra en un estado pendiente de resolución (Estado actual: ${solicitud.Estado}).` 
         });
       }
 
-      if (rol !== 'ADMIN_DO' && solicitud.IdJefeDirecto !== idLider) {
+      const esNivel1 = (solicitud.Estado === 'PENDIENTE_LIDER' && Number(solicitud.IdJefeDirecto) === Number(idLider));
+      const esNivel2 = (solicitud.Estado === 'PENDIENTE_GERENTE' && Number(solicitud.IdAprobadorSegundo) === Number(idLider));
+      const esAdmin = ['ADMIN_DO', 'SUPERADMIN', 'SISTEMAS'].includes(rol);
+
+      if (!esAdmin && !esNivel1 && !esNivel2) {
         return res.status(403).json({ 
-          error: 'Acceso denegado: El colaborador que solicita vacaciones no reporta bajo tu liderazgo directo.' 
+          error: 'Acceso denegado: No tienes facultades asignadas para resolver esta solicitud en su nivel actual.' 
         });
       }
 
       // Ejecutar SP de resolución en SQL Server
       const spAccion = accionNorm === 'APROBAR' ? 'APROBADA' : 'RECHAZADA';
-      const motivoFinal = razon || (accionNorm === 'APROBAR' ? 'Aprobada por Líder Directo. Enviada a VoBo DO.' : 'Rechazada por Líder.');
+      const motivoFinal = razon || (accionNorm === 'APROBAR' 
+        ? (esNivel1 ? 'Visto Bueno Nivel 1 (Jefe Directo).' : 'Autorización Nivel 2 (Gerencia).') 
+        : 'Rechazada por jefatura.');
 
       const request = pool.request();
       request.input('IdSolicitud', Number(id));
@@ -141,13 +215,41 @@ const liderController = {
 
       await request.execute('dbo.sp_ProcesarAprobacionSolicitud');
 
-      const nuevoEstado = accionNorm === 'APROBAR' ? 'PENDIENTE_DO' : 'RECHAZADA';
+      // Consultar estado resultante
+      const checkResult = await pool.request()
+        .input('Id', id)
+        .query('SELECT Estado FROM dbo.SolicitudesVacaciones WHERE IdSolicitud = @Id');
+      const nuevoEstado = checkResult.recordset[0]?.Estado || (accionNorm === 'APROBAR' ? 'APROBADA' : 'RECHAZADA');
+
+      // Notificaciones por correo electrónico (SMTP)
+      setImmediate(() => {
+        if (nuevoEstado === 'PENDIENTE_GERENTE') {
+          emailService.notificarSolicitudPendienteGerente(id).catch(err => {
+            console.error('[EMAIL NOTIFICACION ERROR]', err);
+          });
+        } else if (nuevoEstado === 'APROBADA') {
+          emailService.notificarSolicitudAprobada(id).catch(err => {
+            console.error('[EMAIL NOTIFICACION ERROR]', err);
+          });
+        } else if (nuevoEstado === 'RECHAZADA') {
+          emailService.notificarSolicitudRechazada(id, razon).catch(err => {
+            console.error('[EMAIL NOTIFICACION ERROR]', err);
+          });
+        }
+      });
+
+      let mensaje = '';
+      if (nuevoEstado === 'PENDIENTE_GERENTE') {
+        mensaje = `Solicitud ${solicitud.Folio} de ${solicitud.NombreCompleto}: Visto Bueno Nivel 1 otorgado. Transferida a autorización gerencial.`;
+      } else if (nuevoEstado === 'APROBADA') {
+        mensaje = `Solicitud ${solicitud.Folio} de ${solicitud.NombreCompleto} autorizada formalmente y saldos descontados conforme a LFT.`;
+      } else {
+        mensaje = `Solicitud ${solicitud.Folio} de ${solicitud.NombreCompleto} rechazada debidamente.`;
+      }
 
       return res.json({
         success: true,
-        message: accionNorm === 'APROBAR'
-          ? `Solicitud ${solicitud.Folio} de ${solicitud.NombreCompleto} autorizada con éxito. Pasó a VoBo de Desarrollo Organizacional.`
-          : `Solicitud ${solicitud.Folio} de ${solicitud.NombreCompleto} rechazada debidamente.`,
+        message: mensaje,
         estado: nuevoEstado
       });
     } catch (err) {
@@ -259,16 +361,22 @@ const liderController = {
         }
       }
 
+      if (isUsingMock()) {
+        const mis = mockStore.solicitudes.filter(s => s.idColaborador === targetId);
+        return res.json({ success: true, total: mis.length, data: mis.map(formatearSolicitud) });
+      }
+
       const result = await pool.request()
         .input('TargetId', targetId)
         .query(`
           SELECT 
-            s.IdSolicitud, s.Folio, 
-            CONVERT(VARCHAR(10), s.FechaInicio, 120) AS FechaInicio,
-            CONVERT(VARCHAR(10), s.FechaFin, 120) AS FechaFin,
-            s.TotalDiasLaborables,
-            s.Estado, s.MotivoComentarios,
-            CONVERT(VARCHAR(10), s.FechaCreacion, 120) AS FechaCreacion,
+            s.IdSolicitud, s.Folio, s.IdColaborador,
+            CONVERT(VARCHAR(10), s.FechaInicio, 23) AS FechaInicio,
+            CONVERT(VARCHAR(10), s.FechaFin, 23) AS FechaFin,
+            ISNULL(s.TotalDiasLaborables, 0) AS TotalDiasLaborables,
+            s.Estado, s.MotivoComentarios, s.MotivoRechazo,
+            CONVERT(VARCHAR(19), s.FechaResolucion, 120) AS FechaResolucion,
+            CONVERT(VARCHAR(19), s.FechaCreacion, 120) AS FechaCreacion,
             c.NombreCompleto AS ColaboradorNombre, c.CodigoEmpleado
           FROM dbo.SolicitudesVacaciones s
           JOIN dbo.Colaboradores c ON c.IdColaborador = s.IdColaborador
@@ -276,10 +384,11 @@ const liderController = {
           ORDER BY s.FechaCreacion DESC;
         `);
 
+      const data = result.recordset.map(formatearSolicitud);
       return res.json({
         success: true,
-        total: result.recordset.length,
-        data: result.recordset
+        total: data.length,
+        data
       });
     } catch (err) {
       console.error('[lider.getSolicitudesColaborador]', err);

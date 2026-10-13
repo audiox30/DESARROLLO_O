@@ -3,7 +3,7 @@ import { X, Send, AlertTriangle, CheckCircle, Calendar, Sparkles } from 'lucide-
 import { api } from '../api/client';
 import CalendarioVacaciones from './CalendarioVacaciones';
 
-export default function ModalNuevaSolicitud({ isOpen, onClose, onSuccess, saldoDisponible = 0 }) {
+export default function ModalNuevaSolicitud({ isOpen, onClose, onSuccess, saldoDisponible = 0, diasDescanso = 'DOMINGO' }) {
   const [rangoSeleccionado, setRangoSeleccionado] = useState(null);
   const [motivo, setMotivo] = useState('');
   const [loading, setLoading] = useState(false);
@@ -111,6 +111,7 @@ export default function ModalNuevaSolicitud({ isOpen, onClose, onSuccess, saldoD
               {/* Calendario y simulador de días */}
               <CalendarioVacaciones
                 saldoDisponible={saldoDisponible}
+                diasDescanso={diasDescanso}
                 onDateSelect={(datos) => setRangoSeleccionado(datos)}
               />
 

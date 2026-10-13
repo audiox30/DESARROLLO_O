@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { 
   UserCheck, Users, Clock, CheckCircle2, XCircle, AlertCircle, 
-  MessageSquare, RefreshCw, Calendar, ArrowRight, ShieldAlert, Sparkles
+  MessageSquare, RefreshCw, Calendar, ArrowRight, ShieldAlert, Sparkles, Mail, FileText
 } from 'lucide-react';
 import { api } from '../api/client';
 import ModalAprobacion from '../components/ModalAprobacion';
@@ -26,7 +26,25 @@ export default function LiderPortal({ currentUser }) {
         api.getEquipoLider()
       ]);
 
-      if (penRes.success) setPendientes(penRes.data);
+      if (penRes.success) {
+        const norm = (penRes.data || []).map(s => ({
+          ...s,
+          idSolicitud: s.idSolicitud || s.IdSolicitud,
+          folio: s.folio || s.Folio,
+          estado: s.estado || s.Estado,
+          fechaInicio: s.fechaInicio ? String(s.fechaInicio).substring(0, 10) : (s.FechaInicio ? String(s.FechaInicio).substring(0, 10) : ''),
+          fechaFin: s.fechaFin ? String(s.fechaFin).substring(0, 10) : (s.FechaFin ? String(s.FechaFin).substring(0, 10) : ''),
+          totalDiasLaborables: s.totalDiasLaborables !== undefined ? s.totalDiasLaborables : (s.TotalDiasLaborables || 0),
+          colaboradorNombre: s.colaboradorNombre || s.NombreCompleto || 'Colaborador',
+          colaboradorCodigo: s.colaboradorCodigo || s.CodigoEmpleado || '',
+          colaboradorPuesto: s.colaboradorPuesto || s.Puesto || '—',
+          colaboradorEmpresa: s.colaboradorEmpresa || s.Empresa || 'Grupo JAMA',
+          colaboradorSucursal: s.colaboradorSucursal || s.Sucursal || 'Matriz',
+          motivoComentarios: s.motivoComentarios || s.MotivoComentarios || '',
+          nivelAprobacionRequerido: s.nivelAprobacionRequerido || s.NivelAprobacionRequerido || ((s.estado || s.Estado) === 'PENDIENTE_GERENTE' ? 2 : 1)
+        }));
+        setPendientes(norm);
+      }
       if (eqRes.success) setEquipo(eqRes.data);
     } catch (err) {
       console.error('Error cargando bandeja de líder:', err);
@@ -110,15 +128,15 @@ export default function LiderPortal({ currentUser }) {
 
         <div className="bg-white rounded-2xl p-5 border border-slate-200/80 shadow-xs flex items-center justify-between">
           <div>
-            <span className="text-xs font-bold text-slate-400 uppercase">Notificaciones Teams</span>
-            <p className="text-base font-extrabold text-indigo-700 mt-1 flex items-center gap-1.5">
-              <Sparkles className="w-4 h-4 text-indigo-500" />
-              1-Clic Web & Teams
+            <span className="text-xs font-bold text-slate-400 uppercase">Notificaciones Vía Correo</span>
+            <p className="text-base font-extrabold text-blue-700 mt-1 flex items-center gap-1.5">
+              <Mail className="w-4 h-4 text-blue-600" />
+              Notificaciones Activas
             </p>
-            <span className="text-[11px] text-slate-500 font-medium">Validación de días hábiles activa</span>
+            <span className="text-[11px] text-slate-500 font-medium">Avisos automáticos a líder y colaborador</span>
           </div>
-          <div className="w-12 h-12 rounded-2xl bg-indigo-50 text-indigo-600 flex items-center justify-center">
-            <UserCheck className="w-6 h-6" />
+          <div className="w-12 h-12 rounded-2xl bg-blue-50 text-blue-600 flex items-center justify-center">
+            <Mail className="w-6 h-6" />
           </div>
         </div>
       </div>
@@ -163,9 +181,22 @@ export default function LiderPortal({ currentUser }) {
                           {s.colaboradorPuesto} • {s.colaboradorEmpresa || 'Grupo JAMA'}
                         </p>
                       </div>
-                      <span className="text-xs font-mono font-bold px-2 py-0.5 rounded bg-white border border-slate-200 text-slate-600">
-                        {s.folio}
-                      </span>
+                      <div className="flex flex-col items-end gap-1.5">
+                        <span className="text-xs font-mono font-bold px-2 py-0.5 rounded bg-white border border-slate-200 text-slate-600">
+                          {s.folio}
+                        </span>
+                        {(s.estado === 'PENDIENTE_GERENTE' || s.nivelAprobacionRequerido === 2) ? (
+                          <span className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full bg-indigo-50 border border-indigo-200 text-indigo-700">
+                            <span className="w-1.5 h-1.5 rounded-full bg-indigo-600 animate-pulse"></span>
+                            Nivel 2: Autorización Gerencial
+                          </span>
+                        ) : (
+                          <span className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-50 border border-amber-200 text-amber-800">
+                            <span className="w-1.5 h-1.5 rounded-full bg-amber-500"></span>
+                            Nivel 1: Visto Bueno Operativo
+                          </span>
+                        )}
+                      </div>
                     </div>
 
                     <div className="bg-white p-3 rounded-xl border border-slate-200/60 space-y-1.5 text-xs">
@@ -189,8 +220,18 @@ export default function LiderPortal({ currentUser }) {
 
                   <div className="pt-4 mt-2 flex items-center justify-end gap-2 border-t border-slate-200/60">
                     <button
+                      type="button"
+                      onClick={() => api.descargarPdfFdo84(s.idSolicitud || s.IdSolicitud || s.id, s.folio || s.Folio)}
+                      title="Ver y Descargar Formato Oficial FDO-84 (PDF)"
+                      className="flex items-center justify-center gap-1.5 px-3 py-2.5 rounded-xl border border-blue-200 bg-blue-50 hover:bg-blue-100 text-blue-700 text-xs font-bold transition-all shadow-xs cursor-pointer"
+                    >
+                      <FileText className="w-4 h-4 text-blue-600" />
+                      <span>FDO-84</span>
+                    </button>
+                    <button
+                      type="button"
                       onClick={() => abrirModalResolucion(s)}
-                      className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold transition-all shadow-xs"
+                      className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold transition-all shadow-xs cursor-pointer"
                     >
                       <UserCheck className="w-4 h-4 text-amber-400" />
                       Revisar y Resolver

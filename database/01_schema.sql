@@ -101,6 +101,7 @@ BEGIN
         IdDepartamento      INT NULL,
         IdPuesto            INT NULL,
         IdJefeDirecto       INT NULL, -- Exclusivo de la aplicación (NUNCA sobreescribir en MERGE)
+        IdAprobadorSegundo  INT NULL, -- Aprobador Nivel 2 (Gerente de Sucursal / Planta)
         RolApp              VARCHAR(20) NOT NULL CONSTRAINT DF_Colaboradores_RolApp DEFAULT ('COLABORADOR'), -- Exclusivo (NUNCA sobreescribir)
         JornadaLaboralDias  INT NOT NULL CONSTRAINT DF_Colaboradores_Jornada DEFAULT (6), -- Jornada Estándar Grupo JAMA (Lunes a Sábado)
         Activo              BIT NOT NULL CONSTRAINT DF_Colaboradores_Activo DEFAULT (1),
@@ -221,12 +222,16 @@ BEGIN
         FechaResolucion         DATETIME2(0) NULL,
         IdAprobadorFinal        INT NULL,
         MotivoRechazo           VARCHAR(500) NULL,
+        IdAprobadorLider        INT NULL,
+        FechaAprobacionLider    DATETIME2(0) NULL,
+        IdAprobadorSegundo      INT NULL,
+        FechaAprobacionSegundo  DATETIME2(0) NULL,
         
         CONSTRAINT PK_SolicitudesVacaciones PRIMARY KEY CLUSTERED (IdSolicitud),
         CONSTRAINT UQ_Solicitudes_Folio UNIQUE NONCLUSTERED (Folio),
         CONSTRAINT FK_Solicitudes_Colaborador FOREIGN KEY (IdColaborador) REFERENCES dbo.Colaboradores (IdColaborador),
         CONSTRAINT FK_Solicitudes_AprobadorFinal FOREIGN KEY (IdAprobadorFinal) REFERENCES dbo.Colaboradores (IdColaborador),
-        CONSTRAINT CK_Solicitudes_Estado CHECK (Estado IN ('PENDIENTE_LIDER', 'PENDIENTE_DO', 'APROBADA', 'RECHAZADA', 'CANCELADA')),
+        CONSTRAINT CK_Solicitudes_Estado CHECK (Estado IN ('PENDIENTE_LIDER', 'PENDIENTE_GERENTE', 'PENDIENTE_DO', 'APROBADA', 'RECHAZADA', 'CANCELADA')),
         CONSTRAINT CK_Solicitudes_RangoFechas CHECK (FechaFin >= FechaInicio)
     );
 END
@@ -288,6 +293,7 @@ BEGIN
         IdHijo              INT IDENTITY(1,1) NOT NULL,
         IdColaborador       INT NOT NULL,
         NumeroHijo          INT NOT NULL,
+        Nombre              VARCHAR(150) NULL,
         FechaNacimiento     DATE NULL,
         Sexo                CHAR(1) NULL,
         FechaRegistro       DATETIME2(0) NOT NULL CONSTRAINT DF_ColaboradorHijos_FechaRegistro DEFAULT (SYSUTCDATETIME()),

@@ -1,5 +1,6 @@
 const mockStore = require('../data/mockStore');
 const { getPool, isUsingMock } = require('../config/database');
+const emailService = require('../services/emailService');
 
 const aprobacionesController = {
   aprobar: async (req, res) => {
@@ -10,6 +11,14 @@ const aprobacionesController = {
 
       if (isUsingMock()) {
         const actualizada = mockStore.aprobarSolicitud(id, idAprobador, comentarios, metodoAutorizacion);
+
+        // Notificación por correo al colaborador (Evento B)
+        setImmediate(() => {
+          emailService.notificarSolicitudAprobada(id).catch(err => {
+            console.error('[EMAIL NOTIFICACION ERROR]', err);
+          });
+        });
+
         return res.json({
           success: true,
           message: actualizada.estado === 'APROBADA' 
@@ -28,9 +37,32 @@ const aprobacionesController = {
 
         await request.execute('dbo.sp_ProcesarAprobacionSolicitud');
 
+        const stateCheck = await pool.request()
+          .input('IdSolicitud', id)
+          .query('SELECT Estado, Folio FROM dbo.SolicitudesVacaciones WHERE IdSolicitud = @IdSolicitud');
+        const estadoFinal = stateCheck.recordset[0]?.Estado || 'APROBADA';
+
+        // Disparo de notificación según el estado resultante (Nivel 2 o Final)
+        setImmediate(() => {
+          if (estadoFinal === 'PENDIENTE_GERENTE') {
+            emailService.notificarSolicitudPendienteGerente(id).catch(err => {
+              console.error('[EMAIL NOTIFICACION ERROR]', err);
+            });
+          } else if (estadoFinal === 'APROBADA') {
+            emailService.notificarSolicitudAprobada(id).catch(err => {
+              console.error('[EMAIL NOTIFICACION ERROR]', err);
+            });
+          }
+        });
+
+        const msg = estadoFinal === 'PENDIENTE_GERENTE'
+          ? 'Visto Bueno Nivel 1 (Jefe Directo) registrado con éxito. Solicitud transferida a Autorización Gerencial (Nivel 2).'
+          : '¡Solicitud aprobada exitosamente y saldo de vacaciones descontado!';
+
         return res.json({
           success: true,
-          message: 'Resolución de aprobación procesada con éxito en SQL Server.'
+          message: msg,
+          estado: estadoFinal
         });
       }
     } catch (err) {
@@ -52,6 +84,14 @@ const aprobacionesController = {
 
       if (isUsingMock()) {
         const rechazada = mockStore.rechazarSolicitud(id, idAprobador, razon, metodoAutorizacion);
+
+        // Notificación por correo al colaborador con motivo (Evento C)
+        setImmediate(() => {
+          emailService.notificarSolicitudRechazada(id, razon.trim()).catch(err => {
+            console.error('[EMAIL NOTIFICACION ERROR]', err);
+          });
+        });
+
         return res.json({
           success: true,
           message: 'Solicitud rechazada. Se ha notificado al colaborador con el motivo correspondiente.',
@@ -67,6 +107,13 @@ const aprobacionesController = {
         request.input('MetodoAutorizacion', metodoAutorizacion);
 
         await request.execute('dbo.sp_ProcesarAprobacionSolicitud');
+
+        // Notificación por correo al colaborador con motivo (Evento C)
+        setImmediate(() => {
+          emailService.notificarSolicitudRechazada(id, razon.trim()).catch(err => {
+            console.error('[EMAIL NOTIFICACION ERROR]', err);
+          });
+        });
 
         return res.json({
           success: true,

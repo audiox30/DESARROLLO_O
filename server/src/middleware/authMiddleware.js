@@ -11,7 +11,7 @@ const JWT_SECRET = process.env.JWT_SECRET || 'jama_secret_vacaciones_desarrollo_
  */
 function authMiddleware(req, res, next) {
   const authHeader = req.headers['authorization'];
-  const token = authHeader && authHeader.split(' ')[1];
+  const token = (authHeader && authHeader.split(' ')[1]) || req.query.token;
 
   if (!token) {
     // Si no hay token, verificar si hay header x-user-id para desarrollo/pruebas locales

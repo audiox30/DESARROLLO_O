@@ -84,14 +84,19 @@ const diasInhabilesController = {
 
   calcular: async (req, res) => {
     try {
-      const { fechaInicio, fechaFin, jornadaLaboralDias = 6 } = req.body;
+      const { fechaInicio, fechaFin, jornadaLaboralDias = 6, diasDescanso } = req.body;
       if (!fechaInicio || !fechaFin) {
         return res.status(400).json({ error: 'Se requiere fechaInicio y fechaFin (formato YYYY-MM-DD)' });
       }
 
       let map = {};
+      let descanso = diasDescanso;
       if (isUsingMock()) {
         map = mockStore.getDiasInhabilesMap();
+        if (!descanso && req.user && req.user.id) {
+          const colab = mockStore.colaboradores.find(c => c.id === Number(req.user.id));
+          descanso = colab?.diasDescanso;
+        }
       } else {
         const pool = await getPool();
         const result = await pool.request().query(`
@@ -104,12 +109,20 @@ const diasInhabilesController = {
             esFeriadoOficial: Boolean(row.EsFeriadoOficial)
           };
         }
+
+        if (!descanso && req.user && req.user.id) {
+          const colabRes = await pool.request()
+            .input('Id', req.user.id)
+            .query('SELECT DiasDescanso FROM dbo.Colaboradores WHERE IdColaborador = @Id');
+          descanso = colabRes.recordset[0]?.DiasDescanso;
+        }
       }
 
-      const resultado = calcularDetalleDias(fechaInicio, fechaFin, map, Number(jornadaLaboralDias));
+      const resultado = calcularDetalleDias(fechaInicio, fechaFin, map, Number(jornadaLaboralDias), descanso);
 
       return res.json({
         success: true,
+        diasDescansoAplicado: descanso || 'DOMINGO',
         ...resultado
       });
     } catch (err) {

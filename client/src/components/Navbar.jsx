@@ -1,8 +1,8 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { 
   Building2, Users, UserCheck, ShieldCheck, CalendarCheck, 
-  ChevronDown, RefreshCw, Sparkles, AlertCircle, Eye, 
-  LogOut, KeyRound, Check, Shield, User, Terminal, FileSpreadsheet, UserPlus
+  ChevronDown, Sparkles, Eye, LogOut, KeyRound, Check, 
+  Terminal, FileSpreadsheet, UserPlus, Menu, X
 } from 'lucide-react';
 import logoJama from '../assets/logo-jama.png';
 
@@ -18,9 +18,21 @@ export default function Navbar({
 }) {
   const [showRoleDropdown, setShowRoleDropdown] = useState(false);
   const [showUserDropdown, setShowUserDropdown] = useState(false);
+  const [showEquipoDropdown, setShowEquipoDropdown] = useState(false);
+  const [showGestionDropdown, setShowGestionDropdown] = useState(false);
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   
   const roleDropdownRef = useRef(null);
   const userDropdownRef = useRef(null);
+  const equipoDropdownRef = useRef(null);
+  const gestionDropdownRef = useRef(null);
+
+  function cerrarTodosDropdowns() {
+    setShowRoleDropdown(false);
+    setShowUserDropdown(false);
+    setShowEquipoDropdown(false);
+    setShowGestionDropdown(false);
+  }
 
   // Cerrar dropdowns si se hace clic fuera
   useEffect(() => {
@@ -30,6 +42,12 @@ export default function Navbar({
       }
       if (userDropdownRef.current && !userDropdownRef.current.contains(e.target)) {
         setShowUserDropdown(false);
+      }
+      if (equipoDropdownRef.current && !equipoDropdownRef.current.contains(e.target)) {
+        setShowEquipoDropdown(false);
+      }
+      if (gestionDropdownRef.current && !gestionDropdownRef.current.contains(e.target)) {
+        setShowGestionDropdown(false);
       }
     }
     document.addEventListener('mousedown', handleClickOutside);
@@ -43,13 +61,29 @@ export default function Navbar({
                            realUser?.rol === 'SUPERADMIN' ||
                            realUser?.rol === 'SISTEMAS';
 
+  const rolEfectivo = activeRoleView || currentUser?.rolApp || 'COLABORADOR';
+
+  const esColaborador = rolEfectivo === 'COLABORADOR';
+  const esLider = rolEfectivo === 'LIDER';
+  const esAdminDO = rolEfectivo === 'ADMIN_DO';
+  const esSistemas = rolEfectivo === 'SISTEMAS' || rolEfectivo === 'SUPERADMIN';
+
+  // Reglas de renderizado condicional por rol:
+  // - COLABORADOR: Solo ve [Mi Portal]
+  // - LIDER: Solo ve [Mi Portal] y [Equipo ▾]
+  // - ADMIN_DO: Ve [Mi Portal], [Gestión DO ▾] y [Reportes]
+  // - SISTEMAS: Ve todos los menús de forma compacta (o según el rol simulado en "Vista Actual")
+  const mostrarEquipo = esLider || esSistemas;
+  const mostrarGestionDO = esAdminDO || esSistemas;
+  const mostrarReportes = esAdminDO || esSistemas;
+
   const roleBadgeColor = {
     'COLABORADOR': 'bg-emerald-100 text-emerald-800 border-emerald-300',
     'LIDER': 'bg-amber-100 text-amber-800 border-amber-300',
     'ADMIN_DO': 'bg-blue-100 text-blue-800 border-blue-300',
     'SISTEMAS': 'bg-purple-100 text-purple-800 border-purple-300',
     'SUPERADMIN': 'bg-purple-100 text-purple-800 border-purple-300'
-  }[activeRoleView || currentUser?.rolApp || 'COLABORADOR'];
+  }[rolEfectivo];
 
   const roleLabel = {
     'COLABORADOR': 'Colaborador',
@@ -57,178 +91,299 @@ export default function Navbar({
     'ADMIN_DO': 'Desarrollo Org.',
     'SISTEMAS': 'Sistemas (TI)',
     'SUPERADMIN': 'Sistemas (TI)'
-  }[activeRoleView || currentUser?.rolApp || 'COLABORADOR'];
+  }[rolEfectivo];
+
+  const esEquipoActivo = activeTab === 'lider' || activeTab === 'mi-equipo';
+  const esGestionDOActivo = activeTab === 'admin' || activeTab === 'colaboradores' || activeTab === 'admin-do' || activeTab === 'sistemas';
 
   return (
     <header className="sticky top-0 z-40 bg-white border-b border-slate-200 shadow-xs">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex items-center justify-between h-16">
           
-          {/* Logo Oficial & Marca Institucional Grupo JAMA */}
-          <div className="flex items-center gap-3">
-            <img
-              src={logoJama}
-              alt="Grupo JAMA"
-              className="h-9 w-auto object-contain select-none"
-              style={{ aspectRatio: '192 / 48' }}
-            />
-            <div className="hidden sm:block border-l border-slate-200 pl-3">
-              <div className="flex items-center gap-2">
+          {/* 1. SECCIÓN IZQUIERDA: Logotipo Oficial Grupo JAMA con mr-6 adecuado */}
+          <div className="flex items-center mr-6 shrink-0">
+            <div className="flex items-center gap-3">
+              <img
+                src={logoJama}
+                alt="Grupo JAMA"
+                className="h-8 w-auto object-contain select-none"
+                style={{ aspectRatio: '192 / 48' }}
+              />
+              <div className="hidden lg:block border-l border-slate-200 pl-3">
                 <span className="text-[10px] px-2 py-0.5 rounded-full bg-slate-100 font-bold text-slate-600 border border-slate-200 uppercase">
-                  On-Premise LAN
+                  DO • LAN
                 </span>
+                <p className="text-[11px] text-slate-500 font-medium leading-tight">Control de Vacaciones</p>
               </div>
-              <p className="text-[11px] text-slate-500 font-medium">Control de Vacaciones • DO</p>
             </div>
           </div>
 
-          {/* Navegación por Pestañas según Rol Activo (o Simulado) */}
-          <nav className="hidden md:flex items-center gap-1 bg-slate-100 p-1 rounded-xl border border-slate-200">
+          {/* 2. SECCIÓN CENTRAL: Enlaces y Dropdowns de Navegación Compactos (Desktop) */}
+          <nav className="hidden md:flex items-center gap-1.5 flex-1 justify-start">
             
-            {/* Opción Portal Colaborador / Mis Vacaciones */}
+            {/* [Mi Portal] -> Enlace directo a /portal */}
             <button
-              onClick={() => onTabChange('colaborador')}
-              className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
+              onClick={() => {
+                onTabChange('colaborador');
+                cerrarTodosDropdowns();
+              }}
+              className={`flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold transition-all cursor-pointer whitespace-nowrap ${
                 activeTab === 'colaborador'
-                  ? 'bg-white text-slate-900 shadow-xs'
-                  : 'text-slate-600 hover:text-slate-900'
+                  ? 'bg-blue-50 text-blue-700 font-bold shadow-2xs border border-blue-200/80'
+                  : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100/70'
               }`}
             >
-              <CalendarCheck className="w-4 h-4 text-emerald-600" />
-              {activeRoleView === 'LIDER' ? 'Mis Vacaciones' : 'Portal Colaborador'}
+              <CalendarCheck className={`w-4 h-4 ${activeTab === 'colaborador' ? 'text-blue-600' : 'text-slate-400'}`} />
+              <span>Mi Portal</span>
             </button>
 
-            {/* Opción Bandeja del Líder / Aprobaciones */}
-            {(activeRoleView === 'LIDER' || activeRoleView === 'SUPERADMIN' || activeRoleView === 'SISTEMAS') && (
-              <button
-                onClick={() => onTabChange('lider')}
-                className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
-                  activeTab === 'lider'
-                    ? 'bg-white text-slate-900 shadow-xs'
-                    : 'text-slate-600 hover:text-slate-900'
-                }`}
-              >
-                <UserCheck className="w-4 h-4 text-amber-600" />
-                {activeRoleView === 'LIDER' ? 'Aprobaciones de Equipo' : 'Bandeja del Líder'}
-              </button>
+            {/* [Equipo ▾] -> Dropdown para LIDER y SISTEMAS */}
+            {mostrarEquipo && (
+              <div className="relative" ref={equipoDropdownRef}>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowEquipoDropdown(!showEquipoDropdown);
+                    setShowGestionDropdown(false);
+                    setShowRoleDropdown(false);
+                    setShowUserDropdown(false);
+                  }}
+                  className={`flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold transition-all cursor-pointer whitespace-nowrap ${
+                    esEquipoActivo
+                      ? 'bg-amber-50 text-amber-900 font-bold shadow-2xs border border-amber-200/80'
+                      : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100/70'
+                  }`}
+                >
+                  <Users className={`w-4 h-4 ${esEquipoActivo ? 'text-amber-600' : 'text-slate-400'}`} />
+                  <span>Equipo</span>
+                  <ChevronDown className={`w-3.5 h-3.5 transition-transform duration-200 ${showEquipoDropdown ? 'rotate-180' : ''}`} />
+                </button>
+
+                {showEquipoDropdown && (
+                  <div className="absolute left-0 mt-2 w-72 bg-white rounded-2xl shadow-xl border border-slate-200 py-1.5 z-50 animate-in fade-in zoom-in-95 duration-100">
+                    <div className="px-3.5 py-1.5 border-b border-slate-100 text-[10px] font-bold text-slate-400 uppercase tracking-wider">
+                      Módulo de Liderazgo y Equipo
+                    </div>
+                    
+                    {/* Opción: Bandeja de Aprobaciones (/lider/aprobaciones) */}
+                    <button
+                      onClick={() => {
+                        onTabChange('lider');
+                        setShowEquipoDropdown(false);
+                      }}
+                      className={`w-full text-left px-3.5 py-2.5 hover:bg-slate-50 flex items-center justify-between transition cursor-pointer ${
+                        activeTab === 'lider' ? 'bg-amber-50/70 text-amber-950 font-bold' : 'text-slate-700'
+                      }`}
+                    >
+                      <div className="flex items-center gap-2.5">
+                        <div className="p-1.5 bg-amber-100 text-amber-700 rounded-lg">
+                          <UserCheck className="w-4 h-4" />
+                        </div>
+                        <div>
+                          <div className="text-xs font-bold text-slate-800">Bandeja de Aprobaciones</div>
+                          <div className="text-[11px] text-slate-400">Solicitudes pendientes por autorizar</div>
+                        </div>
+                      </div>
+                      {activeTab === 'lider' && <Check className="w-4 h-4 text-amber-600" />}
+                    </button>
+
+                    {/* Opción: Catálogo de Mi Equipo (/lider/mi-equipo) */}
+                    <button
+                      onClick={() => {
+                        onTabChange('mi-equipo');
+                        setShowEquipoDropdown(false);
+                      }}
+                      className={`w-full text-left px-3.5 py-2.5 hover:bg-slate-50 flex items-center justify-between transition cursor-pointer ${
+                        activeTab === 'mi-equipo' ? 'bg-amber-50/70 text-amber-950 font-bold' : 'text-slate-700'
+                      }`}
+                    >
+                      <div className="flex items-center gap-2.5">
+                        <div className="p-1.5 bg-blue-100 text-blue-700 rounded-lg">
+                          <Users className="w-4 h-4" />
+                        </div>
+                        <div>
+                          <div className="text-xs font-bold text-slate-800">Catálogo de Mi Equipo</div>
+                          <div className="text-[11px] text-slate-400">Colaboradores a cargo y saldos</div>
+                        </div>
+                      </div>
+                      {activeTab === 'mi-equipo' && <Check className="w-4 h-4 text-blue-600" />}
+                    </button>
+                  </div>
+                )}
+              </div>
             )}
 
-            {/* Opción Mi Equipo (LÍDER, SISTEMAS, SUPERADMIN) */}
-            {(activeRoleView === 'LIDER' || activeRoleView === 'SUPERADMIN' || activeRoleView === 'SISTEMAS') && (
-              <button
-                onClick={() => onTabChange('mi-equipo')}
-                className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
-                  activeTab === 'mi-equipo'
-                    ? 'bg-white text-slate-900 shadow-xs'
-                    : 'text-slate-600 hover:text-slate-900'
-                }`}
-              >
-                <Users className="w-4 h-4 text-blue-600" />
-                <span>Mi Equipo</span>
-              </button>
+            {/* [Gestión DO ▾] -> Dropdown para ADMIN_DO y SISTEMAS */}
+            {mostrarGestionDO && (
+              <div className="relative" ref={gestionDropdownRef}>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowGestionDropdown(!showGestionDropdown);
+                    setShowEquipoDropdown(false);
+                    setShowRoleDropdown(false);
+                    setShowUserDropdown(false);
+                  }}
+                  className={`flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold transition-all cursor-pointer whitespace-nowrap ${
+                    esGestionDOActivo
+                      ? 'bg-blue-50 text-blue-800 font-bold shadow-2xs border border-blue-200/80'
+                      : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100/70'
+                  }`}
+                >
+                  <ShieldCheck className={`w-4 h-4 ${esGestionDOActivo ? 'text-blue-600' : 'text-slate-400'}`} />
+                  <span>Gestión DO</span>
+                  <ChevronDown className={`w-3.5 h-3.5 transition-transform duration-200 ${showGestionDropdown ? 'rotate-180' : ''}`} />
+                </button>
+
+                {showGestionDropdown && (
+                  <div className="absolute left-0 mt-2 w-80 bg-white rounded-2xl shadow-xl border border-slate-200 py-1.5 z-50 animate-in fade-in zoom-in-95 duration-100">
+                    <div className="px-3.5 py-1.5 border-b border-slate-100 text-[10px] font-bold text-slate-400 uppercase tracking-wider">
+                      Desarrollo Organizacional y Administración
+                    </div>
+                    
+                    {/* Opción 1: Gestión Global de Vacaciones (/admin/gestion-vacaciones) */}
+                    <button
+                      onClick={() => {
+                        onTabChange('admin');
+                        setShowGestionDropdown(false);
+                      }}
+                      className={`w-full text-left px-3.5 py-2.5 hover:bg-slate-50 flex items-center justify-between transition cursor-pointer ${
+                        activeTab === 'admin' ? 'bg-blue-50/70 text-blue-950 font-bold' : 'text-slate-700'
+                      }`}
+                    >
+                      <div className="flex items-center gap-2.5">
+                        <div className="p-1.5 bg-blue-100 text-blue-700 rounded-lg">
+                          <ShieldCheck className="w-4 h-4" />
+                        </div>
+                        <div>
+                          <div className="text-xs font-bold text-slate-800">Gestión Global de Vacaciones</div>
+                          <div className="text-[11px] text-slate-400">Bandeja general, VoBo DO y períodos</div>
+                        </div>
+                      </div>
+                      {activeTab === 'admin' && <Check className="w-4 h-4 text-blue-600" />}
+                    </button>
+
+                    {/* Opción 2: Catálogo General de Colaboradores (/admin/colaboradores) */}
+                    <button
+                      onClick={() => {
+                        onTabChange('colaboradores');
+                        setShowGestionDropdown(false);
+                      }}
+                      className={`w-full text-left px-3.5 py-2.5 hover:bg-slate-50 flex items-center justify-between transition cursor-pointer ${
+                        activeTab === 'colaboradores' ? 'bg-indigo-50/70 text-indigo-950 font-bold' : 'text-slate-700'
+                      }`}
+                    >
+                      <div className="flex items-center gap-2.5">
+                        <div className="p-1.5 bg-indigo-100 text-indigo-700 rounded-lg">
+                          <Users className="w-4 h-4" />
+                        </div>
+                        <div>
+                          <div className="text-xs font-bold text-slate-800">Catálogo General de Colaboradores</div>
+                          <div className="text-[11px] text-slate-400">Fichas, datos CONTPAQi y complementarios</div>
+                        </div>
+                      </div>
+                      {activeTab === 'colaboradores' && <Check className="w-4 h-4 text-indigo-600" />}
+                    </button>
+
+                    {/* Opción 3: Administración de Roles DO (/admin/roles-do) */}
+                    <button
+                      onClick={() => {
+                        onTabChange('admin-do');
+                        setShowGestionDropdown(false);
+                      }}
+                      className={`w-full text-left px-3.5 py-2.5 hover:bg-slate-50 flex items-center justify-between transition cursor-pointer ${
+                        activeTab === 'admin-do' ? 'bg-cyan-50/70 text-cyan-950 font-bold' : 'text-slate-700'
+                      }`}
+                    >
+                      <div className="flex items-center gap-2.5">
+                        <div className="p-1.5 bg-cyan-100 text-cyan-700 rounded-lg">
+                          <UserPlus className="w-4 h-4" />
+                        </div>
+                        <div>
+                          <div className="text-xs font-bold text-slate-800">Administración de Roles DO</div>
+                          <div className="text-[11px] text-slate-400">Asignación y permisos de administradores</div>
+                        </div>
+                      </div>
+                      {activeTab === 'admin-do' && <Check className="w-4 h-4 text-cyan-600" />}
+                    </button>
+
+                    {/* Opción exclusiva para SISTEMAS: Panel de Auditoría & TI */}
+                    {esSistemas && (
+                      <>
+                        <div className="my-1 border-t border-slate-100"></div>
+                        <button
+                          onClick={() => {
+                            onTabChange('sistemas');
+                            setShowGestionDropdown(false);
+                          }}
+                          className={`w-full text-left px-3.5 py-2.5 hover:bg-slate-50 flex items-center justify-between transition cursor-pointer ${
+                            activeTab === 'sistemas' ? 'bg-purple-50/70 text-purple-950 font-bold' : 'text-slate-700'
+                          }`}
+                        >
+                          <div className="flex items-center gap-2.5">
+                            <div className="p-1.5 bg-purple-100 text-purple-700 rounded-lg">
+                              <Terminal className="w-4 h-4" />
+                            </div>
+                            <div>
+                              <div className="text-xs font-bold text-slate-800">Panel de Auditoría & TI</div>
+                              <div className="text-[11px] text-slate-400">Sincronización Nóminas y base de datos</div>
+                            </div>
+                          </div>
+                          {activeTab === 'sistemas' && <Check className="w-4 h-4 text-purple-600" />}
+                        </button>
+                      </>
+                    )}
+                  </div>
+                )}
+              </div>
             )}
 
-            {/* Opción Panel DO (Gestión Global de Vacaciones) */}
-            {(activeRoleView === 'ADMIN_DO' || activeRoleView === 'SUPERADMIN' || activeRoleView === 'SISTEMAS') && (
+            {/* [Reportes] -> Enlace directo a /reportes para ADMIN_DO y SISTEMAS */}
+            {mostrarReportes && (
               <button
-                onClick={() => onTabChange('admin')}
-                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
-                  activeTab === 'admin'
-                    ? 'bg-white text-slate-900 shadow-xs'
-                    : 'text-slate-600 hover:text-slate-900'
-                }`}
-              >
-                <ShieldCheck className="w-4 h-4 text-blue-600" />
-                <span className="hidden xl:inline">Gestión Global DO</span>
-                <span className="xl:hidden">Gestión</span>
-              </button>
-            )}
-
-            {/* Opción Catálogo Administrativo de Colaboradores */}
-            {(activeRoleView === 'ADMIN_DO' || activeRoleView === 'SUPERADMIN' || activeRoleView === 'SISTEMAS') && (
-              <button
-                onClick={() => onTabChange('colaboradores')}
-                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
-                  activeTab === 'colaboradores'
-                    ? 'bg-white text-slate-900 shadow-xs'
-                    : 'text-slate-600 hover:text-slate-900'
-                }`}
-              >
-                <Users className="w-4 h-4 text-indigo-600" />
-                <span className="hidden xl:inline">Catálogo Colaboradores</span>
-                <span className="xl:hidden">Colaboradores</span>
-              </button>
-            )}
-
-            {/* Opción Gestión de Roles ADMIN_DO */}
-            {(activeRoleView === 'ADMIN_DO' || activeRoleView === 'SUPERADMIN' || activeRoleView === 'SISTEMAS') && (
-              <button
-                onClick={() => onTabChange('admin-do')}
-                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
-                  activeTab === 'admin-do'
-                    ? 'bg-white text-slate-900 shadow-xs'
-                    : 'text-slate-600 hover:text-slate-900'
-                }`}
-              >
-                <UserPlus className="w-4 h-4 text-cyan-600" />
-                <span className="hidden xl:inline">Roles ADMIN_DO</span>
-                <span className="xl:hidden">Roles DO</span>
-              </button>
-            )}
-
-            {/* Opción Módulo de Reportes y Analítica (ADMIN_DO, SISTEMAS, SUPERADMIN) */}
-            {(activeRoleView === 'ADMIN_DO' || activeRoleView === 'SUPERADMIN' || activeRoleView === 'SISTEMAS') && (
-              <button
-                onClick={() => onTabChange('reportes')}
-                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
+                onClick={() => {
+                  onTabChange('reportes');
+                  cerrarTodosDropdowns();
+                }}
+                className={`flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold transition-all cursor-pointer whitespace-nowrap ${
                   activeTab === 'reportes'
-                    ? 'bg-white text-emerald-950 shadow-xs font-bold'
-                    : 'text-slate-600 hover:text-slate-900'
+                    ? 'bg-emerald-50 text-emerald-800 font-bold shadow-2xs border border-emerald-200/80'
+                    : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100/70'
                 }`}
               >
-                <FileSpreadsheet className="w-4 h-4 text-emerald-600" />
-                <span className="hidden xl:inline">Reportes & Analítica</span>
-                <span className="xl:hidden">Reportes</span>
+                <FileSpreadsheet className={`w-4 h-4 ${activeTab === 'reportes' ? 'text-emerald-600' : 'text-slate-400'}`} />
+                <span>Reportes</span>
               </button>
             )}
 
-            {/* Opción Exclusiva Rol SISTEMAS: Panel Sistemas & Auditoría */}
-            {(activeRoleView === 'SUPERADMIN' || activeRoleView === 'SISTEMAS') && (
-              <button
-                onClick={() => onTabChange('sistemas')}
-                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
-                  activeTab === 'sistemas'
-                    ? 'bg-white text-purple-900 shadow-xs font-bold'
-                    : 'text-purple-700 hover:text-purple-900'
-                }`}
-              >
-                <Terminal className="w-4 h-4 text-purple-600" />
-                <span className="hidden xl:inline">Panel Sistemas / TI</span>
-                <span className="xl:hidden">Sistemas</span>
-              </button>
-            )}
           </nav>
 
-          {/* Área Derecha: Role Switcher (Solo SuperAdmin) y Perfil del Usuario */}
-          <div className="flex items-center gap-2.5">
+          {/* 3. SECCIÓN DERECHA: Badge Vista Actual + Tarjeta de Usuario con Avatar */}
+          <div className="flex items-center gap-2.5 shrink-0 ml-auto">
             
             {/* CONMUTADOR DE ROLES EXCLUSIVO PARA ROL SISTEMAS (SuperAdmin) */}
             {isRealSuperAdmin && (
               <div className="relative" ref={roleDropdownRef}>
                 <button
                   type="button"
-                  onClick={() => setShowRoleDropdown(!showRoleDropdown)}
-                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl border text-xs font-bold transition shadow-xs cursor-pointer ${
+                  onClick={() => {
+                    setShowRoleDropdown(!showRoleDropdown);
+                    setShowUserDropdown(false);
+                    setShowEquipoDropdown(false);
+                    setShowGestionDropdown(false);
+                  }}
+                  className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl border text-xs font-bold transition shadow-2xs cursor-pointer max-w-[170px] sm:max-w-[210px] ${
                     activeRoleView === 'SISTEMAS' || activeRoleView === 'SUPERADMIN'
-                      ? 'bg-purple-50 text-purple-900 border-purple-300 hover:bg-purple-100'
-                      : 'bg-amber-100 text-amber-950 border-amber-400 hover:bg-amber-200 animate-pulse'
+                      ? 'bg-purple-50 text-purple-900 border-purple-200 hover:bg-purple-100/80'
+                      : 'bg-amber-100 text-amber-950 border-amber-300 hover:bg-amber-200'
                   }`}
                   title="Conmutador de Vista de Roles (SuperAdmin)"
                 >
-                  <Eye className="w-3.5 h-3.5 text-purple-700" />
-                  <span className="hidden sm:inline">Vista Actual:</span>
-                  <span className="font-extrabold underline">{roleLabel}</span>
-                  <ChevronDown className="w-3 h-3 ml-0.5 opacity-70" />
+                  <Eye className="w-3.5 h-3.5 text-purple-700 shrink-0" />
+                  <span className="hidden sm:inline text-slate-500 font-medium">Vista:</span>
+                  <span className="font-extrabold truncate">{roleLabel}</span>
+                  <ChevronDown className="w-3 h-3 ml-0.5 opacity-60 shrink-0" />
                 </button>
 
                 {showRoleDropdown && (
@@ -263,7 +418,7 @@ export default function Navbar({
                                 <Check className="w-3.5 h-3.5 text-purple-700" />
                               )}
                             </div>
-                            <p className="text-[11px] text-slate-500">Acceso total, auditoría, BD, sincronización y los 4 módulos</p>
+                            <p className="text-[11px] text-slate-500">Acceso total, auditoría, BD y sincronización</p>
                           </div>
                         </div>
                       </button>
@@ -285,7 +440,7 @@ export default function Navbar({
                               <span>Simular: ADMIN_DO (Desarrollo Org.)</span>
                               {activeRoleView === 'ADMIN_DO' && <Check className="w-3.5 h-3.5 text-blue-700" />}
                             </div>
-                            <p className="text-[11px] text-slate-500">Gestión global de las 8 empresas, VoBo DO y festivos</p>
+                            <p className="text-[11px] text-slate-500">Gestión global de vacaciones, catálogo y reportes</p>
                           </div>
                         </div>
                       </button>
@@ -312,7 +467,7 @@ export default function Navbar({
                               <span>Simular: LÍDER / JEFE DIRECTO</span>
                               {activeRoleView === 'LIDER' && <Check className="w-3.5 h-3.5 text-amber-700" />}
                             </div>
-                            <p className="text-[11px] text-slate-500">Muestra Ulises Garcés (850): bandeja de aprobación y equipo a cargo</p>
+                            <p className="text-[11px] text-slate-500">Bandeja de aprobaciones y catálogo de equipo a cargo</p>
                           </div>
                         </div>
                       </button>
@@ -339,7 +494,7 @@ export default function Navbar({
                               <span>Simular: COLABORADOR (Base)</span>
                               {activeRoleView === 'COLABORADOR' && <Check className="w-3.5 h-3.5 text-emerald-700" />}
                             </div>
-                            <p className="text-[11px] text-slate-500">Muestra Gonzalo Ramírez (1077): saldo LFT individual y nueva solicitud</p>
+                            <p className="text-[11px] text-slate-500">Saldo individual LFT y registro de solicitudes</p>
                           </div>
                         </div>
                       </button>
@@ -347,7 +502,7 @@ export default function Navbar({
 
                     <div className="px-4 py-2 bg-slate-50 border-t border-slate-100 text-[10px] text-slate-500 flex items-center justify-between">
                       <span>SuperAdmin TI: Bypass Universal</span>
-                      <span className="font-semibold text-purple-700">Headers X-Simulate Activos</span>
+                      <span className="font-semibold text-purple-700">Headers X-Simulate</span>
                     </div>
                   </div>
                 )}
@@ -358,26 +513,28 @@ export default function Navbar({
             <div className="relative" ref={userDropdownRef}>
               <button
                 type="button"
-                onClick={() => setShowUserDropdown(!showUserDropdown)}
-                className="flex items-center gap-2.5 p-1.5 pr-2.5 rounded-xl border border-slate-200 hover:border-slate-300 hover:bg-slate-50 transition text-left cursor-pointer"
+                onClick={() => {
+                  setShowUserDropdown(!showUserDropdown);
+                  setShowRoleDropdown(false);
+                  setShowEquipoDropdown(false);
+                  setShowGestionDropdown(false);
+                }}
+                className="flex items-center gap-2 p-1.5 pr-2.5 rounded-xl border border-slate-200 hover:border-slate-300 hover:bg-slate-50 transition text-left cursor-pointer"
               >
-                <div className="w-8 h-8 rounded-lg bg-slate-900 text-white flex items-center justify-center font-bold text-xs uppercase shadow-xs">
+                <div className="w-8 h-8 rounded-lg bg-slate-900 text-white flex items-center justify-center font-bold text-xs uppercase shadow-xs shrink-0">
                   {currentUser?.nombreCompleto ? currentUser.nombreCompleto.substring(0, 2) : 'EM'}
                 </div>
-                <div className="hidden sm:block">
+                <div className="hidden sm:block max-w-[130px] md:max-w-[170px]">
                   <div className="flex items-center gap-1.5">
-                    <span className="text-xs font-bold text-slate-800 truncate max-w-[130px]">
+                    <span className="text-xs font-bold text-slate-800 truncate block">
                       {currentUser?.nombreCompleto || 'Colaborador'}
                     </span>
-                    <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded border uppercase ${roleBadgeColor}`}>
-                      {roleLabel}
-                    </span>
                   </div>
-                  <p className="text-[11px] text-slate-400 truncate max-w-[150px]">
+                  <p className="text-[10px] text-slate-400 truncate block">
                     {currentUser?.empresa || currentUser?.aliasEmpresa || 'Grupo JAMA'}
                   </p>
                 </div>
-                <ChevronDown className="w-3.5 h-3.5 text-slate-400 ml-0.5" />
+                <ChevronDown className="w-3.5 h-3.5 text-slate-400 ml-0.5 shrink-0" />
               </button>
 
               {/* Dropdown del Avatar del Usuario */}
@@ -427,9 +584,144 @@ export default function Navbar({
               )}
             </div>
 
+            {/* Botón Hamburger para Móviles */}
+            <div className="md:hidden flex items-center">
+              <button
+                type="button"
+                onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
+                className="p-2 rounded-xl text-slate-500 hover:text-slate-800 hover:bg-slate-100 transition cursor-pointer"
+              >
+                {mobileMenuOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
+              </button>
+            </div>
+
           </div>
 
         </div>
+
+        {/* 4. MENÚ MÓVIL DESPLEGABLE */}
+        {mobileMenuOpen && (
+          <div className="md:hidden py-3 border-t border-slate-100 space-y-1 animate-in fade-in slide-in-from-top-2 duration-150">
+            <button
+              onClick={() => {
+                onTabChange('colaborador');
+                setMobileMenuOpen(false);
+              }}
+              className={`w-full text-left px-3 py-2 rounded-xl text-xs font-semibold flex items-center gap-2 ${
+                activeTab === 'colaborador' ? 'bg-blue-50 text-blue-700 font-bold' : 'text-slate-700'
+              }`}
+            >
+              <CalendarCheck className="w-4 h-4 text-blue-600" />
+              <span>Mi Portal (Mis Vacaciones)</span>
+            </button>
+
+            {mostrarEquipo && (
+              <>
+                <div className="px-3 pt-2 pb-1 text-[10px] font-bold text-slate-400 uppercase tracking-wider">
+                  Equipo
+                </div>
+                <button
+                  onClick={() => {
+                    onTabChange('lider');
+                    setMobileMenuOpen(false);
+                  }}
+                  className={`w-full text-left px-3 py-2 rounded-xl text-xs font-semibold flex items-center gap-2 pl-6 ${
+                    activeTab === 'lider' ? 'bg-amber-50 text-amber-900 font-bold' : 'text-slate-700'
+                  }`}
+                >
+                  <UserCheck className="w-4 h-4 text-amber-600" />
+                  <span>Bandeja de Aprobaciones</span>
+                </button>
+                <button
+                  onClick={() => {
+                    onTabChange('mi-equipo');
+                    setMobileMenuOpen(false);
+                  }}
+                  className={`w-full text-left px-3 py-2 rounded-xl text-xs font-semibold flex items-center gap-2 pl-6 ${
+                    activeTab === 'mi-equipo' ? 'bg-amber-50 text-amber-900 font-bold' : 'text-slate-700'
+                  }`}
+                >
+                  <Users className="w-4 h-4 text-blue-600" />
+                  <span>Catálogo de Mi Equipo</span>
+                </button>
+              </>
+            )}
+
+            {mostrarGestionDO && (
+              <>
+                <div className="px-3 pt-2 pb-1 text-[10px] font-bold text-slate-400 uppercase tracking-wider">
+                  Gestión DO
+                </div>
+                <button
+                  onClick={() => {
+                    onTabChange('admin');
+                    setMobileMenuOpen(false);
+                  }}
+                  className={`w-full text-left px-3 py-2 rounded-xl text-xs font-semibold flex items-center gap-2 pl-6 ${
+                    activeTab === 'admin' ? 'bg-blue-50 text-blue-800 font-bold' : 'text-slate-700'
+                  }`}
+                >
+                  <ShieldCheck className="w-4 h-4 text-blue-600" />
+                  <span>Gestión Global de Vacaciones</span>
+                </button>
+                <button
+                  onClick={() => {
+                    onTabChange('colaboradores');
+                    setMobileMenuOpen(false);
+                  }}
+                  className={`w-full text-left px-3 py-2 rounded-xl text-xs font-semibold flex items-center gap-2 pl-6 ${
+                    activeTab === 'colaboradores' ? 'bg-indigo-50 text-indigo-800 font-bold' : 'text-slate-700'
+                  }`}
+                >
+                  <Users className="w-4 h-4 text-indigo-600" />
+                  <span>Catálogo General de Colaboradores</span>
+                </button>
+                <button
+                  onClick={() => {
+                    onTabChange('admin-do');
+                    setMobileMenuOpen(false);
+                  }}
+                  className={`w-full text-left px-3 py-2 rounded-xl text-xs font-semibold flex items-center gap-2 pl-6 ${
+                    activeTab === 'admin-do' ? 'bg-cyan-50 text-cyan-800 font-bold' : 'text-slate-700'
+                  }`}
+                >
+                  <UserPlus className="w-4 h-4 text-cyan-600" />
+                  <span>Administración de Roles DO</span>
+                </button>
+                {esSistemas && (
+                  <button
+                    onClick={() => {
+                      onTabChange('sistemas');
+                      setMobileMenuOpen(false);
+                    }}
+                    className={`w-full text-left px-3 py-2 rounded-xl text-xs font-semibold flex items-center gap-2 pl-6 ${
+                      activeTab === 'sistemas' ? 'bg-purple-50 text-purple-900 font-bold' : 'text-slate-700'
+                    }`}
+                  >
+                    <Terminal className="w-4 h-4 text-purple-600" />
+                    <span>Panel Sistemas & TI</span>
+                  </button>
+                )}
+              </>
+            )}
+
+            {mostrarReportes && (
+              <button
+                onClick={() => {
+                  onTabChange('reportes');
+                  setMobileMenuOpen(false);
+                }}
+                className={`w-full text-left px-3 py-2 rounded-xl text-xs font-semibold flex items-center gap-2 ${
+                  activeTab === 'reportes' ? 'bg-emerald-50 text-emerald-800 font-bold' : 'text-slate-700'
+                }`}
+              >
+                <FileSpreadsheet className="w-4 h-4 text-emerald-600" />
+                <span>Reportes & Analítica</span>
+              </button>
+            )}
+          </div>
+        )}
+
       </div>
     </header>
   );

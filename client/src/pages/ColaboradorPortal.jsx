@@ -8,12 +8,33 @@ import StatCards from '../components/StatCards';
 import KardexVacaciones from '../components/KardexVacaciones';
 import ModalNuevaSolicitud from '../components/ModalNuevaSolicitud';
 
+function formatFechaUI(fecha) {
+  if (!fecha) return '—';
+  try {
+    const s = String(fecha).substring(0, 10);
+    const parts = s.split('-');
+    if (parts.length === 3 && parts[0].length === 4) {
+      const [y, m, d] = parts;
+      const meses = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic'];
+      const mesNombre = meses[parseInt(m, 10) - 1] || m;
+      return `${d} ${mesNombre} ${y}`;
+    }
+    const d = new Date(fecha);
+    return isNaN(d.getTime()) ? '—' : d.toLocaleDateString('es-MX', { day: '2-digit', month: 'short', year: 'numeric' });
+  } catch (e) {
+    return '—';
+  }
+}
+
 export default function ColaboradorPortal({ currentUser }) {
   const [saldoData, setSaldoData] = useState(null);
   const [solicitudes, setSolicitudes] = useState([]);
   const [loading, setLoading] = useState(true);
   const [modalAbierto, setModalAbierto] = useState(false);
   const [subTab, setSubTab] = useState('solicitudes'); // 'solicitudes', 'kardex'
+  const [descargandoId, setDescargandoId] = useState(null);
+  const [toastError, setToastError] = useState('');
+  const [toastSuccess, setToastSuccess] = useState('');
 
   useEffect(() => {
     cargarDatos();
@@ -28,11 +49,32 @@ export default function ColaboradorPortal({ currentUser }) {
       ]);
 
       if (saldoRes.success) setSaldoData(saldoRes);
-      if (solRes.success) setSolicitudes(solRes.data);
+      if (solRes.success) setSolicitudes(solRes.data || []);
     } catch (err) {
       console.error('Error cargando portal colaborador:', err);
     } finally {
       setLoading(false);
+    }
+  }
+
+  async function handleDescargarPdf(idSolicitud, folio) {
+    const id = idSolicitud || folio;
+    if (!id) {
+      setToastError('No se pudo identificar la solicitud para generar el Formato FDO-84.');
+      setTimeout(() => setToastError(''), 5000);
+      return;
+    }
+
+    try {
+      setDescargandoId(idSolicitud);
+      setToastError('');
+      await api.descargarPdfFdo84(idSolicitud, folio);
+    } catch (err) {
+      console.error('[Error generando PDF FDO-84]', err);
+      setToastError(err.message || 'No se pudo generar o descargar el Formato Oficial FDO-84.');
+      setTimeout(() => setToastError(''), 6000);
+    } finally {
+      setDescargandoId(null);
     }
   }
 
@@ -148,6 +190,21 @@ export default function ColaboradorPortal({ currentUser }) {
         </div>
 
         <div className="p-6">
+          {/* Toast / Alerta de Error en PDF u Operación */}
+          {toastError && (
+            <div className="mb-4 flex items-start gap-2.5 p-3.5 rounded-2xl bg-rose-50 border border-rose-200 text-rose-800 text-xs shadow-xs animate-in fade-in duration-200">
+              <AlertCircle className="w-4 h-4 text-rose-600 shrink-0 mt-0.5" />
+              <div className="flex-1 font-medium">{toastError}</div>
+              <button 
+                type="button" 
+                onClick={() => setToastError('')}
+                className="text-rose-500 hover:text-rose-700 font-bold ml-2 text-sm leading-none"
+              >
+                ×
+              </button>
+            </div>
+          )}
+
           {subTab === 'solicitudes' ? (
             <div>
               {solicitudes.length === 0 ? (
@@ -178,58 +235,80 @@ export default function ColaboradorPortal({ currentUser }) {
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-100">
-                      {solicitudes.map((s) => {
-                        const badge = estadoBadge[s.estado] || estadoBadge['PENDIENTE_LIDER'];
+                      {solicitudes.map((s, idx) => {
+                        const idSol = s.idSolicitud || s.IdSolicitud || s.id;
+                        const folio = s.folio || s.Folio || (idSol ? `VAC-${idSol}` : '—');
+                        const fechaInicio = s.fechaInicio || s.FechaInicio || '—';
+                        const fechaFin = s.fechaFin || s.FechaFin || '—';
+                        const totalDias = s.totalDiasLaborables ?? s.TotalDiasLaborables ?? s.diasHabiles ?? s.total_dias ?? 0;
+                        const fechaCreacion = s.fechaCreacion || s.FechaCreacion;
+                        const estado = s.estado || s.Estado || 'PENDIENTE_LIDER';
+                        const badge = estadoBadge[estado] || estadoBadge['PENDIENTE_LIDER'];
                         const Icon = badge.icon;
-                        const esCancelable = ['PENDIENTE_LIDER', 'PENDIENTE_DO'].includes(s.estado);
+                        const esCancelable = ['PENDIENTE_LIDER', 'PENDIENTE_DO'].includes(estado);
+                        const motivoRechazo = s.motivoRechazo || s.MotivoRechazo;
+                        const motivoComentarios = s.motivoComentarios || s.MotivoComentarios;
 
                         return (
-                          <tr key={s.idSolicitud} className="hover:bg-slate-50/70 transition-colors">
+                          <tr key={idSol || idx} className="hover:bg-slate-50/70 transition-colors">
                             <td className="py-3.5 px-3 font-mono font-bold text-slate-900">
-                              {s.folio}
+                              {folio}
                             </td>
                             <td className="py-3.5 px-3">
-                              <span className="font-bold text-slate-800">{s.fechaInicio}</span>
+                              <span className="font-bold text-slate-800">{fechaInicio}</span>
                               <span className="text-slate-400 mx-1.5">al</span>
-                              <span className="font-bold text-slate-800">{s.fechaFin}</span>
-                              {s.motivoComentarios && (
+                              <span className="font-bold text-slate-800">{fechaFin}</span>
+                              {motivoComentarios && (
                                 <p className="text-[11px] text-slate-500 truncate max-w-xs mt-0.5">
-                                  {s.motivoComentarios}
+                                  {motivoComentarios}
                                 </p>
                               )}
                             </td>
                             <td className="py-3.5 px-3 text-center">
                               <span className="inline-block px-2.5 py-0.5 rounded-lg font-black text-blue-700 bg-blue-50 border border-blue-100">
-                                {s.totalDiasLaborables} días
+                                {totalDias} días
                               </span>
                             </td>
                             <td className="py-3.5 px-3 text-slate-500">
-                              {new Date(s.fechaCreacion).toLocaleDateString('es-MX', {
-                                day: '2-digit', month: 'short', year: 'numeric'
-                              })}
+                              {formatFechaUI(fechaCreacion)}
                             </td>
                             <td className="py-3.5 px-3">
                               <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-bold border ${badge.classes}`}>
                                 <Icon className="w-3.5 h-3.5" />
                                 {badge.label}
                               </span>
-                              {s.motivoRechazo && (
+                              {motivoRechazo && (
                                 <p className="text-[11px] text-rose-600 font-medium mt-1">
-                                  Motivo: {s.motivoRechazo}
+                                  Motivo: {motivoRechazo}
                                 </p>
                               )}
                             </td>
-                            <td className="py-3.5 px-3 text-right">
-                              {esCancelable ? (
+                            <td className="py-3.5 px-3 text-right whitespace-nowrap">
+                              <div className="flex items-center justify-end gap-1.5">
                                 <button
-                                  onClick={() => handleCancelar(s.idSolicitud)}
-                                  className="text-slate-400 hover:text-rose-600 text-xs font-semibold px-2 py-1 rounded-lg hover:bg-rose-50 transition-colors"
+                                  type="button"
+                                  onClick={() => handleDescargarPdf(idSol, folio)}
+                                  disabled={descargandoId === idSol}
+                                  title="Ver y Descargar Formato Oficial FDO-84 (PDF)"
+                                  className="flex items-center gap-1.5 px-2.5 py-1 text-xs font-semibold text-blue-700 bg-blue-50 hover:bg-blue-100 border border-blue-200/80 rounded-lg transition-colors cursor-pointer shadow-2xs disabled:opacity-50"
                                 >
-                                  Cancelar
+                                  {descargandoId === idSol ? (
+                                    <RefreshCw className="w-3.5 h-3.5 text-blue-600 animate-spin" />
+                                  ) : (
+                                    <FileText className="w-3.5 h-3.5 text-blue-600" />
+                                  )}
+                                  <span>{descargandoId === idSol ? 'Abriendo...' : 'Formato FDO-84'}</span>
                                 </button>
-                              ) : (
-                                <span className="text-slate-300 text-[11px] italic">Sin acciones</span>
-                              )}
+                                {esCancelable && (
+                                  <button
+                                    type="button"
+                                    onClick={() => handleCancelar(idSol)}
+                                    className="text-slate-400 hover:text-rose-600 text-xs font-semibold px-2 py-1 rounded-lg hover:bg-rose-50 transition-colors cursor-pointer"
+                                  >
+                                    Cancelar
+                                  </button>
+                                )}
+                              </div>
                             </td>
                           </tr>
                         );
@@ -253,6 +332,7 @@ export default function ColaboradorPortal({ currentUser }) {
         isOpen={modalAbierto}
         onClose={() => setModalAbierto(false)}
         saldoDisponible={saldoData?.resumen?.diasDisponibles || 0}
+        diasDescanso={saldoData?.colaborador?.diasDescanso || 'DOMINGO'}
         onSuccess={() => {
           cargarDatos();
         }}

@@ -69,15 +69,18 @@ const adminColaboradoresController = {
           e.AliasEmpresa AS Empresa, e.NombreBaseDatos,
           c.CodigoEmpleado, c.Subfijo, c.NombreCompleto,
           c.Nombre, c.ApellidoPaterno, c.ApellidoMaterno,
-          c.CURP, c.RFC, c.NSS, c.Email, c.Telefono,
+          c.CURP, c.RFC, c.NSS, c.Email, c.EmailCorporativo, c.Telefono,
           c.Sucursal, c.JornadaLaboralDias,
           d.IdDepartamento, d.Nombre AS Departamento,
           p.IdPuesto, p.Nombre AS Puesto,
           c.IdJefeDirecto, j.NombreCompleto AS JefeDirectoNombre,
+          c.IdAprobadorSegundo, j2.NombreCompleto AS SegundoAprobadorNombre,
           c.RolApp, c.Activo, c.EstatusNomina, c.FechaAlta, c.FechaReingreso,
           c.DiasDescanso, c.CentroCostos, c.TipoNomina,
+          c.FechaNacimiento, c.EstadoCivil, c.Nacionalidad, c.Escolaridad,
           c.AvisarEmergencia, c.ParentescoEmergencia, c.TelefonoEmergencia,
           c.TipoSangre, c.AlergiasPadecimientos,
+          fin.InstitucionBancaria, fin.NumeroCuenta, fin.ClabeInterbancaria,
           (SELECT COUNT(*) FROM dbo.ColaboradorHijos h WHERE h.IdColaborador = c.IdColaborador) AS TotalHijos,
           u.IdUsuario, u.Username, u.DebeCambiarPassword,
           u.Activo AS UsuarioActivo, u.UltimoAcceso
@@ -86,7 +89,9 @@ const adminColaboradoresController = {
         LEFT JOIN dbo.Departamentos d ON d.IdDepartamento = c.IdDepartamento
         LEFT JOIN dbo.Puestos p ON p.IdPuesto = c.IdPuesto
         LEFT JOIN dbo.Colaboradores j ON j.IdColaborador = c.IdJefeDirecto
+        LEFT JOIN dbo.Colaboradores j2 ON j2.IdColaborador = c.IdAprobadorSegundo
         LEFT JOIN dbo.UsuariosApp u ON u.IdColaborador = c.IdColaborador
+        LEFT JOIN dbo.ColaboradorDatosFinancieros fin ON fin.IdColaborador = c.IdColaborador
         ${whereSQL}
         ORDER BY c.ApellidoPaterno, c.Nombre;
       `;
@@ -119,6 +124,10 @@ const adminColaboradoresController = {
       const { id } = req.params;
       const {
         idJefeDirecto,
+        idAprobadorSegundo,
+        emailCorporativo,
+        email_corporativo,
+        EmailCorporativo,
         diasDescanso,
         rolApp,
         telefono,
@@ -145,10 +154,29 @@ const adminColaboradoresController = {
         return res.status(400).json({ error: 'Un colaborador no puede ser su propio jefe directo.' });
       }
 
+      // Validar segundo aprobador (no puede ser él mismo)
+      if (idAprobadorSegundo && Number(idAprobadorSegundo) === Number(id)) {
+        return res.status(400).json({ error: 'Un colaborador no puede ser su propio segundo aprobador.' });
+      }
+
+      let diasDescansoStr = 'DOMINGO';
+      if (Array.isArray(diasDescanso)) {
+        diasDescansoStr = diasDescanso.length > 0 ? diasDescanso.join(', ') : 'DOMINGO';
+      } else if (typeof diasDescanso === 'string' && diasDescanso.trim()) {
+        diasDescansoStr = diasDescanso.trim().toUpperCase();
+      }
+
+      const rawEmailCorp = emailCorporativo !== undefined ? emailCorporativo : (email_corporativo !== undefined ? email_corporativo : EmailCorporativo);
+      const emailCorpSanitizado = (rawEmailCorp && typeof rawEmailCorp === 'string' && rawEmailCorp.trim())
+        ? rawEmailCorp.trim().toLowerCase()
+        : null;
+
       const request = pool.request();
       request.input('Id', id);
       request.input('IdJefeDirecto', idJefeDirecto ? Number(idJefeDirecto) : null);
-      request.input('DiasDescanso', diasDescanso || null);
+      request.input('IdAprobadorSegundo', idAprobadorSegundo ? Number(idAprobadorSegundo) : null);
+      request.input('EmailCorporativo', emailCorpSanitizado);
+      request.input('DiasDescanso', diasDescansoStr);
       request.input('RolApp', rolApp || 'COLABORADOR');
       request.input('Telefono', telefono || null);
       request.input('AvisarEmergencia', avisarEmergencia || null);
@@ -161,6 +189,8 @@ const adminColaboradoresController = {
         UPDATE dbo.Colaboradores
         SET 
           IdJefeDirecto = @IdJefeDirecto,
+          IdAprobadorSegundo = @IdAprobadorSegundo,
+          EmailCorporativo = @EmailCorporativo,
           DiasDescanso = @DiasDescanso,
           RolApp = @RolApp,
           Telefono = @Telefono,

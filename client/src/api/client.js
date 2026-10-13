@@ -80,6 +80,7 @@ export const api = {
   getMiSaldo: () => request('/colaboradores/saldo'),
   getEquipoLider: () => request('/colaboradores/equipo'),
   getColaborador: (id) => request(`/colaboradores/${id}`),
+  updateColaborador: (id, data) => request(`/colaboradores/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
   getKardexColaborador: (id) => request(`/saldos/colaborador/${id}`),
   getHijosColaborador: (id) => request(`/colaboradores/${id}/hijos`),
   agregarHijoColaborador: (id, data) => request(`/colaboradores/${id}/hijos`, { method: 'POST', body: JSON.stringify(data) }),
@@ -92,14 +93,45 @@ export const api = {
   getBandejaDO: (params = '') => request(`/solicitudes/bandeja-do${params ? '?' + params : ''}`),
   getSolicitudDetalle: (id) => request(`/solicitudes/${id}`),
   cancelarSolicitud: (id) => request(`/solicitudes/${id}/cancelar`, { method: 'POST' }),
+  descargarPdfFdo84: async (idSolicitud, folio = '') => {
+    if (!idSolicitud) {
+      throw new Error('Identificador de solicitud no válido para generar el formato FDO-84.');
+    }
+    const res = await fetch(`${API_BASE}/solicitudes/${idSolicitud}/pdf`, {
+      headers: {
+        ...(currentToken ? { 'Authorization': `Bearer ${currentToken}` } : {}),
+        'x-user-id': String(currentUserId),
+        ...simulationHeaders
+      }
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ error: 'Error al generar formato FDO-84' }));
+      throw new Error(err.error || 'Error al generar formato FDO-84');
+    }
+    const blob = await res.blob();
+    const pdfBlob = new Blob([blob], { type: 'application/pdf' });
+    const blobUrl = window.URL.createObjectURL(pdfBlob);
+
+    // Intentar abrir visor en nueva pestaña
+    const newWindow = window.open(blobUrl, '_blank');
+    if (!newWindow || newWindow.closed || typeof newWindow.closed === 'undefined') {
+      // Si la ventana emergente fue bloqueada, forzar descarga con nombre institucional
+      const folioLimpio = folio ? String(folio).replace(/[^a-zA-Z0-9_-]/g, '_') : idSolicitud;
+      const nombreArchivo = `FDO-84_Solicitud_${folioLimpio}.pdf`;
+      const link = document.createElement('a');
+      link.href = blobUrl;
+      link.download = nombreArchivo;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+    }
+  },
 
   // Aprobaciones
   aprobarSolicitud: (id, comentarios, metodo = 'WEB') => 
     request(`/aprobaciones/${id}/aprobar`, { method: 'POST', body: JSON.stringify({ comentarios, metodoAutorizacion: metodo }) }),
   rechazarSolicitud: (id, comentarios, metodo = 'WEB') => 
     request(`/aprobaciones/${id}/rechazar`, { method: 'POST', body: JSON.stringify({ comentarios, metodoAutorizacion: metodo }) }),
-  simularTeams: (idSolicitud) => 
-    request('/aprobaciones/simular-teams', { method: 'POST', body: JSON.stringify({ idSolicitud }) }),
 
   // Días Inhábiles
   getDiasInhabiles: () => request('/dias-inhabiles'),

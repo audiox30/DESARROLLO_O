@@ -13,6 +13,66 @@ const BASES_DATOS_JAMA = [
   { db: 'ctTRAMO_DEL_CENTR', alias: 'TRAMO DEL CENTRO' }
 ];
 
+// Mapeo canónico oficial de códigos bancarios SAT a nombres comerciales
+const CATALOGO_BANCOS_SAT = {
+  '002': 'BANAMEX',
+  '012': 'BBVA',
+  '014': 'SANTANDER',
+  '021': 'HSBC',
+  '030': 'BANBAJIO',
+  '036': 'INBURSA',
+  '042': 'MIFEL',
+  '044': 'SCOTIABANK',
+  '058': 'BANREGIO',
+  '059': 'INVEX',
+  '060': 'BANSI',
+  '062': 'AFIRME',
+  '072': 'BANORTE',
+  '127': 'BANCO AZTECA',
+  '130': 'COMPARTAMOS BANCO',
+  '136': 'INTERCAM BANCO',
+  '137': 'BANCOPPEL',
+  '138': 'ABC CAPITAL',
+  '140': 'CONSUBANCO',
+  '143': 'CIBANCO',
+  '145': 'BANCO MULTIVA',
+  '166': 'BANCO DEL BIENESTAR',
+  '646': 'STP'
+};
+
+function resolverBanco(codigoBancoRaw, clabeRaw) {
+  const cod = String(codigoBancoRaw || '').trim();
+  const clabe = String(clabeRaw || '').trim();
+
+  if (CATALOGO_BANCOS_SAT[cod]) {
+    return CATALOGO_BANCOS_SAT[cod];
+  }
+
+  if (clabe.length === 18) {
+    const prefijo = clabe.substring(0, 3);
+    if (CATALOGO_BANCOS_SAT[prefijo]) {
+      return CATALOGO_BANCOS_SAT[prefijo];
+    }
+  }
+
+  return cod || null;
+}
+
+function parseCuentaYClabe(cuentaRaw, clabeRaw) {
+  let cuenta = String(cuentaRaw || '').trim();
+  let clabe = String(clabeRaw || '').trim();
+
+  if (!clabe && cuenta.length === 18) {
+    clabe = cuenta;
+    cuenta = '';
+  }
+
+  return {
+    numeroCuenta: cuenta || null,
+    clabeInterbancaria: clabe || null
+  };
+}
+
 // Estado de tareas en segundo plano
 const tareasSegundoPlano = new Map();
 
@@ -79,7 +139,12 @@ class NomipaqSyncService {
           END AS fechaReingreso,
           RTRIM(LTRIM(e.estadoempleado)) AS estatusNomina,
           RTRIM(LTRIM(CAST(ISNULL(d.numerodepartamento, '') AS VARCHAR(30)))) AS codigoDepartamento,
-          RTRIM(LTRIM(CAST(ISNULL(p.numeropuesto, '') AS VARCHAR(30)))) AS codigoPuesto
+          RTRIM(LTRIM(CAST(ISNULL(p.numeropuesto, '') AS VARCHAR(30)))) AS codigoPuesto,
+          RTRIM(LTRIM(ISNULL(e.bancopagoelectronico, ''))) AS bancopagoelectronico,
+          RTRIM(LTRIM(ISNULL(e.cuentapagoelectronico, ''))) AS cuentapagoelectronico,
+          RTRIM(LTRIM(ISNULL(e.ClabeInterbancaria, ''))) AS clabeInterbancaria,
+          ISNULL(e.sueldodiario, 0) AS sueldodiario,
+          ISNULL(e.sueldointegrado, 0) AS sueldointegrado
         FROM dbo.nom10001 e WITH (NOLOCK)
         LEFT JOIN dbo.nom10003 d WITH (NOLOCK) ON d.iddepartamento = e.iddepartamento
         LEFT JOIN dbo.nom10006 p WITH (NOLOCK) ON p.idpuesto = e.idpuesto;
@@ -119,6 +184,48 @@ class NomipaqSyncService {
       request.input('JsonEmpleados', JSON.stringify(datos.empleados));
 
       const res = await request.execute('dbo.sp_AplicarStagingNomipaq');
+
+      // Sincronizar datos financieros vinculando estrictamente por IdColaborador de esta empresa
+      try {
+        const colabRes = await poolLocal.request()
+          .input('IdEmpresa', idEmpresa)
+          .query('SELECT IdColaborador, RTRIM(LTRIM(CodigoEmpleado)) AS CodigoEmpleado FROM dbo.Colaboradores WHERE IdEmpresa = @IdEmpresa');
+
+        const mapColab = new Map();
+        for (const c of colabRes.recordset) {
+          mapColab.set(c.CodigoEmpleado, c.IdColaborador);
+        }
+
+        const filasFinancieras = [];
+        for (const emp of datos.empleados) {
+          const idColaborador = mapColab.get(emp.codigoEmpleado);
+          if (idColaborador) {
+            const { numeroCuenta, clabeInterbancaria } = parseCuentaYClabe(emp.cuentapagoelectronico, emp.clabeInterbancaria);
+            const banco = resolverBanco(emp.bancopagoelectronico, clabeInterbancaria);
+            const sueldoDiario = Number(emp.sueldodiario) || null;
+            const sueldoIntegrado = Number(emp.sueldointegrado) || null;
+
+            filasFinancieras.push({
+              idColaborador,
+              institucionBancaria: banco,
+              numeroCuenta,
+              clabeInterbancaria,
+              salarioDiarioReal: sueldoDiario,
+              salarioDiarioImss: sueldoDiario,
+              salarioDiarioIntegrado: sueldoIntegrado
+            });
+          }
+        }
+
+        if (filasFinancieras.length > 0) {
+          const reqFin = poolLocal.request();
+          reqFin.input('JsonDatosFinancieros', JSON.stringify(filasFinancieras));
+          await reqFin.execute('dbo.sp_SincronizarDatosFinancierosLote');
+        }
+      } catch (errFin) {
+        console.warn(`[SYNC-NOMIPAQ] Advertencia al sincronizar datos financieros de ${nombreBD}:`, errFin.message);
+      }
+
       return res.recordset[0] || {
         exito: 1,
         idEmpresa,

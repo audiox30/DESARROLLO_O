@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { X, CheckCircle, XCircle, AlertTriangle, MessageSquare, ShieldCheck, Clock, Send, Eye } from 'lucide-react';
+import { X, CheckCircle, XCircle, AlertTriangle, MessageSquare, ShieldCheck, Clock, Send, Eye, Mail, FileText } from 'lucide-react';
 import { api } from '../api/client';
 
 export default function ModalAprobacion({ solicitud, isOpen, onClose, onSuccess, esAdminDO = false }) {
@@ -8,7 +8,6 @@ export default function ModalAprobacion({ solicitud, isOpen, onClose, onSuccess,
   const [motivoRechazo, setMotivoRechazo] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
-  const [teamsPayload, setTeamsPayload] = useState(null);
 
   if (!isOpen || !solicitud) return null;
 
@@ -49,23 +48,11 @@ export default function ModalAprobacion({ solicitud, isOpen, onClose, onSuccess,
     }
   }
 
-  async function handleSimularTeams() {
-    try {
-      const res = await api.simularTeams(solicitud.idSolicitud);
-      if (res.success) {
-        setTeamsPayload(res.payload);
-      }
-    } catch (err) {
-      alert('Error simulando Teams: ' + err.message);
-    }
-  }
-
   function handleClose() {
     setModo('detalle');
     setComentarios('');
     setMotivoRechazo('');
     setError('');
-    setTeamsPayload(null);
     onClose();
   }
 
@@ -82,9 +69,21 @@ export default function ModalAprobacion({ solicitud, isOpen, onClose, onSuccess,
               {modo === 'rechazar' ? <XCircle className="w-5 h-5" /> : <ShieldCheck className="w-5 h-5" />}
             </div>
             <div>
-              <h2 className="text-base font-bold text-slate-900">
-                {modo === 'rechazar' ? 'Rechazar Solicitud de Vacaciones' : 'Revisión y Resolución de Solicitud'}
-              </h2>
+              <div className="flex items-center gap-2">
+                <h2 className="text-base font-bold text-slate-900">
+                  {modo === 'rechazar' ? 'Rechazar Solicitud de Vacaciones' : 'Revisión y Resolución de Solicitud'}
+                </h2>
+                {/* Badge Nivel Aprobación */}
+                {(solicitud.estado === 'PENDIENTE_GERENTE' || solicitud.nivelAprobacionRequerido === 2) ? (
+                  <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-indigo-50 border border-indigo-200 text-indigo-700">
+                    Nivel 2: Gerencia
+                  </span>
+                ) : (
+                  <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-50 border border-amber-200 text-amber-800">
+                    Nivel 1: Líder
+                  </span>
+                )}
+              </div>
               <p className="text-xs text-slate-500 font-mono">Folio: {solicitud.folio}</p>
             </div>
           </div>
@@ -128,9 +127,20 @@ export default function ModalAprobacion({ solicitud, isOpen, onClose, onSuccess,
 
             <div className="pt-2 flex items-center justify-between border-t border-slate-200/60">
               <span className="text-xs text-slate-600 font-medium">Impacto en Días Hábiles:</span>
-              <span className="text-sm font-black text-blue-700 px-2.5 py-0.5 rounded-lg bg-blue-100/60">
-                {solicitud.totalDiasLaborables} días
-              </span>
+              <div className="flex items-center gap-2">
+                <span className="text-sm font-black text-blue-700 px-2.5 py-0.5 rounded-lg bg-blue-100/60">
+                  {solicitud.totalDiasLaborables} días
+                </span>
+                <button
+                  type="button"
+                  onClick={() => api.descargarPdfFdo84(solicitud.idSolicitud || solicitud.IdSolicitud || solicitud.id, solicitud.folio || solicitud.Folio)}
+                  title="Ver y Descargar Solicitud en Formato Oficial FDO-84 (PDF)"
+                  className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-white border border-blue-200 text-blue-700 text-xs font-bold hover:bg-blue-50 transition shadow-2xs cursor-pointer"
+                >
+                  <FileText className="w-3.5 h-3.5 text-blue-600" />
+                  <span>Ver Formato FDO-84</span>
+                </button>
+              </div>
             </div>
 
             {solicitud.motivoComentarios && (
@@ -152,31 +162,29 @@ export default function ModalAprobacion({ solicitud, isOpen, onClose, onSuccess,
                   rows="2"
                   value={comentarios}
                   onChange={(e) => setComentarios(e.target.value)}
-                  placeholder={esAdminDO ? "VoBo de DO para impacto directo en el sistema de nómina..." : "Autorizado por jefatura directa..."}
+                  placeholder={esAdminDO ? "VoBo de DO para impacto directo en el sistema de nómina..." : (
+                    (solicitud.estado === 'PENDIENTE_GERENTE' || solicitud.nivelAprobacionRequerido === 2)
+                      ? "Autorización gerencial definitiva para período de vacaciones..."
+                      : "Visto Bueno Nivel 1 (Jefe Directo)..."
+                  )}
                   className="w-full text-xs rounded-xl border border-slate-200 bg-slate-50/50 p-3 text-slate-900 focus:bg-white focus:border-blue-600 focus:ring-2 focus:ring-blue-100 transition-all placeholder:text-slate-400"
                 />
               </div>
 
-              {/* Botón simulación Teams */}
-              <div className="p-3 rounded-xl bg-indigo-50/70 border border-indigo-200 flex items-center justify-between text-xs">
+              {/* Aviso de notificación por correo */}
+              <div className="p-3.5 rounded-2xl bg-blue-50/70 border border-blue-200/80 flex items-center gap-3 text-xs">
+                <div className="w-8 h-8 rounded-xl bg-blue-100 text-blue-700 flex items-center justify-center shrink-0">
+                  <Mail className="w-4 h-4" />
+                </div>
                 <div>
-                  <span className="font-bold text-indigo-950">Integración con Microsoft Teams</span>
-                  <p className="text-[11px] text-indigo-700">Ver tarjeta adaptable (Adaptive Card) para autorización en 1 clic</p>
+                  <span className="font-bold text-blue-950 block">Notificación Automática por Correo</span>
+                  <p className="text-[11px] text-blue-700 mt-0.5">
+                    {(solicitud.estado === 'PENDIENTE_GERENTE' || solicitud.nivelAprobacionRequerido === 2)
+                      ? 'Al aprobar, la solicitud quedará formalmente autorizada y el colaborador recibirá su confirmación oficial por correo.'
+                      : 'Al emitir el Vo.Bo., si el puesto requiere validación de Gerencia se transferirá a Nivel 2, o se autorizará directamente.'}
+                  </p>
                 </div>
-                <button
-                  type="button"
-                  onClick={handleSimularTeams}
-                  className="px-2.5 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-[11px] transition-all"
-                >
-                  Ver Tarjeta Teams
-                </button>
               </div>
-
-              {teamsPayload && (
-                <div className="p-3 bg-slate-900 rounded-xl text-slate-200 font-mono text-[11px] overflow-x-auto max-h-40">
-                  <pre>{JSON.stringify(teamsPayload, null, 2)}</pre>
-                </div>
-              )}
             </div>
           )}
 
@@ -242,7 +250,13 @@ export default function ModalAprobacion({ solicitud, isOpen, onClose, onSuccess,
                 className="flex items-center gap-1.5 px-5 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold transition-all shadow-xs"
               >
                 <CheckCircle className="w-4 h-4" />
-                {loading ? 'Procesando...' : (esAdminDO ? 'Otorgar VoBo Final' : 'Aprobar Solicitud')}
+                {loading ? 'Procesando...' : (
+                  esAdminDO ? 'Otorgar VoBo Final' : (
+                    (solicitud.estado === 'PENDIENTE_GERENTE' || solicitud.nivelAprobacionRequerido === 2)
+                      ? 'Autorizar Definitivamente (Nivel 2)'
+                      : 'Emitir Aprobación / Vo.Bo.'
+                  )
+                )}
               </button>
             </div>
           ) : (

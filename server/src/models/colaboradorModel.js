@@ -57,6 +57,7 @@ class ColaboradorModel {
         c.Nacionalidad,
         c.Escolaridad,
         c.Email,
+        c.EmailCorporativo,
         c.Telefono,
         c.Domicilio,
         c.Municipio,
@@ -90,6 +91,8 @@ class ColaboradorModel {
         p.Nombre AS Puesto,
         c.IdJefeDirecto,
         j.NombreCompleto AS JefeDirectoNombre,
+        c.IdAprobadorSegundo,
+        j2.NombreCompleto AS SegundoAprobadorNombre,
         c.RolApp,
         c.JornadaLaboralDias,
         c.Activo,
@@ -99,6 +102,7 @@ class ColaboradorModel {
       LEFT JOIN dbo.Departamentos d ON d.IdDepartamento = c.IdDepartamento
       LEFT JOIN dbo.Puestos p ON p.IdPuesto = c.IdPuesto
       LEFT JOIN dbo.Colaboradores j ON j.IdColaborador = c.IdJefeDirecto
+      LEFT JOIN dbo.Colaboradores j2 ON j2.IdColaborador = c.IdAprobadorSegundo
       WHERE c.IdColaborador = @IdColaborador;
     `;
 
@@ -106,12 +110,17 @@ class ColaboradorModel {
     if (!colabRes.recordset[0]) return null;
 
     const colaborador = colabRes.recordset[0];
+    colaborador.emailCorporativo = colaborador.EmailCorporativo;
+    colaborador.email_corporativo = colaborador.EmailCorporativo;
 
     // 2. Hijos
     const hijosRes = await pool.request()
       .input('IdColaborador', idColaborador)
       .query(`
-        SELECT IdHijo, NumeroHijo, FechaNacimiento, Sexo, FechaRegistro
+        SELECT 
+          IdHijo, NumeroHijo, Nombre, 
+          CONVERT(VARCHAR(10), FechaNacimiento, 120) AS FechaNacimiento, 
+          Sexo, FechaRegistro
         FROM dbo.ColaboradorHijos
         WHERE IdColaborador = @IdColaborador
         ORDER BY NumeroHijo ASC;
@@ -159,28 +168,61 @@ class ColaboradorModel {
       return { success: true, idColaborador };
     }
 
+    // Normalizar claves y alias (ej. email_corporativo, emailCorporativo -> EmailCorporativo)
+    const normalizados = { ...campos };
+    if (normalizados.email_corporativo !== undefined && normalizados.EmailCorporativo === undefined) {
+      normalizados.EmailCorporativo = normalizados.email_corporativo;
+    }
+    if (normalizados.emailCorporativo !== undefined && normalizados.EmailCorporativo === undefined) {
+      normalizados.EmailCorporativo = normalizados.emailCorporativo;
+    }
+    if (normalizados.id_jefe_directo !== undefined && normalizados.IdJefeDirecto === undefined) {
+      normalizados.IdJefeDirecto = normalizados.id_jefe_directo;
+    }
+    if (normalizados.idJefeDirecto !== undefined && normalizados.IdJefeDirecto === undefined) {
+      normalizados.IdJefeDirecto = normalizados.idJefeDirecto;
+    }
+    if (normalizados.id_aprobador_segundo !== undefined && normalizados.IdAprobadorSegundo === undefined) {
+      normalizados.IdAprobadorSegundo = normalizados.id_aprobador_segundo;
+    }
+    if (normalizados.idAprobadorSegundo !== undefined && normalizados.IdAprobadorSegundo === undefined) {
+      normalizados.IdAprobadorSegundo = normalizados.idAprobadorSegundo;
+    }
+    if (normalizados.rol_app !== undefined && normalizados.RolApp === undefined) {
+      normalizados.RolApp = normalizados.rol_app;
+    }
+    if (normalizados.rolApp !== undefined && normalizados.RolApp === undefined) {
+      normalizados.RolApp = normalizados.rolApp;
+    }
+
+    if (typeof normalizados.EmailCorporativo === 'string') {
+      normalizados.EmailCorporativo = normalizados.EmailCorporativo.trim().toLowerCase() || null;
+    }
+
     const request = pool.request();
     request.input('IdColaborador', idColaborador);
 
     const asignaciones = [];
     const permitidos = [
       'Subfijo', 'NSS', 'Sexo', 'FechaNacimiento', 'EstadoCivil', 'Nacionalidad', 'Escolaridad',
-      'Domicilio', 'Municipio', 'EstadoProvincia', 'CodigoPostal', 'Email', 'Telefono',
+      'Domicilio', 'Municipio', 'EstadoProvincia', 'CodigoPostal', 'Email', 'EmailCorporativo', 'Telefono',
       'DiasDescanso', 'CentroCostos', 'TipoNomina', 'TipoContrato', 'PeriodicidadPago',
       'FechaAltaImss', 'FechaEvaluacion', 'DomicilioLaboral',
       'AvisarEmergencia', 'ParentescoEmergencia', 'TelefonoEmergencia', 'TipoSangre', 'AlergiasPadecimientos',
       'Beneficiario', 'ParentescoBeneficiario', 'RfcBeneficiario', 'TieneInfonavit', 'TieneFonacot', 'FuenteReclutamiento',
-      'IdJefeDirecto', 'RolApp'
+      'IdJefeDirecto', 'IdAprobadorSegundo', 'RolApp'
     ];
 
-    for (const key of Object.keys(campos)) {
-      if (permitidos.includes(key) && campos[key] !== undefined) {
-        request.input(key, campos[key]);
+    for (const key of Object.keys(normalizados)) {
+      if (permitidos.includes(key) && normalizados[key] !== undefined) {
+        request.input(key, normalizados[key]);
         asignaciones.push(`${key} = @${key}`);
       }
     }
 
     if (asignaciones.length === 0) return { success: true };
+
+    asignaciones.push('FechaModificacion = SYSDATETIME()');
 
     const query = `
       UPDATE dbo.Colaboradores
@@ -205,9 +247,18 @@ class ColaboradorModel {
     request.input('IdColaborador', Number(idColaborador));
     const result = await request.query(`
       SELECT 
-        IdHijo, NumeroHijo, 
+        IdHijo, NumeroHijo, Nombre,
         CONVERT(VARCHAR(10), FechaNacimiento, 120) AS FechaNacimiento, 
-        Sexo, FechaRegistro
+        Sexo, FechaRegistro,
+        CASE 
+          WHEN FechaNacimiento IS NOT NULL THEN DATEDIFF(YEAR, FechaNacimiento, GETDATE()) - 
+            CASE 
+              WHEN (MONTH(FechaNacimiento) > MONTH(GETDATE())) 
+                OR (MONTH(FechaNacimiento) = MONTH(GETDATE()) AND DAY(FechaNacimiento) > DAY(GETDATE())) 
+              THEN 1 ELSE 0 
+            END
+          ELSE NULL 
+        END AS EdadCalculada
       FROM dbo.ColaboradorHijos
       WHERE IdColaborador = @IdColaborador
       ORDER BY NumeroHijo ASC;
@@ -215,25 +266,62 @@ class ColaboradorModel {
     return result.recordset;
   }
 
-  static async agregarHijo(idColaborador, { numeroHijo, fechaNacimiento, sexo }) {
+  static async agregarHijo(idColaborador, { numeroHijo, nombre, fechaNacimiento, sexo }) {
     const pool = await getLocalPool();
-    if (!pool || isUsingMock()) return { success: true };
+    if (!pool || isUsingMock()) {
+      if (!mockStore.colaboradorHijos) mockStore.colaboradorHijos = [];
+      const colabId = Number(idColaborador);
+      const existentes = mockStore.colaboradorHijos.filter(h => h.idColaborador === colabId);
+      const numFinal = (numeroHijo && Number(numeroHijo) > 0) 
+        ? Number(numeroHijo) 
+        : (existentes.reduce((max, h) => Math.max(max, h.NumeroHijo || h.numeroHijo || 0), 0) + 1);
+      
+      const nuevo = {
+        IdHijo: Date.now(),
+        IdColaborador: colabId,
+        idColaborador: colabId,
+        NumeroHijo: numFinal,
+        numeroHijo: numFinal,
+        Nombre: nombre ? String(nombre).trim() : null,
+        nombre: nombre ? String(nombre).trim() : null,
+        FechaNacimiento: fechaNacimiento || null,
+        fechaNacimiento: fechaNacimiento || null,
+        Sexo: sexo ? String(sexo).trim().toUpperCase() : 'M',
+        sexo: sexo ? String(sexo).trim().toUpperCase() : 'M',
+        FechaRegistro: new Date().toISOString()
+      };
+      mockStore.colaboradorHijos.push(nuevo);
+      return { success: true };
+    }
 
     const request = pool.request();
-    request.input('IdColaborador', idColaborador);
-    request.input('NumeroHijo', numeroHijo);
+    request.input('IdColaborador', Number(idColaborador));
+    request.input('NumeroHijo', (numeroHijo && Number(numeroHijo) > 0) ? Number(numeroHijo) : null);
+    request.input('Nombre', nombre ? String(nombre).trim() : null);
     request.input('FechaNacimiento', fechaNacimiento || null);
-    request.input('Sexo', sexo || null);
+    request.input('Sexo', sexo ? String(sexo).trim().toUpperCase() : null);
 
     const query = `
+      DECLARE @NumFinal INT = @NumeroHijo;
+      IF @NumFinal IS NULL OR @NumFinal <= 0
+      BEGIN
+        SELECT @NumFinal = ISNULL(MAX(NumeroHijo), 0) + 1 
+        FROM dbo.ColaboradorHijos 
+        WHERE IdColaborador = @IdColaborador;
+      END
+
       MERGE dbo.ColaboradorHijos AS Target
-      USING (SELECT @IdColaborador AS IdColaborador, @NumeroHijo AS NumeroHijo) AS Source
+      USING (SELECT @IdColaborador AS IdColaborador, @NumFinal AS NumeroHijo) AS Source
       ON (Target.IdColaborador = Source.IdColaborador AND Target.NumeroHijo = Source.NumeroHijo)
       WHEN MATCHED THEN
-        UPDATE SET FechaNacimiento = @FechaNacimiento, Sexo = @Sexo, FechaRegistro = SYSUTCDATETIME()
+        UPDATE SET 
+          Nombre = COALESCE(@Nombre, Target.Nombre),
+          FechaNacimiento = @FechaNacimiento, 
+          Sexo = @Sexo, 
+          FechaRegistro = SYSUTCDATETIME()
       WHEN NOT MATCHED THEN
-        INSERT (IdColaborador, NumeroHijo, FechaNacimiento, Sexo)
-        VALUES (@IdColaborador, @NumeroHijo, @FechaNacimiento, @Sexo);
+        INSERT (IdColaborador, NumeroHijo, Nombre, FechaNacimiento, Sexo)
+        VALUES (@IdColaborador, @NumFinal, @Nombre, @FechaNacimiento, @Sexo);
     `;
 
     await request.query(query);
