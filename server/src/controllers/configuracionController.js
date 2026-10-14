@@ -1,5 +1,6 @@
 const nodemailer = require('nodemailer');
 const { getLocalPool, isUsingMock } = require('../config/database');
+const { crearTransportadorSmtp } = require('../services/emailService');
 
 const configuracionController = {
   /**
@@ -16,8 +17,8 @@ const configuracionController = {
           { Clave: 'CONTPAQI_DB_MATRIZ', Valor: 'Nomipaq', Descripcion: 'Nombre de la base de datos matriz o catálogo de empresas', Categoria: 'CONTPAQI' },
           { Clave: 'CONTPAQI_SYNC_AUTO', Valor: 'true', Descripcion: 'Sincronización automática periódica activada', Categoria: 'CONTPAQI' },
           { Clave: 'CONTPAQI_SYNC_HORA', Valor: '02:00', Descripcion: 'Hora programada para sincronización nocturna (HH:mm)', Categoria: 'CONTPAQI' },
-          { Clave: 'SMTP_HOST', Valor: 'smtp.office365.com', Descripcion: 'Servidor de Relay SMTP (IP o FQDN)', Categoria: 'EMAIL' },
-          { Clave: 'SMTP_PORT', Valor: '587', Descripcion: 'Puerto del servicio SMTP (587 TLS / 465 SSL / 25 Relay)', Categoria: 'EMAIL' },
+          { Clave: 'SMTP_HOST', Valor: '192.168.20.29', Descripcion: 'Servidor de Relay SMTP (IP o FQDN)', Categoria: 'EMAIL' },
+          { Clave: 'SMTP_PORT', Valor: '25', Descripcion: 'Puerto del servicio SMTP (587 TLS / 465 SSL / 25 Relay)', Categoria: 'EMAIL' },
           { Clave: 'SMTP_USER', Valor: 'notificaciones@grupojama.com.mx', Descripcion: 'Usuario o cuenta de correo remitente autenticado', Categoria: 'EMAIL' },
           { Clave: 'SMTP_PASS', Valor: '', Descripcion: 'Contraseña de la cuenta de correo', Categoria: 'EMAIL' },
           { Clave: 'SMTP_SECURE', Valor: 'false', Descripcion: 'Conexión SSL/TLS directa', Categoria: 'EMAIL' },
@@ -163,10 +164,10 @@ const configuracionController = {
       }
 
       // Parámetros por defecto
-      host = host || process.env.SMTP_HOST;
-      port = parseInt(port || process.env.SMTP_PORT || '587', 10);
-      user = user || process.env.SMTP_USER;
-      pass = pass !== undefined ? pass : process.env.SMTP_PASS;
+      host = host || process.env.SMTP_HOST || '192.168.20.29';
+      port = parseInt(port || process.env.SMTP_PORT || '25', 10);
+      user = user !== undefined ? user : (process.env.SMTP_USER || '');
+      pass = pass !== undefined ? pass : (process.env.SMTP_PASS || '');
       const isSecure = secure === true || secure === 'true' || port === 465;
       const remitente = `${fromName || 'Grupo JAMA Notificaciones'} <${user || 'notificaciones@grupojama.com.mx'}>`;
       const targetEmail = destinatario || req.user?.email || req.user?.Email || 'sistemas@grupojama.com.mx';
@@ -178,23 +179,13 @@ const configuracionController = {
         });
       }
 
-      const transportConfig = {
+      const transporter = crearTransportadorSmtp({
         host,
         port,
-        secure: isSecure,
-        connectionTimeout: 8000,
-        greetingTimeout: 8000,
-        socketTimeout: 10000,
-        tls: {
-          rejectUnauthorized: false
-        }
-      };
-
-      if (user && pass) {
-        transportConfig.auth = { user, pass };
-      }
-
-      const transporter = nodemailer.createTransport(transportConfig);
+        user,
+        pass,
+        secure: isSecure
+      });
 
       const htmlContent = `
         <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; max-width: 600px; margin: 0 auto; background-color: #ffffff; border: 1px solid #e2e8f0; border-radius: 16px; overflow: hidden; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);">

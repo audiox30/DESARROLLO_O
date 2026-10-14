@@ -27,8 +27,8 @@ export default function AdminConfiguracionPage({ currentUser, onNavigateTab }) {
     CONTPAQI_SYNC_AUTO: 'true',
     CONTPAQI_SYNC_HORA: '02:00',
     // EMAIL
-    SMTP_HOST: 'smtp.office365.com',
-    SMTP_PORT: '587',
+    SMTP_HOST: '192.168.20.29',
+    SMTP_PORT: '25',
     SMTP_USER: 'notificaciones@grupojama.com.mx',
     SMTP_PASS: '',
     SMTP_SECURE: 'false',
@@ -432,7 +432,7 @@ export default function AdminConfiguracionPage({ currentUser, onNavigateTab }) {
                     type="text"
                     value={valores.SMTP_HOST}
                     onChange={(e) => handleInputChange('SMTP_HOST', e.target.value)}
-                    placeholder="smtp.office365.com o 192.168.20.x"
+                    placeholder="192.168.20.29 o smtp.office365.com"
                     className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl text-xs font-mono font-medium focus:ring-2 focus:ring-purple-600 outline-none"
                   />
                   <p className="text-[10px] text-slate-400 mt-1">Host de Office 365, Google Workspace o Relay interno.</p>

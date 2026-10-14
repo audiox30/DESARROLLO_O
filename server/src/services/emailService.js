@@ -7,27 +7,93 @@ const mockStore = require('../data/mockStore');
  * Motor exclusivo para el flujo operativo de vacaciones en Grupo JAMA.
  */
 
-// Instancia única o generador de transporte Nodemailer
-function getTransporter() {
-  const host = process.env.SMTP_HOST;
-  const port = parseInt(process.env.SMTP_PORT || '587', 10);
-  const secure = process.env.SMTP_SECURE === 'true' || port === 465;
-  const user = process.env.SMTP_USER;
-  const pass = process.env.SMTP_PASS;
-
-  if (!host) {
-    return null;
-  }
+// Función creadora de transportador Nodemailer adaptada para Relay local (sin TLS forzado)
+const crearTransportadorSmtp = (configBd = null) => {
+  // Tomar valores de BD o de variables de entorno (.env)
+  const host = configBd?.host || process.env.SMTP_HOST || '192.168.20.29';
+  const port = parseInt(configBd?.port || process.env.SMTP_PORT || '25', 10);
+  const isSecure = configBd?.secure === true || configBd?.secure === 'true' || port === 465;
 
   return nodemailer.createTransport({
-    host,
-    port,
-    secure,
-    auth: (user && pass) ? { user, pass } : undefined,
+    host: host,
+    port: port,
+    secure: isSecure, // Obligatorio false para puerto 25 o relay local
+    requireTLS: false, // Evita forzar STARTTLS
+    ignoreTLS: !isSecure, // Crucial: desactiva STARTTLS si no es SSL directo para prevenir error 421 TLS is not supported
     tls: {
-      rejectUnauthorized: false
-    }
+      rejectUnauthorized: false,
+      ciphers: 'SSLv3'
+    },
+    connectionTimeout: 10000,
+    greetingTimeout: 10000,
+    socketTimeout: 15000,
+    // Si no hay usuario y contraseña, omitir auth para permitir relay anónimo por IP
+    ...(configBd?.user && configBd?.pass ? {
+      auth: {
+        user: configBd.user,
+        pass: configBd.pass
+      }
+    } : (!configBd && process.env.SMTP_USER && process.env.SMTP_PASS ? {
+      auth: {
+        user: process.env.SMTP_USER,
+        pass: process.env.SMTP_PASS
+      }
+    } : {}))
   });
+};
+
+let cachedConfig = null;
+let lastCacheTime = 0;
+
+async function obtenerConfiguracionEmail() {
+  const now = Date.now();
+  if (cachedConfig && (now - lastCacheTime < 30000)) {
+    return cachedConfig;
+  }
+  try {
+    const pool = await getPool();
+    if (pool && !isUsingMock()) {
+      const res = await pool.request().query("SELECT Clave, Valor FROM dbo.ConfiguracionSistema WHERE Categoria = 'EMAIL'");
+      if (res.recordset && res.recordset.length > 0) {
+        const map = {};
+        res.recordset.forEach(r => { map[r.Clave] = r.Valor; });
+        cachedConfig = {
+          host: map['SMTP_HOST'] || process.env.SMTP_HOST || '192.168.20.29',
+          port: parseInt(map['SMTP_PORT'] || process.env.SMTP_PORT || '25', 10),
+          user: map['SMTP_USER'] || process.env.SMTP_USER || '',
+          pass: map['SMTP_PASS'] || process.env.SMTP_PASS || '',
+          secure: map['SMTP_SECURE'] === 'true',
+          fromName: map['SMTP_FROM_NAME'] || 'Control de Vacaciones Grupo JAMA',
+          enabled: map['SMTP_NOTIF_ENABLED'] !== 'false'
+        };
+        lastCacheTime = now;
+        return cachedConfig;
+      }
+    }
+  } catch (err) {
+    console.warn('[NOTIFICACIONES EMAIL] No se pudo leer dbo.ConfiguracionSistema, usando fallback:', err.message);
+  }
+
+  cachedConfig = {
+    host: process.env.SMTP_HOST || '192.168.20.29',
+    port: parseInt(process.env.SMTP_PORT || '25', 10),
+    user: process.env.SMTP_USER || '',
+    pass: process.env.SMTP_PASS || '',
+    secure: process.env.SMTP_SECURE === 'true',
+    fromName: process.env.SMTP_FROM_NAME || 'Control de Vacaciones Grupo JAMA',
+    enabled: true
+  };
+  lastCacheTime = now;
+  return cachedConfig;
+}
+
+// Instancia o generador de transporte Nodemailer
+async function getTransporter() {
+  const config = await obtenerConfiguracionEmail();
+  if (!config || !config.enabled) {
+    return null;
+  }
+  return crearTransportadorSmtp(config);
 }
 
 /**
@@ -149,8 +215,15 @@ async function enviarEmail({ to, subject, html }) {
     return { skipped: true, reason: 'EMAIL_NO_VALIDO' };
   }
 
-  const transporter = getTransporter();
-  const from = process.env.SMTP_FROM || 'Control de Vacaciones Grupo JAMA <notificaciones@grupojama.com.mx>';
+  const config = await obtenerConfiguracionEmail();
+  if (!config || !config.enabled) {
+    console.log(`[NOTIFICACIONES EMAIL] Notificaciones deshabilitadas en configuración del sistema.`);
+    return { skipped: true, reason: 'NOTIFICACIONES_DESHABILITADAS' };
+  }
+
+  const transporter = await getTransporter();
+  const fromUser = config.user || 'notificaciones@grupojama.com.mx';
+  const from = `${config.fromName} <${fromUser}>`;
 
   if (!transporter) {
     console.warn(`[NOTIFICACIONES EMAIL] SMTP no configurado (SMTP_HOST vacío). Simulación de envío:`);
@@ -730,5 +803,8 @@ const emailService = {
     }
   }
 };
+
+emailService.crearTransportadorSmtp = crearTransportadorSmtp;
+emailService.obtenerConfiguracionEmail = obtenerConfiguracionEmail;
 
 module.exports = emailService;
