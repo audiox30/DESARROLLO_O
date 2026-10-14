@@ -2079,14 +2079,17 @@ export default function AdminColaboradoresPage({ currentUser }) {
                         const fn = h.FechaNacimiento || h.fechaNacimiento;
                         const sx = (h.Sexo || h.sexo || '').toUpperCase();
                         const num = h.NumeroHijo || h.numeroHijo || (i + 1);
+                        const nom = (h.Nombre || h.nombre || '').trim();
                         return (
                           <div key={h.IdHijo || h.idHijo || i} className="p-3.5 bg-slate-50 border border-slate-200/80 rounded-xl flex items-start gap-3">
                             <div className="w-9 h-9 rounded-xl bg-white border border-slate-200 text-slate-700 font-black text-xs flex items-center justify-center shrink-0 shadow-xs">
                               #{num}
                             </div>
                             <div className="flex-1 min-w-0">
-                              <div className="flex items-center justify-between gap-1">
-                                <span className="text-xs font-black text-slate-800">Hijo #{num}</span>
+                              <div className="flex items-center justify-between gap-1 flex-wrap">
+                                <span className="text-xs font-black text-slate-800">
+                                  Hijo #{num}{nom ? ` • ${nom}` : ''}
+                                </span>
                                 {sx === 'M' ? (
                                   <span className="text-[10px] font-bold px-1.5 py-0.5 bg-blue-100 text-blue-800 rounded">Niño</span>
                                 ) : sx === 'F' ? (

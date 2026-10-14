@@ -511,25 +511,13 @@ class ColaboradorModel {
 
     const query = `
       DECLARE @NumFinal INT = @NumeroHijo;
-      IF @NumFinal IS NULL OR @NumFinal <= 0
+      IF @NumFinal IS NULL OR @NumFinal <= 0 OR EXISTS (SELECT 1 FROM dbo.ColaboradorHijos WHERE IdColaborador = @IdColaborador AND NumeroHijo = @NumFinal)
       BEGIN
-        SELECT @NumFinal = ISNULL(MAX(NumeroHijo), 0) + 1 
-        FROM dbo.ColaboradorHijos 
-        WHERE IdColaborador = @IdColaborador;
+        SELECT @NumFinal = ISNULL((SELECT MAX(NumeroHijo) FROM dbo.ColaboradorHijos WHERE IdColaborador = @IdColaborador), 0) + 1;
       END
 
-      MERGE dbo.ColaboradorHijos AS Target
-      USING (SELECT @IdColaborador AS IdColaborador, @NumFinal AS NumeroHijo) AS Source
-      ON (Target.IdColaborador = Source.IdColaborador AND Target.NumeroHijo = Source.NumeroHijo)
-      WHEN MATCHED THEN
-        UPDATE SET 
-          Nombre = COALESCE(@Nombre, Target.Nombre),
-          FechaNacimiento = @FechaNacimiento, 
-          Sexo = @Sexo, 
-          FechaRegistro = SYSUTCDATETIME()
-      WHEN NOT MATCHED THEN
-        INSERT (IdColaborador, NumeroHijo, Nombre, FechaNacimiento, Sexo)
-        VALUES (@IdColaborador, @NumFinal, @Nombre, @FechaNacimiento, @Sexo);
+      INSERT INTO dbo.ColaboradorHijos (IdColaborador, NumeroHijo, Nombre, FechaNacimiento, Sexo, FechaRegistro)
+      VALUES (@IdColaborador, @NumFinal, @Nombre, @FechaNacimiento, @Sexo, SYSUTCDATETIME());
     `;
 
     await request.query(query);

@@ -64,7 +64,7 @@ export default function ColaboradorPortal({ currentUser }) {
   // Datos del perfil y dependientes
   const [perfilColab, setPerfilColab] = useState(null);
   const [loadingPerfil, setLoadingPerfil] = useState(false);
-  const [formNuevoHijo, setFormNuevoHijo] = useState({ fechaNacimiento: '', sexo: 'M' });
+  const [formNuevoHijo, setFormNuevoHijo] = useState({ nombre: '', fechaNacimiento: '', sexo: 'M' });
   const [guardandoHijo, setGuardandoHijo] = useState(false);
   const [toastMsg, setToastMsg] = useState('');
 
@@ -99,12 +99,19 @@ export default function ColaboradorPortal({ currentUser }) {
     e.preventDefault();
     const colabId = currentUser?.id || currentUser?.id_colaborador;
     if (!colabId) return;
+    if (!formNuevoHijo.nombre || !formNuevoHijo.nombre.trim()) {
+      alert('Debe ingresar el nombre completo del hijo o dependiente.');
+      return;
+    }
     try {
       setGuardandoHijo(true);
-      const res = await api.agregarHijo(colabId, formNuevoHijo);
+      const res = await api.agregarHijo(colabId, {
+        ...formNuevoHijo,
+        nombre: formNuevoHijo.nombre.trim()
+      });
       if (res.success) {
         mostrarToast('Hijo/dependiente registrado exitosamente.');
-        setFormNuevoHijo({ fechaNacimiento: '', sexo: 'M' });
+        setFormNuevoHijo({ nombre: '', fechaNacimiento: '', sexo: 'M' });
         cargarPerfil();
       }
     } catch (err) {
@@ -544,22 +551,25 @@ export default function ColaboradorPortal({ currentUser }) {
                             const fn = h.FechaNacimiento || h.fechaNacimiento;
                             const sx = (h.Sexo || h.sexo || '').toUpperCase();
                             const num = h.NumeroHijo || h.numeroHijo || (i + 1);
+                            const nom = (h.Nombre || h.nombre || '').trim();
                             const idH = h.IdHijo || h.idHijo;
                             return (
-                              <div key={idH || i} className="p-4 bg-slate-50/80 border border-slate-200 rounded-2xl flex items-start justify-between gap-3 shadow-2xs">
+                              <div key={idH || i} className="p-4 bg-slate-50/80 border border-slate-200 rounded-2xl flex items-start justify-between gap-3 shadow-2xs hover:border-slate-300 transition-colors">
                                 <div className="flex items-start gap-3 min-w-0">
                                   <div className="w-9 h-9 rounded-xl bg-white border border-slate-200 text-slate-700 font-black text-xs flex items-center justify-center shrink-0 shadow-xs">
                                     #{num}
                                   </div>
                                   <div className="min-w-0">
-                                    <div className="flex items-center gap-1.5">
-                                      <span className="text-xs font-black text-slate-800">Hijo #{num}</span>
+                                    <div className="flex items-center gap-1.5 flex-wrap">
+                                      <span className="text-xs font-black text-slate-900 truncate">
+                                        Hijo #{num}{nom ? ` • ${nom}` : ''}
+                                      </span>
                                       {sx === 'M' ? (
-                                        <span className="text-[10px] font-bold px-1.5 py-0.5 bg-blue-100 text-blue-800 rounded">Niño</span>
+                                        <span className="text-[10px] font-bold px-1.5 py-0.5 bg-blue-100 text-blue-800 rounded shrink-0">Niño</span>
                                       ) : sx === 'F' ? (
-                                        <span className="text-[10px] font-bold px-1.5 py-0.5 bg-pink-100 text-pink-800 rounded">Niña</span>
+                                        <span className="text-[10px] font-bold px-1.5 py-0.5 bg-pink-100 text-pink-800 rounded shrink-0">Niña</span>
                                       ) : (
-                                        <span className="text-[10px] font-bold px-1.5 py-0.5 bg-slate-100 text-slate-600 rounded">Indef.</span>
+                                        <span className="text-[10px] font-bold px-1.5 py-0.5 bg-slate-100 text-slate-600 rounded shrink-0">Indef.</span>
                                       )}
                                     </div>
                                     <p className="text-[11px] text-slate-500 mt-1">
@@ -589,14 +599,27 @@ export default function ColaboradorPortal({ currentUser }) {
 
                     {/* Formulario para Registrar Nuevo Hijo */}
                     <div className="mt-5 p-4 bg-slate-50 border border-slate-200 rounded-2xl">
-                      <h5 className="text-xs font-bold text-slate-800 mb-2 flex items-center gap-1.5">
+                      <h5 className="text-xs font-bold text-slate-800 mb-2.5 flex items-center gap-1.5">
                         <Plus className="w-4 h-4 text-blue-600" />
                         <span>Registrar Nuevo Hijo o Dependiente</span>
                       </h5>
-                      <form onSubmit={handleAgregarHijoColaborador} className="grid grid-cols-1 sm:grid-cols-3 gap-3 items-end">
-                        <div>
+                      <form onSubmit={handleAgregarHijoColaborador} className="grid grid-cols-1 md:grid-cols-12 gap-3 items-end">
+                        <div className="md:col-span-5">
                           <label className="block text-[11px] font-bold text-slate-600 mb-1">
-                            Fecha de Nacimiento
+                            Nombre Completo del Hijo / Dependiente <span className="text-rose-500">*</span>
+                          </label>
+                          <input
+                            type="text"
+                            placeholder="Ej. Juan Pérez García"
+                            value={formNuevoHijo.nombre}
+                            onChange={(e) => setFormNuevoHijo({ ...formNuevoHijo, nombre: e.target.value })}
+                            className="w-full px-3 py-1.5 bg-white border border-slate-300 rounded-xl text-xs focus:ring-2 focus:ring-blue-600 outline-none"
+                            required
+                          />
+                        </div>
+                        <div className="md:col-span-3">
+                          <label className="block text-[11px] font-bold text-slate-600 mb-1">
+                            Fecha de Nacimiento <span className="text-rose-500">*</span>
                           </label>
                           <input
                             type="date"
@@ -606,7 +629,7 @@ export default function ColaboradorPortal({ currentUser }) {
                             required
                           />
                         </div>
-                        <div>
+                        <div className="md:col-span-2">
                           <label className="block text-[11px] font-bold text-slate-600 mb-1">
                             Sexo
                           </label>
@@ -615,12 +638,11 @@ export default function ColaboradorPortal({ currentUser }) {
                             onChange={(e) => setFormNuevoHijo({ ...formNuevoHijo, sexo: e.target.value })}
                             className="w-full px-3 py-1.5 bg-white border border-slate-300 rounded-xl text-xs focus:ring-2 focus:ring-blue-600 outline-none"
                           >
-                            <option value="M">👦 Masculino (Niño)</option>
-                            <option value="F">👧 Femenino (Niña)</option>
-                            <option value="X">⚪ Sin especificar</option>
+                            <option value="M">👦 Masculino</option>
+                            <option value="F">👧 Femenino</option>
                           </select>
                         </div>
-                        <div>
+                        <div className="md:col-span-2">
                           <button
                             type="submit"
                             disabled={guardandoHijo}

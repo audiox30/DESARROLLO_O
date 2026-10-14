@@ -756,11 +756,14 @@ export default function LiderMiEquipoPage({ currentUser }) {
                         const fn = h.FechaNacimiento || h.fechaNacimiento;
                         const sx = (h.Sexo || h.sexo || '').toUpperCase();
                         const num = h.NumeroHijo || h.numeroHijo || (i + 1);
+                        const nom = (h.Nombre || h.nombre || '').trim();
                         return (
                           <div key={h.IdHijo || h.idHijo || i} className="p-3 bg-slate-50 border border-slate-200/80 rounded-xl flex items-center justify-between">
                             <div>
-                              <div className="flex items-center gap-1.5">
-                                <span className="text-xs font-bold text-slate-800">Hijo #{num}</span>
+                              <div className="flex items-center gap-1.5 flex-wrap">
+                                <span className="text-xs font-bold text-slate-800">
+                                  Hijo #{num}{nom ? ` • ${nom}` : ''}
+                                </span>
                                 {sx === 'M' ? (
                                   <span className="text-[10px] font-bold px-1.5 py-0.2 bg-blue-100 text-blue-800 rounded">Niño</span>
                                 ) : sx === 'F' ? (

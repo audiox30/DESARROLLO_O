@@ -248,6 +248,11 @@ const colaboradoresController = {
    */
   agregarHijo: async (req, res) => {
     try {
+      const id = req.params.id || req.user?.idColaborador || req.user?.IdColaborador;
+      if (!id) {
+        return res.status(400).json({ error: 'Identificador de colaborador no proporcionado.' });
+      }
+
       const { 
         idHijo,
         numeroHijo, 
