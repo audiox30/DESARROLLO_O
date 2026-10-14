@@ -79,6 +79,22 @@ function CampoSoloLectura({ label, valor, icono: Icono = Lock, monospace = false
   );
 }
 
+function deducirGenero(colab) {
+  if (!colab) return '—';
+  if (colab.Genero && String(colab.Genero).trim() !== '' && String(colab.Genero).trim() !== '—') return colab.Genero;
+  if (colab.genero && String(colab.genero).trim() !== '' && String(colab.genero).trim() !== '—') return colab.genero;
+  const curp = String(colab.CURP || colab.curp || '').trim().toUpperCase();
+  if (curp.length >= 11) {
+    const ch = curp.charAt(10); // Carácter en posición 11 (índice 10)
+    if (ch === 'M') return 'Mujer';
+    if (ch === 'H') return 'Hombre';
+  }
+  const sexo = String(colab.Sexo || colab.sexo || '').trim().toUpperCase();
+  if (sexo === 'F') return 'Mujer';
+  if (sexo === 'M' || sexo === 'H') return 'Hombre';
+  return '—';
+}
+
 const OPCIONES_DIAS_SEMANA = [
   { id: 'LUNES', label: 'Lunes' },
   { id: 'MARTES', label: 'Martes' },
@@ -1311,7 +1327,7 @@ export default function AdminColaboradoresPage({ currentUser }) {
                         />
                         <CampoSoloLectura 
                           label="Género" 
-                          valor={colabEditar.Genero || (colabEditar.Sexo === 'F' ? 'Mujer' : 'Hombre')} 
+                          valor={deducirGenero(colabEditar)} 
                           icono={Lock} 
                         />
                         <CampoSoloLectura 
@@ -1321,29 +1337,23 @@ export default function AdminColaboradoresPage({ currentUser }) {
                         />
                       </div>
 
-                      {/* Fila 2 (2 columnas): CURP, Nacionalidad */}
-                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                        <CampoSoloLectura 
-                          label="CURP" 
-                          valor={colabEditar.CURP} 
-                          icono={ShieldCheck} 
-                          monospace 
-                        />
-                        <CampoSoloLectura 
-                          label="Nacionalidad" 
-                          valor={colabEditar.Nacionalidad} 
-                          icono={User} 
-                        />
-                      </div>
-
-                      {/* Fila 3 (Ancho completo): Correo Nómina / Personal */}
-                      <div>
-                        <CampoSoloLectura 
-                          label="Correo Nómina / Personal" 
-                          valor={colabEditar.Email} 
-                          icono={Mail} 
-                          placeholderVacio="Sin correo registrado en nómina" 
-                        />
+                      {/* Fila 2 (Cuadrícula armónica): Nacionalidad (1 col) y Correo Nómina / Personal (2 cols) */}
+                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                        <div className="sm:col-span-1">
+                          <CampoSoloLectura 
+                            label="Nacionalidad" 
+                            valor={colabEditar.Nacionalidad} 
+                            icono={User} 
+                          />
+                        </div>
+                        <div className="sm:col-span-2">
+                          <CampoSoloLectura 
+                            label="Correo Nómina / Personal" 
+                            valor={colabEditar.Email || colabEditar.EmailNomina} 
+                            icono={Mail} 
+                            placeholderVacio="Sin correo registrado en nómina" 
+                          />
+                        </div>
                       </div>
                     </div>
                   </div>

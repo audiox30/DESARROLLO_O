@@ -49,6 +49,8 @@ const adminColaboradoresController = {
             CURP: c.curp || c.CURP || null,
             RFC: c.rfc || c.RFC || null,
             NSS: c.nss || c.NSS || null,
+            Sexo: c.sexo || c.Sexo || null,
+            Genero: c.genero || c.Genero || null,
             FechaAlta: c.fechaAlta || c.FechaAlta || null,
             FechaNacimiento: c.fechaNacimiento || c.FechaNacimiento || null,
             EstadoCivil: c.estadoCivil || c.EstadoCivil || null,
@@ -188,7 +190,7 @@ const adminColaboradoresController = {
             ELSE c.NombreCompleto
           END AS NombreCompleto,
           c.Nombre, c.ApellidoPaterno, c.ApellidoMaterno,
-          c.CURP, c.RFC, c.NSS, c.Email, c.Email AS EmailNomina, c.EmailCorporativo, c.Telefono,
+          c.CURP, c.RFC, c.NSS, c.Sexo, c.Genero, c.Email, c.Email AS EmailNomina, c.EmailCorporativo, c.Telefono,
           c.Sucursal, c.JornadaLaboralDias,
           d.IdDepartamento, d.Nombre AS Departamento,
           p.IdPuesto, p.Nombre AS Puesto,
