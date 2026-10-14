@@ -1,6 +1,6 @@
 const nodemailer = require('nodemailer');
 const { getLocalPool, isUsingMock } = require('../config/database');
-const { crearTransportadorSmtp } = require('../services/emailService');
+const { crearTransportadorSmtp, registrarLogEnvio } = require('../services/emailService');
 
 const configuracionController = {
   /**
@@ -220,26 +220,60 @@ const configuracionController = {
         </div>
       `;
 
+      const modoAuditoria = process.env.MODO_PRUEBAS_CORREO === 'true' || Boolean(process.env.CORREO_AUDITORIA);
+      const correoAuditoria = (process.env.CORREO_AUDITORIA || 'soporte@grupojama.com').trim();
+      const destinatarioEfectivo = modoAuditoria ? correoAuditoria : targetEmail;
+
       const info = await transporter.sendMail({
         from: remitente,
-        to: targetEmail,
+        to: destinatarioEfectivo,
         subject: `[PRUEBA TI] Notificación del Sistema de Vacaciones - Grupo JAMA`,
         html: htmlContent
       });
 
+      if (registrarLogEnvio) {
+        await registrarLogEnvio({
+          destinatarioOriginal: targetEmail,
+          destinatarioEfectivo,
+          asunto: '[PRUEBA TI] Notificación del Sistema de Vacaciones - Grupo JAMA',
+          tipoEvento: 'PRUEBA_TI',
+          folioSolicitud: null,
+          estatusEnvio: 'EXITO',
+          messageId: info.messageId
+        });
+      }
+
       return res.json({
         success: true,
-        message: `Prueba de correo enviada exitosamente a ${targetEmail}.`,
+        message: `Prueba de correo enviada exitosamente a ${destinatarioEfectivo} ${modoAuditoria ? `(Previsto: ${targetEmail})` : ''}.`,
         messageId: info.messageId,
         detalles: {
           servidor: `${host}:${port}`,
           seguro: isSecure,
           remitente,
-          destinatario: targetEmail
+          destinatarioOriginal: targetEmail,
+          destinatarioEfectivo,
+          modoAuditoria
         }
       });
     } catch (err) {
       console.error('[configuracion.probarCorreo]', err);
+      const modoAuditoria = process.env.MODO_PRUEBAS_CORREO === 'true' || Boolean(process.env.CORREO_AUDITORIA);
+      const correoAuditoria = (process.env.CORREO_AUDITORIA || 'soporte@grupojama.com').trim();
+      const targetEmail = req.body?.destinatario || req.user?.email || 'sistemas@grupojama.com.mx';
+
+      if (registrarLogEnvio) {
+        await registrarLogEnvio({
+          destinatarioOriginal: targetEmail,
+          destinatarioEfectivo: modoAuditoria ? correoAuditoria : targetEmail,
+          asunto: '[PRUEBA TI] Notificación del Sistema de Vacaciones - Grupo JAMA',
+          tipoEvento: 'PRUEBA_TI',
+          folioSolicitud: null,
+          estatusEnvio: 'ERROR',
+          mensajeError: err.message
+        });
+      }
+
       return res.status(500).json({
         success: false,
         error: `Fallo en prueba de envío SMTP: ${err.message}`,
@@ -249,6 +283,86 @@ const configuracionController = {
           response: err.response
         }
       });
+    }
+  },
+
+  /**
+   * GET /api/admin/configuracion/log-correos
+   * Consulta el registro histórico de auditoría de correos enviados en dbo.LogCorreosEnviados
+   */
+  getLogCorreos: async (req, res) => {
+    try {
+      const { limite = 100, estatus, busqueda } = req.query;
+      const pool = await getLocalPool();
+
+      if (!pool || isUsingMock()) {
+        const mockStore = require('../data/mockStore');
+        let logs = mockStore.logCorreosEnviados || [];
+        if (estatus && estatus !== 'TODOS') {
+          logs = logs.filter(l => l.estatusEnvio === estatus);
+        }
+        if (busqueda && busqueda.trim()) {
+          const q = busqueda.toLowerCase().trim();
+          logs = logs.filter(l => 
+            (l.destinatarioOriginal && l.destinatarioOriginal.toLowerCase().includes(q)) ||
+            (l.destinatarioEfectivo && l.destinatarioEfectivo.toLowerCase().includes(q)) ||
+            (l.asunto && l.asunto.toLowerCase().includes(q)) ||
+            (l.folioSolicitud && l.folioSolicitud.toLowerCase().includes(q))
+          );
+        }
+        return res.json({
+          success: true,
+          total: logs.length,
+          data: logs.slice(0, parseInt(limite, 10))
+        });
+      }
+
+      let query = `
+        SELECT TOP (@Limite)
+          IdLog AS idLog,
+          DestinatarioOriginal AS destinatarioOriginal,
+          DestinatarioEfectivo AS destinatarioEfectivo,
+          Asunto AS asunto,
+          TipoEvento AS tipoEvento,
+          FolioSolicitud AS folioSolicitud,
+          EstatusEnvio AS estatusEnvio,
+          MensajeError AS mensajeError,
+          MessageId AS messageId,
+          CONVERT(VARCHAR(19), FechaEnvio, 120) AS fechaEnvio
+        FROM dbo.LogCorreosEnviados
+        WHERE 1 = 1
+      `;
+
+      const request = pool.request();
+      request.input('Limite', parseInt(limite, 10) || 100);
+
+      if (estatus && estatus !== 'TODOS') {
+        query += ` AND EstatusEnvio = @Estatus`;
+        request.input('Estatus', estatus);
+      }
+
+      if (busqueda && busqueda.trim()) {
+        query += ` AND (
+          DestinatarioOriginal LIKE @Busqueda
+          OR DestinatarioEfectivo LIKE @Busqueda
+          OR Asunto LIKE @Busqueda
+          OR FolioSolicitud LIKE @Busqueda
+        )`;
+        request.input('Busqueda', `%${busqueda.trim()}%`);
+      }
+
+      query += ` ORDER BY FechaEnvio DESC`;
+
+      const result = await request.query(query);
+
+      return res.json({
+        success: true,
+        total: result.recordset.length,
+        data: result.recordset
+      });
+    } catch (err) {
+      console.error('[configuracion.getLogCorreos]', err);
+      res.status(500).json({ error: 'Error al consultar log de auditoría de correos.' });
     }
   }
 };

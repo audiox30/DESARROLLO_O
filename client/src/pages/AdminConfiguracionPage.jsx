@@ -3,9 +3,46 @@ import {
   Settings, Database, Mail, Calendar, HardDrive, 
   RotateCw, Save, CheckCircle, AlertCircle, Send, 
   Eye, EyeOff, ShieldAlert, Check, Server, Clock, 
-  Layers, Lock, AlertTriangle, Terminal, Cpu
+  Layers, Lock, AlertTriangle, Terminal, Cpu,
+  Search, Filter, X, ExternalLink, ShieldCheck, MailCheck,
+  FileText, ArrowRight, RefreshCw, XCircle
 } from 'lucide-react';
 import { api } from '../api/client';
+
+function formatearFechaHora(fechaStr) {
+  if (!fechaStr) return '-';
+  try {
+    const [fecha, hora] = fechaStr.split(' ');
+    if (!fecha) return fechaStr;
+    const [y, m, d] = fecha.split('-');
+    return `${d}/${m}/${y} ${hora || ''}`.trim();
+  } catch {
+    return fechaStr;
+  }
+}
+
+function getTipoEventoBadge(tipo) {
+  switch (tipo) {
+    case 'NUEVA_SOLICITUD':
+      return { label: 'Nueva Solicitud', bg: 'bg-blue-50 text-blue-700 border-blue-200' };
+    case 'PENDIENTE_GERENTE':
+      return { label: 'Vo.Bo. Gerente', bg: 'bg-amber-50 text-amber-700 border-amber-200' };
+    case 'APROBADA_LIDER':
+      return { label: 'Aprobación Líder', bg: 'bg-emerald-50 text-emerald-700 border-emerald-200' };
+    case 'RECHAZADA_LIDER':
+      return { label: 'Rechazo Líder', bg: 'bg-rose-50 text-rose-700 border-rose-200' };
+    case 'CANCELADA_COLABORADOR':
+      return { label: 'Cancelada', bg: 'bg-slate-100 text-slate-700 border-slate-300' };
+    case 'CONCLUIDA_DO':
+      return { label: 'Resolución DO', bg: 'bg-purple-50 text-purple-700 border-purple-200' };
+    case 'RECHAZADA_DO':
+      return { label: 'Rechazo DO', bg: 'bg-rose-50 text-rose-700 border-rose-200' };
+    case 'PRUEBA_TI':
+      return { label: 'Prueba SMTP (TI)', bg: 'bg-indigo-50 text-indigo-700 border-indigo-200' };
+    default:
+      return { label: tipo || 'Notificación', bg: 'bg-slate-100 text-slate-700 border-slate-200' };
+  }
+}
 
 export default function AdminConfiguracionPage({ currentUser, onNavigateTab }) {
   const [loading, setLoading] = useState(true);
@@ -15,7 +52,14 @@ export default function AdminConfiguracionPage({ currentUser, onNavigateTab }) {
   const [mensajeError, setMensajeError] = useState('');
   const [resultadoPruebaCorreo, setResultadoPruebaCorreo] = useState(null);
 
-  // Pestaña activa dentro del panel ('todas', 'contpaqi', 'email', 'vacaciones', 'mantenimiento')
+  // Auditoría de Correos Enviados (dbo.LogCorreosEnviados)
+  const [logsCorreo, setLogsCorreo] = useState([]);
+  const [loadingLogs, setLoadingLogs] = useState(false);
+  const [filtroEstatusLog, setFiltroEstatusLog] = useState('TODOS');
+  const [busquedaLog, setBusquedaLog] = useState('');
+  const [modalDetalleLog, setModalDetalleLog] = useState(null);
+
+  // Pestaña activa dentro del panel ('todas', 'contpaqi', 'email', 'log-correos', 'vacaciones', 'mantenimiento')
   const [seccionActiva, setSeccionActiva] = useState('todas');
 
   // Valores de los formularios
@@ -58,8 +102,31 @@ export default function AdminConfiguracionPage({ currentUser, onNavigateTab }) {
   useEffect(() => {
     if (esSistemas) {
       cargarConfiguracion();
+      cargarLogsCorreo();
     }
   }, [esSistemas]);
+
+  async function cargarLogsCorreo(filtroOverride = null, busquedaOverride = null) {
+    try {
+      setLoadingLogs(true);
+      const estatus = filtroOverride !== null ? filtroOverride : filtroEstatusLog;
+      const busqueda = busquedaOverride !== null ? busquedaOverride : busquedaLog;
+
+      const qParams = new URLSearchParams();
+      qParams.set('limite', '100');
+      if (estatus && estatus !== 'TODOS') qParams.set('estatus', estatus);
+      if (busqueda && busqueda.trim()) qParams.set('busqueda', busqueda.trim());
+
+      const res = await api.getLogCorreos(qParams.toString());
+      if (res && res.success) {
+        setLogsCorreo(res.data || []);
+      }
+    } catch (err) {
+      console.error('Error al cargar log de auditoría de correos:', err);
+    } finally {
+      setLoadingLogs(false);
+    }
+  }
 
   async function cargarConfiguracion() {
     try {
@@ -142,12 +209,14 @@ export default function AdminConfiguracionPage({ currentUser, onNavigateTab }) {
           detalles: res.detalles
         });
       }
+      cargarLogsCorreo();
     } catch (err) {
       console.error('Error probando correo:', err);
       setResultadoPruebaCorreo({
         tipo: 'error',
         mensaje: 'Error al ejecutar prueba SMTP: ' + (err.message || 'Tiempo de espera agotado')
       });
+      cargarLogsCorreo();
     } finally {
       setProbandoCorreo(false);
     }
@@ -253,6 +322,7 @@ export default function AdminConfiguracionPage({ currentUser, onNavigateTab }) {
           { id: 'todas', label: 'Todas las Secciones', icono: Layers },
           { id: 'contpaqi', label: 'CONTPAQi® Nóminas', icono: Database },
           { id: 'email', label: 'Servidor Correo SMTP', icono: Mail },
+          { id: 'log-correos', label: 'Log de Auditoría de Envíos', icono: ShieldAlert },
           { id: 'vacaciones', label: 'Parámetros Vacaciones LFT', icono: Calendar },
           { id: 'mantenimiento', label: 'Mantenimiento & NAS', icono: HardDrive }
         ].map(tab => {
@@ -261,7 +331,10 @@ export default function AdminConfiguracionPage({ currentUser, onNavigateTab }) {
           return (
             <button
               key={tab.id}
-              onClick={() => setSeccionActiva(tab.id)}
+              onClick={() => {
+                setSeccionActiva(tab.id);
+                if (tab.id === 'log-correos') cargarLogsCorreo();
+              }}
               className={`px-3.5 py-2 rounded-xl font-bold transition flex items-center gap-2 whitespace-nowrap cursor-pointer ${
                 activa 
                   ? 'bg-purple-900 text-white shadow-xs' 
@@ -784,34 +857,422 @@ export default function AdminConfiguracionPage({ currentUser, onNavigateTab }) {
           </div>
         )}
 
-        {/* 4. BOTÓN FLOTANTE / INFERIOR DE GUARDADO */}
-        <div className="p-4 bg-white rounded-2xl border border-slate-200 shadow-xs flex items-center justify-between">
-          <div className="flex items-center gap-2 text-xs text-slate-500">
-            <Lock className="w-4 h-4 text-slate-400" />
-            <span>Todos los cambios quedan registrados con fecha, hora y usuario en dbo.ConfiguracionSistema.</span>
-          </div>
+        {/* =========================================================================
+            TARJETA 5: BITÁCORA Y LOG DE AUDITORÍA DE ENVÍOS DE CORREO
+           ========================================================================= */}
+        {(seccionActiva === 'todas' || seccionActiva === 'log-correos') && (
+          <div className="bg-white rounded-2xl border border-slate-200/90 shadow-xs overflow-hidden">
+            <div className="px-6 py-4 bg-slate-50/80 border-b border-slate-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <div className="flex items-center gap-3">
+                <div className="w-9 h-9 rounded-xl bg-purple-100 text-purple-700 flex items-center justify-center font-bold">
+                  <ShieldAlert className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-sm font-bold text-slate-800">5. Log de Auditoría de Envíos de Correo</h3>
+                  <p className="text-[11px] text-slate-500">
+                    Trazabilidad histórica de notificaciones emitidas, estatus de entrega y modo de pruebas (dbo.LogCorreosEnviados).
+                  </p>
+                </div>
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => cargarLogsCorreo()}
+                  disabled={loadingLogs}
+                  className="px-3 py-1.5 bg-white border border-slate-200 hover:border-slate-300 text-slate-700 rounded-xl text-xs font-bold transition flex items-center gap-1.5 shadow-2xs disabled:opacity-50 cursor-pointer"
+                  title="Actualizar registros del log"
+                >
+                  <RotateCw className={`w-3.5 h-3.5 text-slate-500 ${loadingLogs ? 'animate-spin' : ''}`} />
+                  <span>{loadingLogs ? 'Actualizando...' : 'Refrescar'}</span>
+                </button>
+                <span className="hidden md:inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-bold bg-purple-100 text-purple-800 border border-purple-200">
+                  <Check className="w-3 h-3 text-purple-600" />
+                  Auditoría TI Activa
+                </span>
+              </div>
+            </div>
 
-          <div className="flex items-center gap-3">
-            <button
-              type="button"
-              onClick={cargarConfiguracion}
-              disabled={loading || guardando}
-              className="px-4 py-2 border border-slate-200 text-slate-600 hover:bg-slate-50 rounded-xl text-xs font-semibold transition cursor-pointer"
-            >
-              Cancelar / Descartar
-            </button>
-            <button
-              type="submit"
-              disabled={guardando || loading}
-              className="px-5 py-2 bg-purple-700 hover:bg-purple-800 text-white rounded-xl text-xs font-bold transition flex items-center gap-2 shadow-xs cursor-pointer"
-            >
-              <Save className={`w-3.5 h-3.5 ${guardando ? 'animate-spin' : ''}`} />
-              <span>{guardando ? 'Guardando...' : 'Guardar Todos los Cambios'}</span>
-            </button>
+            <div className="p-6 space-y-4">
+              {/* METRIC CARDS */}
+              <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+                {/* Total */}
+                <div className="p-3.5 bg-slate-50 border border-slate-200/80 rounded-xl">
+                  <div className="flex items-center justify-between text-slate-500 mb-1">
+                    <span className="text-[11px] font-bold uppercase tracking-wider">Total Notificaciones</span>
+                    <Mail className="w-4 h-4 text-purple-600" />
+                  </div>
+                  <div className="text-xl font-black text-slate-900">{logsCorreo.length}</div>
+                  <div className="text-[10px] text-slate-400 mt-0.5">Últimos registros en bitácora</div>
+                </div>
+
+                {/* Exitosos */}
+                <div className="p-3.5 bg-emerald-50/60 border border-emerald-200/80 rounded-xl">
+                  <div className="flex items-center justify-between text-emerald-700 mb-1">
+                    <span className="text-[11px] font-bold uppercase tracking-wider">Entregados (Éxito)</span>
+                    <CheckCircle className="w-4 h-4 text-emerald-600" />
+                  </div>
+                  <div className="text-xl font-black text-emerald-900">
+                    {logsCorreo.filter(l => l.estatusEnvio === 'EXITO').length}
+                  </div>
+                  <div className="text-[10px] text-emerald-700/80 mt-0.5">Aceptados por relay SMTP</div>
+                </div>
+
+                {/* Fallidos */}
+                <div className="p-3.5 bg-rose-50/60 border border-rose-200/80 rounded-xl">
+                  <div className="flex items-center justify-between text-rose-700 mb-1">
+                    <span className="text-[11px] font-bold uppercase tracking-wider">Fallidos (Error)</span>
+                    <AlertCircle className="w-4 h-4 text-rose-600" />
+                  </div>
+                  <div className="text-xl font-black text-rose-900">
+                    {logsCorreo.filter(l => l.estatusEnvio === 'ERROR').length}
+                  </div>
+                  <div className="text-[10px] text-rose-700/80 mt-0.5">Rechazos de conexión / DNS</div>
+                </div>
+
+                {/* Sandbox / Redirigidos */}
+                <div className="p-3.5 bg-amber-50/60 border border-amber-200/80 rounded-xl">
+                  <div className="flex items-center justify-between text-amber-800 mb-1">
+                    <span className="text-[11px] font-bold uppercase tracking-wider">Sandbox / Auditoría</span>
+                    <ShieldAlert className="w-4 h-4 text-amber-600" />
+                  </div>
+                  <div className="text-xl font-black text-amber-950">
+                    {logsCorreo.filter(l => l.destinatarioEfectivo && l.destinatarioOriginal && 
+                      (l.destinatarioEfectivo.toLowerCase() !== l.destinatarioOriginal.toLowerCase() || 
+                       l.destinatarioEfectivo.toLowerCase().includes('soporte@grupojama'))).length}
+                  </div>
+                  <div className="text-[10px] text-amber-800/80 mt-0.5">Redirigidos a Soporte TI</div>
+                </div>
+              </div>
+
+              {/* SEARCH & FILTERS BAR */}
+              <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-2.5 pt-1">
+                <div className="flex flex-1 items-center gap-2">
+                  <div className="relative flex-1">
+                    <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                    <input
+                      type="text"
+                      value={busquedaLog}
+                      onChange={(e) => setBusquedaLog(e.target.value)}
+                      onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); cargarLogsCorreo(); } }}
+                      placeholder="Buscar por folio (#SOL-...), correo destinatario o asunto..."
+                      className="w-full pl-9 pr-3 py-2 bg-slate-50 border border-slate-300 rounded-xl text-xs font-medium focus:ring-2 focus:ring-purple-600 outline-none"
+                    />
+                    {busquedaLog && (
+                      <button
+                        type="button"
+                        onClick={() => { setBusquedaLog(''); cargarLogsCorreo(filtroEstatusLog, ''); }}
+                        className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 cursor-pointer"
+                      >
+                        <X className="w-3.5 h-3.5" />
+                      </button>
+                    )}
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={() => cargarLogsCorreo()}
+                    className="px-3.5 py-2 bg-purple-700 hover:bg-purple-800 text-white rounded-xl text-xs font-bold transition shrink-0 cursor-pointer shadow-2xs"
+                  >
+                    Buscar
+                  </button>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <select
+                    value={filtroEstatusLog}
+                    onChange={(e) => {
+                      setFiltroEstatusLog(e.target.value);
+                      cargarLogsCorreo(e.target.value, busquedaLog);
+                    }}
+                    className="px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl text-xs font-medium focus:ring-2 focus:ring-purple-600 outline-none cursor-pointer"
+                  >
+                    <option value="TODOS">Todos los Estatus</option>
+                    <option value="EXITO">Solo Éxito (EXITO)</option>
+                    <option value="ERROR">Solo Fallidos (ERROR)</option>
+                  </select>
+                </div>
+              </div>
+
+              {/* TABLA DE AUDITORÍA */}
+              <div className="overflow-x-auto rounded-xl border border-slate-200">
+                <table className="w-full text-left text-xs">
+                  <thead className="bg-slate-50 border-b border-slate-200 text-slate-500 font-bold uppercase tracking-wider text-[10px]">
+                    <tr>
+                      <th className="px-4 py-3">Fecha y Hora</th>
+                      <th className="px-4 py-3">Evento / Tipo</th>
+                      <th className="px-4 py-3">Folio</th>
+                      <th className="px-4 py-3">Destinatario (Original → Efectivo)</th>
+                      <th className="px-4 py-3">Asunto</th>
+                      <th className="px-4 py-3 text-center">Estatus</th>
+                      <th className="px-4 py-3 text-right">Detalle</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {loadingLogs ? (
+                      <tr>
+                        <td colSpan="7" className="px-4 py-10 text-center text-slate-400">
+                          <RotateCw className="w-5 h-5 animate-spin mx-auto mb-2 text-purple-600" />
+                          <span>Cargando bitácora de auditoría...</span>
+                        </td>
+                      </tr>
+                    ) : logsCorreo.length === 0 ? (
+                      <tr>
+                        <td colSpan="7" className="px-4 py-8 text-center text-slate-400">
+                          <Mail className="w-8 h-8 mx-auto mb-2 text-slate-300" />
+                          <p className="font-semibold text-slate-600">No se encontraron registros de auditoría</p>
+                          <p className="text-[11px] text-slate-400 mt-0.5">
+                            {busquedaLog || filtroEstatusLog !== 'TODOS'
+                              ? 'Intente modificar los filtros de búsqueda.'
+                              : 'Aún no se han registrado envíos de correo en dbo.LogCorreosEnviados.'}
+                          </p>
+                        </td>
+                      </tr>
+                    ) : (
+                      logsCorreo.map((log) => {
+                        const badge = getTipoEventoBadge(log.tipoEvento);
+                        const esSandbox = log.destinatarioEfectivo && log.destinatarioOriginal && 
+                          (log.destinatarioEfectivo.toLowerCase() !== log.destinatarioOriginal.toLowerCase() ||
+                           log.destinatarioEfectivo.toLowerCase().includes('soporte@grupojama'));
+
+                        return (
+                          <tr key={log.idLog} className="hover:bg-slate-50/80 transition-colors">
+                            <td className="px-4 py-3 text-[11px] font-mono text-slate-600 whitespace-nowrap">
+                              {formatearFechaHora(log.fechaEnvio)}
+                            </td>
+                            <td className="px-4 py-3 whitespace-nowrap">
+                              <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold border ${badge.bg}`}>
+                                {badge.label}
+                              </span>
+                            </td>
+                            <td className="px-4 py-3 font-mono font-bold text-slate-800 whitespace-nowrap">
+                              {log.folioSolicitud ? (
+                                <span className="text-purple-700 font-bold bg-purple-50 px-2 py-0.5 rounded border border-purple-100">
+                                  {log.folioSolicitud}
+                                </span>
+                              ) : (
+                                <span className="text-slate-400 text-[11px]">-</span>
+                              )}
+                            </td>
+                            <td className="px-4 py-3">
+                              {esSandbox ? (
+                                <div className="space-y-0.5">
+                                  <div className="text-[11px] text-slate-400 font-mono line-through truncate max-w-xs" title={log.destinatarioOriginal}>
+                                    {log.destinatarioOriginal}
+                                  </div>
+                                  <div className="flex items-center gap-1.5 text-[11px] font-mono text-purple-900 font-bold">
+                                    <span className="text-purple-500">→</span>
+                                    <span className="truncate max-w-xs" title={log.destinatarioEfectivo}>{log.destinatarioEfectivo}</span>
+                                    <span className="px-1.5 py-0.2 rounded text-[9px] font-black uppercase tracking-wider bg-amber-100 text-amber-800 border border-amber-300 shrink-0">
+                                      Sandbox
+                                    </span>
+                                  </div>
+                                </div>
+                              ) : (
+                                <span className="text-xs font-mono text-slate-700 truncate max-w-xs block" title={log.destinatarioEfectivo || log.destinatarioOriginal}>
+                                  {log.destinatarioEfectivo || log.destinatarioOriginal}
+                                </span>
+                              )}
+                            </td>
+                            <td className="px-4 py-3 text-slate-700 max-w-xs truncate" title={log.asunto}>
+                              {log.asunto}
+                            </td>
+                            <td className="px-4 py-3 text-center whitespace-nowrap">
+                              {log.estatusEnvio === 'EXITO' ? (
+                                <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-800 border border-emerald-200">
+                                  <CheckCircle className="w-3 h-3 text-emerald-600" />
+                                  ÉXITO
+                                </span>
+                              ) : (
+                                <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-rose-100 text-rose-800 border border-rose-200">
+                                  <AlertCircle className="w-3 h-3 text-rose-600" />
+                                  ERROR
+                                </span>
+                              )}
+                            </td>
+                            <td className="px-4 py-3 text-right whitespace-nowrap">
+                              <button
+                                type="button"
+                                onClick={() => setModalDetalleLog(log)}
+                                className="px-2.5 py-1 text-slate-600 hover:text-purple-700 hover:bg-purple-50 rounded-lg text-xs font-semibold transition border border-slate-200 hover:border-purple-200 inline-flex items-center gap-1 cursor-pointer"
+                              >
+                                <Eye className="w-3.5 h-3.5" />
+                                <span>Detalle</span>
+                              </button>
+                            </td>
+                          </tr>
+                        );
+                      })
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </div>
           </div>
-        </div>
+        )}
+
+        {/* 6. BOTÓN FLOTANTE / INFERIOR DE GUARDADO (OCULTO EN PESTAÑA LOGS) */}
+        {seccionActiva !== 'log-correos' && (
+          <div className="p-4 bg-white rounded-2xl border border-slate-200 shadow-xs flex items-center justify-between">
+            <div className="flex items-center gap-2 text-xs text-slate-500">
+              <Lock className="w-4 h-4 text-slate-400" />
+              <span>Todos los cambios quedan registrados con fecha, hora y usuario en dbo.ConfiguracionSistema.</span>
+            </div>
+
+            <div className="flex items-center gap-3">
+              <button
+                type="button"
+                onClick={cargarConfiguracion}
+                disabled={loading || guardando}
+                className="px-4 py-2 border border-slate-200 text-slate-600 hover:bg-slate-50 rounded-xl text-xs font-semibold transition cursor-pointer"
+              >
+                Cancelar / Descartar
+              </button>
+              <button
+                type="submit"
+                disabled={guardando || loading}
+                className="px-5 py-2 bg-purple-700 hover:bg-purple-800 text-white rounded-xl text-xs font-bold transition flex items-center gap-2 shadow-xs cursor-pointer"
+              >
+                <Save className={`w-3.5 h-3.5 ${guardando ? 'animate-spin' : ''}`} />
+                <span>{guardando ? 'Guardando...' : 'Guardar Todos los Cambios'}</span>
+              </button>
+            </div>
+          </div>
+        )}
 
       </form>
+
+      {/* MODAL DE DETALLE TÉCNICO DE AUDITORÍA */}
+      {modalDetalleLog && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs animate-in fade-in">
+          <div className="bg-white rounded-2xl max-w-2xl w-full border border-slate-200 shadow-2xl overflow-hidden flex flex-col max-h-[90vh]">
+            {/* HEADER */}
+            <div className="px-6 py-4 bg-slate-50 border-b border-slate-200 flex items-center justify-between">
+              <div className="flex items-center gap-2.5">
+                <div className="w-8 h-8 rounded-xl bg-purple-100 text-purple-700 flex items-center justify-center font-bold">
+                  <Mail className="w-4 h-4" />
+                </div>
+                <div>
+                  <h3 className="text-sm font-bold text-slate-900">
+                    Detalle Técnico de Notificación #{modalDetalleLog.idLog}
+                  </h3>
+                  <p className="text-[11px] text-slate-500">
+                    Registro auditado en dbo.LogCorreosEnviados
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setModalDetalleLog(null)}
+                className="text-slate-400 hover:text-slate-700 p-1.5 rounded-lg hover:bg-slate-100 transition cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* BODY */}
+            <div className="p-6 overflow-y-auto space-y-4">
+              {/* BANNER STATUS */}
+              {modalDetalleLog.estatusEnvio === 'EXITO' ? (
+                <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-xl flex items-center gap-2.5 text-xs text-emerald-900">
+                  <CheckCircle className="w-4 h-4 text-emerald-600 shrink-0" />
+                  <div>
+                    <span className="font-bold">Notificación procesada y aceptada por el servidor SMTP.</span>
+                    <p className="text-[11px] text-emerald-700 mt-0.5">El mensaje fue entregado al canal de transporte sin errores.</p>
+                  </div>
+                </div>
+              ) : (
+                <div className="p-3 bg-rose-50 border border-rose-200 rounded-xl flex items-start gap-2.5 text-xs text-rose-900">
+                  <AlertCircle className="w-4 h-4 text-rose-600 shrink-0 mt-0.5" />
+                  <div>
+                    <span className="font-bold">Fallo en la comunicación con el servidor SMTP.</span>
+                    <p className="text-[11px] text-rose-700 mt-0.5">El servidor rechazó o no pudo completar la entrega del correo.</p>
+                  </div>
+                </div>
+              )}
+
+              {/* METADATA GRID */}
+              <div className="bg-slate-50 border border-slate-200 rounded-xl p-4 grid grid-cols-1 md:grid-cols-2 gap-3 text-xs">
+                <div>
+                  <span className="text-[11px] text-slate-400 block font-semibold">Fecha y Hora de Registro:</span>
+                  <span className="font-mono text-slate-800 font-bold">{formatearFechaHora(modalDetalleLog.fechaEnvio)}</span>
+                </div>
+
+                <div>
+                  <span className="text-[11px] text-slate-400 block font-semibold">Tipo de Evento:</span>
+                  <span className="font-bold text-slate-800">{modalDetalleLog.tipoEvento}</span>
+                </div>
+
+                <div>
+                  <span className="text-[11px] text-slate-400 block font-semibold">Folio de Solicitud:</span>
+                  <span className="font-mono font-bold text-purple-700">{modalDetalleLog.folioSolicitud || 'N/A (Prueba TI)'}</span>
+                </div>
+
+                <div>
+                  <span className="text-[11px] text-slate-400 block font-semibold">Estatus de Envío:</span>
+                  <span className={`font-bold ${modalDetalleLog.estatusEnvio === 'EXITO' ? 'text-emerald-700' : 'text-rose-700'}`}>
+                    {modalDetalleLog.estatusEnvio}
+                  </span>
+                </div>
+
+                <div className="md:col-span-2 border-t border-slate-200/80 pt-2.5">
+                  <span className="text-[11px] text-slate-400 block font-semibold">Destinatario Previsto (Original):</span>
+                  <span className="font-mono text-slate-800 break-all">{modalDetalleLog.destinatarioOriginal}</span>
+                </div>
+
+                <div className="md:col-span-2">
+                  <span className="text-[11px] text-slate-400 block font-semibold">Destinatario Real (Efectivo):</span>
+                  <div className="flex items-center gap-2 mt-0.5">
+                    <span className="font-mono font-bold text-purple-950 break-all">{modalDetalleLog.destinatarioEfectivo}</span>
+                    {modalDetalleLog.destinatarioEfectivo !== modalDetalleLog.destinatarioOriginal && (
+                      <span className="px-2 py-0.5 rounded text-[10px] font-black uppercase tracking-wider bg-amber-100 text-amber-900 border border-amber-300">
+                        Modo Auditoría / Sandbox
+                      </span>
+                    )}
+                  </div>
+                </div>
+
+                <div className="md:col-span-2 border-t border-slate-200/80 pt-2.5">
+                  <span className="text-[11px] text-slate-400 block font-semibold">Asunto del Correo:</span>
+                  <span className="font-medium text-slate-900">{modalDetalleLog.asunto}</span>
+                </div>
+
+                {modalDetalleLog.messageId && (
+                  <div className="md:col-span-2">
+                    <span className="text-[11px] text-slate-400 block font-semibold">RFC 2822 Message-ID:</span>
+                    <span className="font-mono text-[11px] text-slate-600 bg-white px-2 py-1 rounded border border-slate-200 block break-all select-all">
+                      {modalDetalleLog.messageId}
+                    </span>
+                  </div>
+                )}
+              </div>
+
+              {/* ERROR TRACE IF ANY */}
+              {modalDetalleLog.mensajeError && (
+                <div>
+                  <label className="block text-xs font-bold text-rose-900 mb-1 flex items-center gap-1.5">
+                    <AlertCircle className="w-3.5 h-3.5 text-rose-600" />
+                    <span>Traza Técnica del Error Reportado:</span>
+                  </label>
+                  <pre className="p-3 bg-rose-50 border border-rose-200 rounded-xl text-[11px] font-mono text-rose-950 whitespace-pre-wrap break-all max-h-48 overflow-y-auto">
+                    {modalDetalleLog.mensajeError}
+                  </pre>
+                </div>
+              )}
+            </div>
+
+            {/* FOOTER */}
+            <div className="px-6 py-3 bg-slate-50 border-t border-slate-200 flex justify-end">
+              <button
+                type="button"
+                onClick={() => setModalDetalleLog(null)}
+                className="px-4 py-2 bg-slate-800 hover:bg-slate-900 text-white rounded-xl text-xs font-bold transition cursor-pointer"
+              >
+                Cerrar Detalle
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
     </div>
   );

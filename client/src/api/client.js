@@ -212,6 +212,7 @@ export const api = {
   getConfiguracionSistema: () => request('/admin/configuracion'),
   updateConfiguracionSistema: (data) => request('/admin/configuracion', { method: 'PUT', body: JSON.stringify(data) }),
   probarCorreoSistema: (data) => request('/admin/configuracion/probar-correo', { method: 'POST', body: JSON.stringify(data) }),
+  getLogCorreos: (params = '') => request(`/admin/configuracion/log-correos${params ? '?' + params : ''}`),
 
   // Descarga Genérica de Archivos Excel (.xlsx)
   descargarExcel: async (endpoint, filename) => {

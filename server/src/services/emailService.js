@@ -209,10 +209,68 @@ function generarPlantillaHtml({ titulo, badgeTexto, badgeColor, badgeBg, badgeBo
 }
 
 /**
+ * Registra la trazabilidad histórica de cada intento de notificación en dbo.LogCorreosEnviados
+ */
+async function registrarLogEnvio({
+  destinatarioOriginal,
+  destinatarioEfectivo,
+  asunto,
+  tipoEvento = 'GENERAL',
+  folioSolicitud = null,
+  estatusEnvio, // 'EXITO' o 'ERROR'
+  mensajeError = null,
+  messageId = null
+}) {
+  try {
+    const pool = await getPool();
+    if (!pool || isUsingMock()) {
+      if (!mockStore.logCorreosEnviados) {
+        mockStore.logCorreosEnviados = [];
+      }
+      mockStore.logCorreosEnviados.unshift({
+        idLog: mockStore.logCorreosEnviados.length + 1,
+        destinatarioOriginal: destinatarioOriginal || 'NO_REGISTRADO',
+        destinatarioEfectivo: destinatarioEfectivo || 'NO_ENVIADO',
+        asunto: asunto || 'Sin Asunto',
+        tipoEvento: tipoEvento || 'GENERAL',
+        folioSolicitud: folioSolicitud || null,
+        estatusEnvio: estatusEnvio || 'ERROR',
+        mensajeError: mensajeError || null,
+        messageId: messageId || null,
+        fechaEnvio: new Date().toISOString().replace('T', ' ').substring(0, 19)
+      });
+      return;
+    }
+
+    await pool.request()
+      .input('DestinatarioOriginal', (destinatarioOriginal || 'no-especificado').substring(0, 150))
+      .input('DestinatarioEfectivo', (destinatarioEfectivo || 'no-especificado').substring(0, 150))
+      .input('Asunto', (asunto || 'Sin Asunto').substring(0, 255))
+      .input('TipoEvento', (tipoEvento || 'GENERAL').substring(0, 50))
+      .input('FolioSolicitud', folioSolicitud ? String(folioSolicitud).substring(0, 50) : null)
+      .input('EstatusEnvio', estatusEnvio) // 'EXITO' o 'ERROR'
+      .input('MensajeError', mensajeError ? String(mensajeError) : null)
+      .input('MessageId', messageId ? String(messageId).substring(0, 150) : null)
+      .query(`
+        INSERT INTO dbo.LogCorreosEnviados (
+          DestinatarioOriginal, DestinatarioEfectivo, Asunto, TipoEvento,
+          FolioSolicitud, EstatusEnvio, MensajeError, MessageId, FechaEnvio
+        ) VALUES (
+          @DestinatarioOriginal, @DestinatarioEfectivo, @Asunto, @TipoEvento,
+          @FolioSolicitud, @EstatusEnvio, @MensajeError, @MessageId, SYSDATETIME()
+        )
+      `);
+  } catch (err) {
+    console.error('[LOG CORREOS] Error al insertar en dbo.LogCorreosEnviados:', err.message);
+  }
+}
+
+/**
  * Función genérica de despacho de correo con salvaguardas y logs desacoplados
  * Incluye soporte nativo para Modo de Auditoría / Sandboxing (Redirección a soporte@grupojama.com)
+ * y persistencia automática en dbo.LogCorreosEnviados.
  */
-async function enviarEmail({ to, subject, html }) {
+async function enviarEmail({ to, subject, html, tipoEvento = 'GENERAL', folioSolicitud = null }) {
   const modoAuditoria = process.env.MODO_PRUEBAS_CORREO === 'true' || Boolean(process.env.CORREO_AUDITORIA);
   const correoAuditoria = (process.env.CORREO_AUDITORIA || 'soporte@grupojama.com').trim();
 
@@ -223,6 +281,15 @@ async function enviarEmail({ to, subject, html }) {
 
   if (!destinatarioOriginal || !destinatarioOriginal.includes('@')) {
     console.warn(`[NOTIFICACIONES EMAIL] Omitido: Destinatario con correo inválido o no registrado ('${to}').`);
+    await registrarLogEnvio({
+      destinatarioOriginal: to || 'NO_REGISTRADO',
+      destinatarioEfectivo: 'NO_ENVIADO',
+      asunto: subject,
+      tipoEvento,
+      folioSolicitud,
+      estatusEnvio: 'ERROR',
+      mensajeError: 'Destinatario con correo inválido o no registrado'
+    });
     return { skipped: true, reason: 'EMAIL_NO_VALIDO' };
   }
 
@@ -231,6 +298,15 @@ async function enviarEmail({ to, subject, html }) {
   const config = await obtenerConfiguracionEmail();
   if (!config || !config.enabled) {
     console.log(`[NOTIFICACIONES EMAIL] Notificaciones deshabilitadas en configuración del sistema.`);
+    await registrarLogEnvio({
+      destinatarioOriginal,
+      destinatarioEfectivo: destinatarioFinal,
+      asunto: subject,
+      tipoEvento,
+      folioSolicitud,
+      estatusEnvio: 'ERROR',
+      mensajeError: 'Notificaciones deshabilitadas en configuración (SMTP_NOTIF_ENABLED=false)'
+    });
     return { skipped: true, reason: 'NOTIFICACIONES_DESHABILITADAS' };
   }
 
@@ -242,7 +318,17 @@ async function enviarEmail({ to, subject, html }) {
     console.warn(`[NOTIFICACIONES EMAIL] SMTP no configurado (SMTP_HOST vacío). Simulación de envío:`);
     console.warn(` -> Para: ${destinatarioFinal} ${modoAuditoria ? `(Destinatario original previsto: ${destinatarioOriginal})` : ''}`);
     console.warn(` -> Asunto: ${subject}`);
-    return { simulated: true, to: destinatarioFinal, destinatarioOriginal, subject };
+    const simMessageId = `<SIMULADO_${Date.now()}@grupojama.com>`;
+    await registrarLogEnvio({
+      destinatarioOriginal,
+      destinatarioEfectivo: destinatarioFinal,
+      asunto: subject,
+      tipoEvento,
+      folioSolicitud,
+      estatusEnvio: 'EXITO',
+      messageId: simMessageId
+    });
+    return { simulated: true, to: destinatarioFinal, destinatarioOriginal, subject, messageId: simMessageId };
   }
 
   // Inyección del Banner Superior de Auditoría si el modo sandbox está activo
@@ -279,9 +365,27 @@ async function enviarEmail({ to, subject, html }) {
       html: htmlFinal
     });
     console.log(`[NOTIFICACIONES EMAIL] Enviado con éxito a: ${destinatarioFinal} ${modoAuditoria ? `(Original: ${destinatarioOriginal})` : ''} (ID: ${info.messageId}) - Asunto: ${subject}`);
+    await registrarLogEnvio({
+      destinatarioOriginal,
+      destinatarioEfectivo: destinatarioFinal,
+      asunto: subject,
+      tipoEvento,
+      folioSolicitud,
+      estatusEnvio: 'EXITO',
+      messageId: info.messageId
+    });
     return { success: true, messageId: info.messageId, destinatarioFinal, destinatarioOriginal, modoAuditoria };
   } catch (err) {
     console.error(`[NOTIFICACIONES EMAIL] Error al enviar correo a ${destinatarioFinal}:`, err.message);
+    await registrarLogEnvio({
+      destinatarioOriginal,
+      destinatarioEfectivo: destinatarioFinal,
+      asunto: subject,
+      tipoEvento,
+      folioSolicitud,
+      estatusEnvio: 'ERROR',
+      mensajeError: err.message
+    });
     return { success: false, error: err.message };
   }
 }
@@ -555,7 +659,7 @@ const emailService = {
         ctaUrl: '/lider/aprobaciones'
       });
 
-      await enviarEmail({ to: emailJefe, subject: asunto, html });
+      await enviarEmail({ to: emailJefe, subject: asunto, html, tipoEvento: 'NUEVA_SOLICITUD', folioSolicitud: folio });
     } catch (err) {
       console.error('[NOTIFICACIONES EMAIL] Error en notificarNuevaSolicitud:', err.message);
     }
@@ -655,7 +759,7 @@ const emailService = {
         ctaUrl: '/lider/aprobaciones'
       });
 
-      await enviarEmail({ to: emailSegundo, subject: asunto, html });
+      await enviarEmail({ to: emailSegundo, subject: asunto, html, tipoEvento: 'PENDIENTE_GERENTE', folioSolicitud: folio });
     } catch (err) {
       console.error('[NOTIFICACIONES EMAIL] Error en notificarSolicitudPendienteGerente:', err.message);
     }
@@ -727,7 +831,7 @@ const emailService = {
         ctaUrl: '/portal'
       });
 
-      await enviarEmail({ to: emailColab, subject: asunto, html });
+      await enviarEmail({ to: emailColab, subject: asunto, html, tipoEvento: 'APROBADA_LIDER', folioSolicitud: folio });
     } catch (err) {
       console.error('[NOTIFICACIONES EMAIL] Error en notificarSolicitudAprobada:', err.message);
     }
@@ -788,7 +892,7 @@ const emailService = {
         ctaUrl: '/portal'
       });
 
-      await enviarEmail({ to: emailColab, subject: asunto, html });
+      await enviarEmail({ to: emailColab, subject: asunto, html, tipoEvento: 'RECHAZADA_LIDER', folioSolicitud: folio });
     } catch (err) {
       console.error('[NOTIFICACIONES EMAIL] Error en notificarSolicitudRechazada:', err.message);
     }
@@ -859,7 +963,7 @@ const emailService = {
         ctaUrl: '/lider/aprobaciones'
       });
 
-      await enviarEmail({ to: emailJefe, subject: asunto, html });
+      await enviarEmail({ to: emailJefe, subject: asunto, html, tipoEvento: 'CANCELADA_COLABORADOR', folioSolicitud: folio });
     } catch (err) {
       console.error('[NOTIFICACIONES EMAIL] Error en notificarSolicitudCancelada:', err.message);
     }
@@ -969,7 +1073,7 @@ const emailService = {
         ctaUrl: '/portal'
       });
 
-      await enviarEmail({ to: emailColab, subject: asunto, html });
+      await enviarEmail({ to: emailColab, subject: asunto, html, tipoEvento: esAprobada ? 'CONCLUIDA_DO' : 'RECHAZADA_DO', folioSolicitud: folio });
     } catch (err) {
       console.error('[NOTIFICACIONES EMAIL] Error en notificarConclusionDO:', err.message);
     }
@@ -978,5 +1082,6 @@ const emailService = {
 
 emailService.crearTransportadorSmtp = crearTransportadorSmtp;
 emailService.obtenerConfiguracionEmail = obtenerConfiguracionEmail;
+emailService.registrarLogEnvio = registrarLogEnvio;
 
 module.exports = emailService;
