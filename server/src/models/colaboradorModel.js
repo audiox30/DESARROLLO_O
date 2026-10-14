@@ -108,6 +108,7 @@ class ColaboradorModel {
         c.RFC,
         c.NSS,
         c.Sexo,
+        c.Genero,
         c.FechaNacimiento,
         c.EstadoCivil,
         c.Nacionalidad,
@@ -177,6 +178,8 @@ class ColaboradorModel {
     if (!colabRes.recordset[0]) return null;
 
     const colaborador = colabRes.recordset[0];
+    colaborador.Genero = colaborador.Genero || (colaborador.Sexo === 'F' ? 'Mujer' : 'Hombre');
+    colaborador.genero = colaborador.Genero;
     colaborador.emailCorporativo = colaborador.EmailCorporativo;
     colaborador.email_corporativo = colaborador.EmailCorporativo;
 

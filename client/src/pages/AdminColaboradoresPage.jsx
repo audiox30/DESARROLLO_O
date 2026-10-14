@@ -1307,6 +1307,11 @@ export default function AdminColaboradoresPage({ currentUser }) {
                         valor={formatearFecha(colabEditar.FechaNacimiento)} 
                         icono={Calendar} 
                       />
+                      <CampoSoloLectura 
+                        label="Género" 
+                        valor={colabEditar.Genero || (colabEditar.Sexo === 'F' ? 'Mujer' : 'Hombre')} 
+                        icono={Lock} 
+                      />
                       <CampoSoloLectura label="Estado Civil" valor={colabEditar.EstadoCivil} icono={User} />
                       <CampoSoloLectura label="Nacionalidad" valor={colabEditar.Nacionalidad} icono={User} />
                       <CampoSoloLectura label="Correo Nómina / Personal" valor={colabEditar.Email} icono={Mail} placeholderVacio="Sin correo registrado en nómina" />
