@@ -1,12 +1,13 @@
 import React, { useState, useEffect } from 'react';
 import { 
   Plus, Calendar, Clock, CheckCircle2, XCircle, AlertCircle, 
-  FileText, Ban, Sparkles, RefreshCw
+  FileText, Ban, Sparkles, RefreshCw, Baby, User, Heart, Phone, Shield, Briefcase, Trash2
 } from 'lucide-react';
 import { api } from '../api/client';
 import StatCards from '../components/StatCards';
 import KardexVacaciones from '../components/KardexVacaciones';
 import ModalNuevaSolicitud from '../components/ModalNuevaSolicitud';
+import { formatearNombreColaborador } from '../utils/formatters';
 
 function formatFechaUI(fecha) {
   if (!fecha) return '—';
@@ -26,19 +27,104 @@ function formatFechaUI(fecha) {
   }
 }
 
+function calcularEdad(fechaNacimiento) {
+  if (!fechaNacimiento) return 'No especificada';
+  try {
+    const nacimiento = new Date(fechaNacimiento);
+    if (isNaN(nacimiento.getTime())) return 'No especificada';
+    const hoy = new Date();
+    let edad = hoy.getFullYear() - nacimiento.getFullYear();
+    const m = hoy.getMonth() - nacimiento.getMonth();
+    if (m < 0 || (m === 0 && hoy.getDate() < nacimiento.getDate())) {
+      edad--;
+    }
+    if (edad <= 0) {
+      const meses = Math.max(0, (hoy.getFullYear() - nacimiento.getFullYear()) * 12 + hoy.getMonth() - nacimiento.getMonth());
+      return meses === 1 ? '1 mes' : `${meses} meses`;
+    }
+    return `${edad} ${edad === 1 ? 'año' : 'años'}`;
+  } catch (e) {
+    return 'No especificada';
+  }
+}
+
 export default function ColaboradorPortal({ currentUser }) {
   const [saldoData, setSaldoData] = useState(null);
   const [solicitudes, setSolicitudes] = useState([]);
   const [loading, setLoading] = useState(true);
   const [modalAbierto, setModalAbierto] = useState(false);
-  const [subTab, setSubTab] = useState('solicitudes'); // 'solicitudes', 'kardex'
+  const [subTab, setSubTab] = useState('solicitudes'); // 'solicitudes', 'kardex', 'perfil'
   const [descargandoId, setDescargandoId] = useState(null);
   const [toastError, setToastError] = useState('');
   const [toastSuccess, setToastSuccess] = useState('');
 
+  // Datos del perfil y dependientes
+  const [perfilColab, setPerfilColab] = useState(null);
+  const [loadingPerfil, setLoadingPerfil] = useState(false);
+  const [formNuevoHijo, setFormNuevoHijo] = useState({ fechaNacimiento: '', sexo: 'M' });
+  const [guardandoHijo, setGuardandoHijo] = useState(false);
+  const [toastMsg, setToastMsg] = useState('');
+
   useEffect(() => {
     cargarDatos();
+    cargarPerfil();
   }, [currentUser]);
+
+  function mostrarToast(msg) {
+    setToastMsg(msg);
+    setTimeout(() => setToastMsg(''), 4000);
+  }
+
+  async function cargarPerfil() {
+    try {
+      setLoadingPerfil(true);
+      const colabId = currentUser?.id || currentUser?.id_colaborador;
+      if (colabId) {
+        const res = await api.getColaborador(colabId);
+        if (res.success) {
+          setPerfilColab(res.data);
+        }
+      }
+    } catch (err) {
+      console.warn('No se pudo cargar perfil extendido:', err);
+    } finally {
+      setLoadingPerfil(false);
+    }
+  }
+
+  async function handleAgregarHijoColaborador(e) {
+    e.preventDefault();
+    const colabId = currentUser?.id || currentUser?.id_colaborador;
+    if (!colabId) return;
+    try {
+      setGuardandoHijo(true);
+      const res = await api.agregarHijo(colabId, formNuevoHijo);
+      if (res.success) {
+        mostrarToast('Hijo/dependiente registrado exitosamente.');
+        setFormNuevoHijo({ fechaNacimiento: '', sexo: 'M' });
+        cargarPerfil();
+      }
+    } catch (err) {
+      alert('Error registrando hijo: ' + err.message);
+    } finally {
+      setGuardandoHijo(false);
+    }
+  }
+
+  async function handleEliminarHijoColaborador(idHijo) {
+    const colabId = currentUser?.id || currentUser?.id_colaborador;
+    if (!colabId) return;
+    if (!window.confirm('¿Confirmas la eliminación de este registro de hijo/dependiente?')) return;
+    try {
+      const res = await api.eliminarHijo(colabId, idHijo);
+      if (res.success) {
+        mostrarToast('Registro de hijo/dependiente eliminado.');
+        cargarPerfil();
+      }
+    } catch (err) {
+      alert('Error eliminando hijo: ' + err.message);
+    }
+  }
 
   async function cargarDatos() {
     try {
@@ -125,7 +211,7 @@ export default function ColaboradorPortal({ currentUser }) {
         <div>
           <div className="flex items-center gap-2">
             <h1 className="text-xl font-black text-slate-900 tracking-tight">
-              Bienvenido, {currentUser?.nombreCompleto || 'Colaborador'}
+              Bienvenido, {formatearNombreColaborador(currentUser?.nombreCompleto || 'Colaborador')}
             </h1>
             <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 border border-emerald-200">
               Activo
@@ -187,7 +273,26 @@ export default function ColaboradorPortal({ currentUser }) {
             <FileText className="w-4 h-4" />
             Kárdex de Períodos LFT
           </button>
+
+          <button
+            onClick={() => setSubTab('perfil')}
+            className={`pb-3 text-xs font-bold border-b-2 transition-all flex items-center gap-2 cursor-pointer ${
+              subTab === 'perfil'
+                ? 'border-blue-600 text-blue-700'
+                : 'border-transparent text-slate-400 hover:text-slate-700'
+            }`}
+          >
+            <Baby className="w-4 h-4 text-pink-500" />
+            Mi Expediente & Familia {perfilColab?.hijos ? `(${perfilColab.hijos.length})` : ''}
+          </button>
         </div>
+
+        {toastMsg && (
+          <div className="mx-6 mt-4 p-3 bg-emerald-50 border border-emerald-200 text-emerald-800 rounded-xl text-xs font-semibold flex items-center gap-2">
+            <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+            <span>{toastMsg}</span>
+          </div>
+        )}
 
         <div className="p-6">
           {/* Toast / Alerta de Error en PDF u Operación */}
@@ -318,11 +423,215 @@ export default function ColaboradorPortal({ currentUser }) {
                 </div>
               )}
             </div>
-          ) : (
+          ) : subTab === 'kardex' ? (
             <KardexVacaciones 
               periodos={saldoData?.periodos} 
               colaborador={saldoData?.colaborador} 
             />
+          ) : (
+            /* SubTab 3: Mi Expediente & Familia */
+            <div className="space-y-6">
+              {loadingPerfil ? (
+                <div className="py-12 text-center text-slate-400">
+                  <RefreshCw className="w-6 h-6 animate-spin mx-auto mb-2 text-blue-600" />
+                  <p className="text-xs font-semibold">Cargando expediente personal...</p>
+                </div>
+              ) : (
+                <>
+                  {/* Resumen Ficha y Datos Laborales */}
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div className="bg-slate-50 border border-slate-200/80 rounded-2xl p-4">
+                      <h4 className="text-xs font-bold text-slate-800 uppercase tracking-wider mb-3 flex items-center gap-1.5">
+                        <Briefcase className="w-4 h-4 text-blue-600" />
+                        <span>Datos Laborales & Empresa</span>
+                      </h4>
+                      <div className="space-y-2 text-xs">
+                        <div className="flex justify-between">
+                          <span className="text-slate-400">Empresa:</span>
+                          <span className="font-semibold text-slate-800">{perfilColab?.Empresa || currentUser?.empresa || '—'}</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-slate-400">Nómina / Código:</span>
+                          <span className="font-mono font-bold text-slate-800">{perfilColab?.CodigoEmpleado || currentUser?.codigoEmpleado || '—'}</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-slate-400">Departamento:</span>
+                          <span className="font-semibold text-slate-800">{perfilColab?.Departamento || currentUser?.departamento || 'General'}</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-slate-400">Puesto:</span>
+                          <span className="font-semibold text-slate-800">{perfilColab?.Puesto || currentUser?.puesto || '—'}</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-slate-400">Jefe Directo:</span>
+                          <span className="font-semibold text-amber-800">{perfilColab?.JefeDirectoNombre || 'Sin Jefe Asignado'}</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-slate-400">Días de Descanso:</span>
+                          <span className="font-semibold text-slate-800">{perfilColab?.DiasDescanso || 'Domingos'}</span>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="bg-slate-50 border border-slate-200/80 rounded-2xl p-4">
+                      <h4 className="text-xs font-bold text-slate-800 uppercase tracking-wider mb-3 flex items-center gap-1.5">
+                        <Heart className="w-4 h-4 text-rose-600" />
+                        <span>Contacto de Emergencia & Salud</span>
+                      </h4>
+                      <div className="space-y-2 text-xs">
+                        <div className="flex justify-between">
+                          <span className="text-slate-400">Contacto de Emergencia:</span>
+                          <span className="font-bold text-slate-800">{perfilColab?.AvisarEmergencia || 'Sin registrar'}</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-slate-400">Parentesco:</span>
+                          <span className="font-semibold text-slate-800">{perfilColab?.ParentescoEmergencia || '—'}</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-slate-400">Teléfono Emergencia:</span>
+                          <span className="font-mono font-bold text-rose-700">{perfilColab?.TelefonoEmergencia || '—'}</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-slate-400">Tipo de Sangre:</span>
+                          <span className="font-bold text-rose-900 bg-rose-50 px-2 py-0.5 rounded border border-rose-200">{perfilColab?.TipoSangre || 'No registrado'}</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-slate-400">Alergias / Padecimientos:</span>
+                          <span className="font-medium text-slate-700">{perfilColab?.AlergiasPadecimientos || 'Ninguna'}</span>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Sección Hijos / Dependientes Familiares */}
+                  <div className="bg-white border-2 border-indigo-100 rounded-3xl p-5 shadow-xs">
+                    <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 pb-4 border-b border-slate-100">
+                      <div className="flex items-center gap-3">
+                        <div className="w-10 h-10 rounded-2xl bg-pink-100 text-pink-700 flex items-center justify-center">
+                          <Baby className="w-5 h-5" />
+                        </div>
+                        <div>
+                          <h4 className="text-sm font-black text-slate-900">
+                            Mis Hijos & Dependientes Familiares
+                          </h4>
+                          <p className="text-xs text-slate-500">
+                            Registro en nómina (<code className="font-mono bg-slate-100 px-1 py-0.5 rounded text-[11px]">dbo.ColaboradorHijos</code>) para prestaciones y eventos familiares.
+                          </p>
+                        </div>
+                      </div>
+                      <span className="px-3 py-1 bg-pink-50 text-pink-700 font-bold rounded-full text-xs border border-pink-200">
+                        {(perfilColab?.hijos || []).length} {((perfilColab?.hijos || []).length === 1) ? 'hijo registrado' : 'hijos registrados'}
+                      </span>
+                    </div>
+
+                    {/* Grid de Hijos */}
+                    <div className="mt-4">
+                      {(!perfilColab?.hijos || perfilColab.hijos.length === 0) ? (
+                        <div className="p-8 text-center bg-slate-50 border border-dashed border-slate-200 rounded-2xl">
+                          <Baby className="w-10 h-10 text-slate-300 mx-auto mb-2" />
+                          <p className="text-xs font-bold text-slate-700">Aún no tienes hijos registrados en tu expediente</p>
+                          <p className="text-[11px] text-slate-400 mt-1 max-w-sm mx-auto">
+                            Puedes dar de alta a tus dependientes utilizando el formulario inferior para que sean contemplados en prestaciones institucionales.
+                          </p>
+                        </div>
+                      ) : (
+                        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
+                          {perfilColab.hijos.map((h, i) => {
+                            const fn = h.FechaNacimiento || h.fechaNacimiento;
+                            const sx = (h.Sexo || h.sexo || '').toUpperCase();
+                            const num = h.NumeroHijo || h.numeroHijo || (i + 1);
+                            const idH = h.IdHijo || h.idHijo;
+                            return (
+                              <div key={idH || i} className="p-4 bg-slate-50/80 border border-slate-200 rounded-2xl flex items-start justify-between gap-3 shadow-2xs">
+                                <div className="flex items-start gap-3 min-w-0">
+                                  <div className="w-9 h-9 rounded-xl bg-white border border-slate-200 text-slate-700 font-black text-xs flex items-center justify-center shrink-0 shadow-xs">
+                                    #{num}
+                                  </div>
+                                  <div className="min-w-0">
+                                    <div className="flex items-center gap-1.5">
+                                      <span className="text-xs font-black text-slate-800">Hijo #{num}</span>
+                                      {sx === 'M' ? (
+                                        <span className="text-[10px] font-bold px-1.5 py-0.5 bg-blue-100 text-blue-800 rounded">Niño</span>
+                                      ) : sx === 'F' ? (
+                                        <span className="text-[10px] font-bold px-1.5 py-0.5 bg-pink-100 text-pink-800 rounded">Niña</span>
+                                      ) : (
+                                        <span className="text-[10px] font-bold px-1.5 py-0.5 bg-slate-100 text-slate-600 rounded">Indef.</span>
+                                      )}
+                                    </div>
+                                    <p className="text-[11px] text-slate-500 mt-1">
+                                      Nacimiento: <span className="font-mono text-slate-700">{fn ? new Date(fn).toLocaleDateString('es-MX', { year: 'numeric', month: 'short', day: 'numeric', timeZone: 'UTC' }) : 'No capturada'}</span>
+                                    </p>
+                                    <p className="text-[11px] font-bold text-slate-700 mt-0.5">
+                                      Edad: <span className="text-indigo-600">{calcularEdad(fn)}</span>
+                                    </p>
+                                  </div>
+                                </div>
+                                {idH && (
+                                  <button
+                                    type="button"
+                                    onClick={() => handleEliminarHijoColaborador(idH)}
+                                    className="p-1 text-slate-300 hover:text-rose-600 rounded-lg hover:bg-rose-50 transition cursor-pointer"
+                                    title="Eliminar dependiente"
+                                  >
+                                    <Trash2 className="w-3.5 h-3.5" />
+                                  </button>
+                                )}
+                              </div>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Formulario para Registrar Nuevo Hijo */}
+                    <div className="mt-5 p-4 bg-slate-50 border border-slate-200 rounded-2xl">
+                      <h5 className="text-xs font-bold text-slate-800 mb-2 flex items-center gap-1.5">
+                        <Plus className="w-4 h-4 text-blue-600" />
+                        <span>Registrar Nuevo Hijo o Dependiente</span>
+                      </h5>
+                      <form onSubmit={handleAgregarHijoColaborador} className="grid grid-cols-1 sm:grid-cols-3 gap-3 items-end">
+                        <div>
+                          <label className="block text-[11px] font-bold text-slate-600 mb-1">
+                            Fecha de Nacimiento
+                          </label>
+                          <input
+                            type="date"
+                            value={formNuevoHijo.fechaNacimiento}
+                            onChange={(e) => setFormNuevoHijo({ ...formNuevoHijo, fechaNacimiento: e.target.value })}
+                            className="w-full px-3 py-1.5 bg-white border border-slate-300 rounded-xl text-xs focus:ring-2 focus:ring-blue-600 outline-none"
+                            required
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-[11px] font-bold text-slate-600 mb-1">
+                            Sexo
+                          </label>
+                          <select
+                            value={formNuevoHijo.sexo}
+                            onChange={(e) => setFormNuevoHijo({ ...formNuevoHijo, sexo: e.target.value })}
+                            className="w-full px-3 py-1.5 bg-white border border-slate-300 rounded-xl text-xs focus:ring-2 focus:ring-blue-600 outline-none"
+                          >
+                            <option value="M">👦 Masculino (Niño)</option>
+                            <option value="F">👧 Femenino (Niña)</option>
+                            <option value="X">⚪ Sin especificar</option>
+                          </select>
+                        </div>
+                        <div>
+                          <button
+                            type="submit"
+                            disabled={guardandoHijo}
+                            className="w-full px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold transition shadow-xs cursor-pointer disabled:opacity-50 flex items-center justify-center gap-1.5"
+                          >
+                            <Plus className="w-3.5 h-3.5" />
+                            <span>{guardandoHijo ? 'Registrando...' : 'Registrar Hijo'}</span>
+                          </button>
+                        </div>
+                      </form>
+                    </div>
+                  </div>
+                </>
+              )}
+            </div>
           )}
         </div>
       </div>

@@ -5,6 +5,7 @@ import {
 } from 'lucide-react';
 import { api } from '../api/client';
 import ModalAprobacion from '../components/ModalAprobacion';
+import { formatearNombreColaborador, compararPorApellidos } from '../utils/formatters';
 
 export default function LiderPortal({ currentUser }) {
   const [pendientes, setPendientes] = useState([]);
@@ -42,10 +43,13 @@ export default function LiderPortal({ currentUser }) {
           colaboradorSucursal: s.colaboradorSucursal || s.Sucursal || 'Matriz',
           motivoComentarios: s.motivoComentarios || s.MotivoComentarios || '',
           nivelAprobacionRequerido: s.nivelAprobacionRequerido || s.NivelAprobacionRequerido || ((s.estado || s.Estado) === 'PENDIENTE_GERENTE' ? 2 : 1)
-        }));
+        })).sort((a, b) => compararPorApellidos(a.colaboradorNombre, b.colaboradorNombre, 'asc'));
         setPendientes(norm);
       }
-      if (eqRes.success) setEquipo(eqRes.data);
+      if (eqRes.success) {
+        const sortedEquipo = [...(eqRes.data || [])].sort((a, b) => compararPorApellidos(a, b, 'asc'));
+        setEquipo(sortedEquipo);
+      }
     } catch (err) {
       console.error('Error cargando bandeja de líder:', err);
     } finally {
@@ -175,7 +179,7 @@ export default function LiderPortal({ currentUser }) {
                     <div className="flex items-start justify-between">
                       <div>
                         <div className="flex items-center gap-2">
-                          <span className="font-bold text-sm text-slate-900">{s.colaboradorNombre}</span>
+                          <span className="font-bold text-sm text-slate-900">{formatearNombreColaborador(s.colaboradorNombre)}</span>
                         </div>
                         <p className="text-xs text-slate-500 mt-0.5">
                           {s.colaboradorPuesto} • {s.colaboradorEmpresa || 'Grupo JAMA'}
@@ -273,7 +277,7 @@ export default function LiderPortal({ currentUser }) {
               {equipo.map((c) => (
                 <tr key={c.id} className="hover:bg-slate-50/60 transition-colors">
                   <td className="py-3 px-4 font-mono font-bold text-slate-700">{c.codigoEmpleado}</td>
-                  <td className="py-3 px-4 font-bold text-slate-900">{c.nombreCompleto}</td>
+                  <td className="py-3 px-4 font-bold text-slate-900">{formatearNombreColaborador(c)}</td>
                   <td className="py-3 px-4 text-slate-600">{c.puesto}</td>
                   <td className="py-3 px-4 text-slate-500">{c.departamento}</td>
                   <td className="py-3 px-4 text-center font-bold text-slate-700">{c.diasCorrespondientes || 14}</td>

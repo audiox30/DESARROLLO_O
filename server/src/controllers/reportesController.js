@@ -10,6 +10,101 @@ const reportesController = {
     try {
       const { empresa, empresa_id, empresaId, sucursal, departamento, fechaInicio, fechaFin, format } = req.query;
       const pool = await getLocalPool();
+
+      if (!pool || isUsingMock()) {
+        const mockStore = require('../data/mockStore');
+        let list = [...(mockStore.colaboradores || [])].map(c => {
+          const numHijos = (mockStore.colaboradorHijos || []).filter(h => (h.idColaborador === c.id || h.IdColaborador === c.id)).length;
+          const jefe = (mockStore.colaboradores || []).find(j => j.id === c.idJefeDirecto);
+          return {
+            IdColaborador: c.id,
+            CodigoEmpleado: c.codigoEmpleado,
+            Subfijo: c.subfijo || null,
+            NombreCompleto: c.nombreCompleto,
+            Empresa: c.empresa,
+            Sucursal: c.sucursal || 'Matriz',
+            Departamento: c.departamento || 'Sin Departamento',
+            Puesto: c.puesto || 'Sin Puesto',
+            FechaAlta: c.fechaAlta,
+            AntiguedadAnios: c.antiguedadAnios || 0,
+            JefeDirecto: jefe ? jefe.nombreCompleto : 'Sin Asignar',
+            EstatusNomina: c.estatusNomina || 'A',
+            RolApp: c.rolApp || 'COLABORADOR',
+            EstatusSistema: c.activo !== false ? 'ACTIVO' : 'BAJA',
+            Telefono: c.telefono || '—',
+            Email: c.email || '—',
+            TotalHijos: numHijos,
+            DiasDescanso: c.diasDescanso || 'Domingos',
+            ApellidoPaterno: c.apellidoPaterno || '',
+            ApellidoMaterno: c.apellidoMaterno || '',
+            Nombre: c.nombre || ''
+          };
+        });
+
+        if (empresa_id || empresa) {
+          const target = String(empresa_id || empresa).toLowerCase();
+          list = list.filter(c => String(c.idEmpresa) === target || (c.Empresa && c.Empresa.toLowerCase().includes(target)));
+        }
+        if (sucursal && sucursal.trim()) {
+          list = list.filter(c => c.Sucursal && c.Sucursal.toLowerCase().includes(sucursal.toLowerCase()));
+        }
+        if (departamento && departamento.trim()) {
+          list = list.filter(c => c.Departamento && c.Departamento.toLowerCase().includes(departamento.toLowerCase()));
+        }
+        if (fechaInicio) {
+          list = list.filter(c => c.FechaAlta >= fechaInicio);
+        }
+        if (fechaFin) {
+          list = list.filter(c => c.FechaAlta <= fechaFin);
+        }
+
+        // Ordenamiento Alfabético Obligatorio A - Z por Apellidos
+        list.sort((a, b) => {
+          const apA = (a.ApellidoPaterno || '').toUpperCase();
+          const apB = (b.ApellidoPaterno || '').toUpperCase();
+          if (apA !== apB) return apA.localeCompare(apB, 'es', { sensitivity: 'base' });
+          const amA = (a.ApellidoMaterno || '').toUpperCase();
+          const amB = (b.ApellidoMaterno || '').toUpperCase();
+          if (amA !== amB) return amA.localeCompare(amB, 'es', { sensitivity: 'base' });
+          const nomA = (a.Nombre || '').toUpperCase();
+          const nomB = (b.Nombre || '').toUpperCase();
+          return nomA.localeCompare(nomB, 'es', { sensitivity: 'base' });
+        });
+
+        if (format === 'xlsx') {
+          const rows = list.map(r => ({
+            'Código': r.CodigoEmpleado,
+            'Nombre Completo': r.NombreCompleto,
+            'Empresa (Razón Social)': r.Empresa,
+            'Sucursal / Unidad': r.Sucursal,
+            'Departamento': r.Departamento,
+            'Puesto': r.Puesto,
+            'Fecha de Alta': r.FechaAlta,
+            'Antigüedad (Años)': r.AntiguedadAnios,
+            'Jefe Directo': r.JefeDirecto,
+            'No. de Hijos': r.TotalHijos || 0,
+            'Estatus Nómina': r.EstatusNomina,
+            'Rol en App': r.RolApp,
+            'Teléfono': r.Telefono,
+            'Días de Descanso': r.DiasDescanso
+          }));
+
+          const wb = XLSX.utils.book_new();
+          const ws = XLSX.utils.json_to_sheet(rows);
+          XLSX.utils.book_append_sheet(wb, ws, 'Padron_Colaboradores');
+          const buffer = XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' });
+          res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+          res.setHeader('Content-Disposition', `attachment; filename=PADRON_COLABORADORES_JAMA_${new Date().toISOString().split('T')[0]}.xlsx`);
+          return res.send(buffer);
+        }
+
+        return res.json({
+          success: true,
+          total: list.length,
+          data: list
+        });
+      }
+
       const request = pool.request();
       let whereClauses = [];
 
@@ -49,13 +144,30 @@ const reportesController = {
 
       const query = `
         SELECT 
-          c.IdColaborador, c.CodigoEmpleado, c.Subfijo, c.NombreCompleto,
+          c.IdColaborador, c.CodigoEmpleado, c.Subfijo,
+          CASE 
+            WHEN c.ApellidoPaterno IS NOT NULL AND RTRIM(LTRIM(c.ApellidoPaterno)) <> ''
+              THEN RTRIM(LTRIM(c.ApellidoPaterno)) + 
+                   CASE WHEN c.ApellidoMaterno IS NOT NULL AND RTRIM(LTRIM(c.ApellidoMaterno)) <> '' 
+                        THEN ' ' + RTRIM(LTRIM(c.ApellidoMaterno)) ELSE '' END + 
+                   ', ' + RTRIM(LTRIM(ISNULL(c.Nombre, '')))
+            ELSE c.NombreCompleto
+          END AS NombreCompleto,
           e.AliasEmpresa AS Empresa, ISNULL(c.Sucursal, 'Matriz') AS Sucursal,
           ISNULL(d.Nombre, 'Sin Departamento') AS Departamento,
           ISNULL(p.Nombre, 'Sin Puesto') AS Puesto,
           CONVERT(VARCHAR(10), c.FechaAlta, 120) AS FechaAlta,
           DATEDIFF(YEAR, c.FechaAlta, GETDATE()) AS AntiguedadAnios,
-          ISNULL(j.NombreCompleto, 'Sin Asignar') AS JefeDirecto,
+          ISNULL(
+            CASE 
+              WHEN j.ApellidoPaterno IS NOT NULL AND RTRIM(LTRIM(j.ApellidoPaterno)) <> ''
+                THEN RTRIM(LTRIM(j.ApellidoPaterno)) + 
+                     CASE WHEN j.ApellidoMaterno IS NOT NULL AND RTRIM(LTRIM(j.ApellidoMaterno)) <> '' 
+                          THEN ' ' + RTRIM(LTRIM(j.ApellidoMaterno)) ELSE '' END + 
+                     ', ' + RTRIM(LTRIM(ISNULL(j.Nombre, '')))
+              ELSE j.NombreCompleto
+            END, 'Sin Asignar'
+          ) AS JefeDirecto,
           c.EstatusNomina, c.RolApp,
           CASE WHEN c.Activo = 1 THEN 'ACTIVO' ELSE 'BAJA' END AS EstatusSistema,
           ISNULL(c.Telefono, '—') AS Telefono,
@@ -68,7 +180,7 @@ const reportesController = {
         LEFT JOIN dbo.Puestos p ON p.IdPuesto = c.IdPuesto
         LEFT JOIN dbo.Colaboradores j ON j.IdColaborador = c.IdJefeDirecto
         ${whereSQL}
-        ORDER BY e.AliasEmpresa, c.ApellidoPaterno, c.Nombre;
+        ORDER BY c.ApellidoPaterno ASC, c.ApellidoMaterno ASC, c.Nombre ASC;
       `;
 
       const result = await request.query(query);
@@ -122,6 +234,125 @@ const reportesController = {
     try {
       const { empresa, empresa_id, empresaId, sucursal, departamento, format } = req.query;
       const pool = await getLocalPool();
+
+      if (!pool || isUsingMock()) {
+        const mockStore = require('../data/mockStore');
+        let list = [...(mockStore.colaboradores || [])].filter(c => c.activo !== false).map(c => ({
+          IdColaborador: c.id,
+          CodigoEmpleado: c.codigoEmpleado,
+          NombreCompleto: c.nombreCompleto,
+          Empresa: c.empresa,
+          idEmpresa: c.idEmpresa,
+          Sucursal: c.sucursal || 'Matriz',
+          Departamento: c.departamento || 'General',
+          FechaAlta: c.fechaAlta,
+          AntiguedadAnios: c.antiguedadAnios || 0,
+          PeriodoVigente: `${new Date().getFullYear() - 1}-${new Date().getFullYear()}`,
+          DiasLeyLFT: c.diasCorrespondientes || 0,
+          DiasGozados: c.diasGozados || 0,
+          DiasEnTramite: 0,
+          SaldoDisponibleReal: c.diasDisponibles || 0,
+          FechaVencimiento: '—',
+          ApellidoPaterno: c.apellidoPaterno || '',
+          ApellidoMaterno: c.apellidoMaterno || '',
+          Nombre: c.nombre || ''
+        }));
+
+        if (empresa_id || empresa) {
+          const target = String(empresa_id || empresa).toLowerCase();
+          list = list.filter(c => String(c.idEmpresa) === target || (c.Empresa && c.Empresa.toLowerCase().includes(target)));
+        }
+        if (sucursal && sucursal.trim()) {
+          list = list.filter(c => c.Sucursal && c.Sucursal.toLowerCase().includes(sucursal.toLowerCase()));
+        }
+        if (departamento && departamento.trim()) {
+          list = list.filter(c => c.Departamento && c.Departamento.toLowerCase().includes(departamento.toLowerCase()));
+        }
+
+        // Ordenamiento Alfabético Obligatorio A - Z por Apellidos
+        list.sort((a, b) => {
+          const apA = (a.ApellidoPaterno || '').toUpperCase();
+          const apB = (b.ApellidoPaterno || '').toUpperCase();
+          if (apA !== apB) return apA.localeCompare(apB, 'es', { sensitivity: 'base' });
+          const amA = (a.ApellidoMaterno || '').toUpperCase();
+          const amB = (b.ApellidoMaterno || '').toUpperCase();
+          if (amA !== amB) return amA.localeCompare(amB, 'es', { sensitivity: 'base' });
+          const nomA = (a.Nombre || '').toUpperCase();
+          const nomB = (b.Nombre || '').toUpperCase();
+          return nomA.localeCompare(nomB, 'es', { sensitivity: 'base' });
+        });
+
+        // Resumen agrupado por Empresa
+        const resumenPorEmpresa = {};
+        list.forEach(r => {
+          const emp = r.Empresa || 'Otras';
+          if (!resumenPorEmpresa[emp]) {
+            resumenPorEmpresa[emp] = {
+              empresa: emp,
+              totalColaboradores: 0,
+              totalDiasLey: 0,
+              totalDiasGozados: 0,
+              totalDiasEnTramite: 0,
+              totalSaldoDisponible: 0
+            };
+          }
+          resumenPorEmpresa[emp].totalColaboradores += 1;
+          resumenPorEmpresa[emp].totalDiasLey += (r.DiasLeyLFT || 0);
+          resumenPorEmpresa[emp].totalDiasGozados += (r.DiasGozados || 0);
+          resumenPorEmpresa[emp].totalDiasEnTramite += (r.DiasEnTramite || 0);
+          resumenPorEmpresa[emp].totalSaldoDisponible += (r.SaldoDisponibleReal || 0);
+        });
+
+        const resumenList = Object.values(resumenPorEmpresa);
+
+        if (format === 'xlsx') {
+          const rowsDetalle = list.map(r => ({
+            'Código': r.CodigoEmpleado,
+            'Colaborador': r.NombreCompleto,
+            'Empresa': r.Empresa,
+            'Sucursal': r.Sucursal,
+            'Departamento': r.Departamento,
+            'Fecha Ingreso': r.FechaAlta,
+            'Antigüedad (Años)': r.AntiguedadAnios,
+            'Período Vigente': r.PeriodoVigente,
+            'Días por Ley (LFT)': r.DiasLeyLFT,
+            'Días Gozados': r.DiasGozados,
+            'Días en Trámite': r.DiasEnTramite,
+            'Saldo Disponible Real': r.SaldoDisponibleReal,
+            'Fecha Vencimiento': r.FechaVencimiento
+          }));
+
+          const rowsResumen = resumenList.map(r => ({
+            'Empresa': r.empresa,
+            'Total Empleados': r.totalColaboradores,
+            'Total Días Ley LFT': r.totalDiasLey,
+            'Total Días Gozados': r.totalDiasGozados,
+            'Total Días en Trámite': r.totalDiasEnTramite,
+            'Total Días Disponibles': r.totalSaldoDisponible,
+            'Promedio Días Disp / Empleado': Math.round((r.totalSaldoDisponible / (r.totalColaboradores || 1)) * 10) / 10
+          }));
+
+          const wb = XLSX.utils.book_new();
+          const wsDetalle = XLSX.utils.json_to_sheet(rowsDetalle);
+          const wsResumen = XLSX.utils.json_to_sheet(rowsResumen);
+
+          XLSX.utils.book_append_sheet(wb, wsDetalle, 'Detalle_Saldos_Colaborador');
+          XLSX.utils.book_append_sheet(wb, wsResumen, 'Resumen_Por_Empresa');
+
+          const buffer = XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' });
+          res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+          res.setHeader('Content-Disposition', `attachment; filename=SALDOS_VACACIONES_JAMA_${new Date().toISOString().split('T')[0]}.xlsx`);
+          return res.send(buffer);
+        }
+
+        return res.json({
+          success: true,
+          total: list.length,
+          resumenPorEmpresa: resumenList,
+          data: list
+        });
+      }
+
       const request = pool.request();
       let whereClauses = ['c.Activo = 1'];
 
@@ -151,7 +382,15 @@ const reportesController = {
 
       const query = `
         SELECT 
-          c.IdColaborador, c.CodigoEmpleado, c.NombreCompleto,
+          c.IdColaborador, c.CodigoEmpleado,
+          CASE 
+            WHEN c.ApellidoPaterno IS NOT NULL AND RTRIM(LTRIM(c.ApellidoPaterno)) <> ''
+              THEN RTRIM(LTRIM(c.ApellidoPaterno)) + 
+                   CASE WHEN c.ApellidoMaterno IS NOT NULL AND RTRIM(LTRIM(c.ApellidoMaterno)) <> '' 
+                        THEN ' ' + RTRIM(LTRIM(c.ApellidoMaterno)) ELSE '' END + 
+                   ', ' + RTRIM(LTRIM(ISNULL(c.Nombre, '')))
+            ELSE c.NombreCompleto
+          END AS NombreCompleto,
           e.AliasEmpresa AS Empresa, ISNULL(c.Sucursal, 'Matriz') AS Sucursal,
           ISNULL(d.Nombre, 'General') AS Departamento,
           CONVERT(VARCHAR(10), c.FechaAlta, 120) AS FechaAlta,
@@ -183,7 +422,7 @@ const reportesController = {
           WHERE sol.IdColaborador = c.IdColaborador AND sol.Estado IN ('PENDIENTE_LIDER', 'PENDIENTE_DO')
         ) tram
         ${whereSQL}
-        ORDER BY e.AliasEmpresa, c.ApellidoPaterno, c.Nombre;
+        ORDER BY c.ApellidoPaterno ASC, c.ApellidoMaterno ASC, c.Nombre ASC;
       `;
 
       const result = await request.query(query);
@@ -276,6 +515,55 @@ const reportesController = {
       const isSuperOrAdmin = callerRol === 'ADMIN_DO' || callerRol === 'SUPERADMIN' || callerRol === 'SISTEMAS';
 
       const pool = await getLocalPool();
+
+      if (!pool || isUsingMock()) {
+        const mockStore = require('../data/mockStore');
+        let ausencias = (mockStore.solicitudes || []).map(s => {
+          const colab = (mockStore.colaboradores || []).find(c => c.id === s.idColaborador) || {};
+          const jefe = (mockStore.colaboradores || []).find(j => j.id === s.idJefeDirecto || j.id === colab.idJefeDirecto);
+          return {
+            IdSolicitud: s.idSolicitud,
+            Folio: s.folio,
+            FechaInicio: s.fechaInicio,
+            FechaFin: s.fechaFin,
+            TotalDiasLaborables: s.totalDiasLaborables,
+            Estado: s.estado,
+            MotivoComentarios: s.motivoComentarios,
+            FechaCreacion: s.fechaCreacion,
+            IdColaborador: s.idColaborador,
+            CodigoEmpleado: colab.codigoEmpleado || s.colaboradorCodigo,
+            NombreCompleto: colab.nombreCompleto || s.colaboradorNombre,
+            Sucursal: colab.sucursal || 'Matriz',
+            Empresa: colab.empresa || s.colaboradorEmpresa,
+            Departamento: colab.departamento || s.colaboradorDepartamento,
+            Puesto: colab.puesto || s.colaboradorPuesto,
+            JefeDirectoNombre: jefe ? jefe.nombreCompleto : 'Sin Asignar'
+          };
+        });
+
+        if (empresa_id || empresa) {
+          const target = String(empresa_id || empresa).toLowerCase();
+          ausencias = ausencias.filter(a => (a.Empresa && a.Empresa.toLowerCase().includes(target)));
+        }
+        if (sucursal && sucursal.trim()) {
+          ausencias = ausencias.filter(a => a.Sucursal && a.Sucursal.toLowerCase().includes(sucursal.toLowerCase()));
+        }
+        if (departamento && departamento.trim()) {
+          ausencias = ausencias.filter(a => a.Departamento && a.Departamento.toLowerCase().includes(departamento.toLowerCase()));
+        }
+        if (anio) {
+          ausencias = ausencias.filter(a => a.FechaInicio && a.FechaInicio.startsWith(String(anio)));
+        }
+
+        return res.json({
+          success: true,
+          total: ausencias.length,
+          totalTraslapes: 0,
+          traslapes: [],
+          data: ausencias
+        });
+      }
+
       const request = pool.request();
       let whereClauses = ["s.Estado IN ('APROBADA', 'PENDIENTE_DO', 'PENDIENTE_LIDER')"];
 
@@ -325,10 +613,28 @@ const reportesController = {
         SELECT 
           s.IdSolicitud, s.Folio, s.FechaInicio, s.FechaFin, s.TotalDiasLaborables,
           s.Estado, s.MotivoComentarios, s.FechaCreacion,
-          c.IdColaborador, c.CodigoEmpleado, c.NombreCompleto, c.Sucursal,
+          c.IdColaborador, c.CodigoEmpleado,
+          CASE 
+            WHEN c.ApellidoPaterno IS NOT NULL AND RTRIM(LTRIM(c.ApellidoPaterno)) <> ''
+              THEN RTRIM(LTRIM(c.ApellidoPaterno)) + 
+                   CASE WHEN c.ApellidoMaterno IS NOT NULL AND RTRIM(LTRIM(c.ApellidoMaterno)) <> '' 
+                        THEN ' ' + RTRIM(LTRIM(c.ApellidoMaterno)) ELSE '' END + 
+                   ', ' + RTRIM(LTRIM(ISNULL(c.Nombre, '')))
+            ELSE c.NombreCompleto
+          END AS NombreCompleto,
+          c.Sucursal,
           e.AliasEmpresa AS Empresa,
           d.Nombre AS Departamento, p.Nombre AS Puesto,
-          j.NombreCompleto AS JefeDirectoNombre
+          ISNULL(
+            CASE 
+              WHEN j.ApellidoPaterno IS NOT NULL AND RTRIM(LTRIM(j.ApellidoPaterno)) <> ''
+                THEN RTRIM(LTRIM(j.ApellidoPaterno)) + 
+                     CASE WHEN j.ApellidoMaterno IS NOT NULL AND RTRIM(LTRIM(j.ApellidoMaterno)) <> '' 
+                          THEN ' ' + RTRIM(LTRIM(j.ApellidoMaterno)) ELSE '' END + 
+                     ', ' + RTRIM(LTRIM(ISNULL(j.Nombre, '')))
+              ELSE j.NombreCompleto
+            END, 'Sin Asignar'
+          ) AS JefeDirectoNombre
         FROM dbo.SolicitudesVacaciones s
         JOIN dbo.Colaboradores c ON c.IdColaborador = s.IdColaborador
         LEFT JOIN dbo.EmpresasNomipaq e ON e.IdEmpresa = c.IdEmpresa

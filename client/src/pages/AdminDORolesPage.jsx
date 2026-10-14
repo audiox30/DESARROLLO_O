@@ -4,6 +4,11 @@ import {
   AlertCircle, CheckCircle2, X, Users, Shield, ArrowRight
 } from 'lucide-react';
 import { api } from '../api/client';
+import { 
+  formatearNombreColaborador, 
+  formatearEtiquetaSelector, 
+  compararPorApellidos 
+} from '../utils/formatters';
 
 export default function AdminDORolesPage({ currentUser }) {
   const [administradores, setAdministradores] = useState([]);
@@ -36,7 +41,8 @@ export default function AdminDORolesPage({ currentUser }) {
       setLoading(true);
       const res = await api.getAdministradoresDO();
       if (res.success) {
-        setAdministradores(res.data);
+        const sorted = [...(res.data || [])].sort((a, b) => compararPorApellidos(a, b, 'asc'));
+        setAdministradores(sorted);
       }
     } catch (err) {
       console.error('Error cargando administradores DO:', err);
@@ -52,8 +58,10 @@ export default function AdminDORolesPage({ currentUser }) {
     try {
       const res = await api.getColaboradoresAdmin('estatus=ACTIVO&limit=1000');
       if (res.success) {
-        // Filtrar los que no sean ya ADMIN_DO
-        const noDO = res.data.filter(c => c.RolApp !== 'ADMIN_DO');
+        // Filtrar los que no sean ya ADMIN_DO y ordenar A - Z por apellidos
+        const noDO = (res.data || [])
+          .filter(c => c.RolApp !== 'ADMIN_DO')
+          .sort((a, b) => compararPorApellidos(a, b, 'asc'));
         setColaboradoresActivos(noDO);
       }
     } catch (err) {
@@ -70,7 +78,8 @@ export default function AdminDORolesPage({ currentUser }) {
 
     try {
       setGuardandoAsignar(true);
-      const res = await api.asignarAdminDO(colabSeleccionado.IdColaborador);
+      const idColab = colabSeleccionado.IdColaborador || colabSeleccionado.id;
+      const res = await api.asignarAdminDO(idColab);
       if (res.success) {
         mostrarToast(res.message);
         setModalAsignar(false);
@@ -89,7 +98,10 @@ export default function AdminDORolesPage({ currentUser }) {
 
     try {
       setGuardandoRevocar(true);
-      const res = await api.revocarAdminDO(colabRevocar.IdColaborador, nuevoRolRevocar);
+      // Sanitización estricta: exclusivamente el código de rol ('COLABORADOR' o 'LIDER')
+      const rolDestino = nuevoRolRevocar === 'LIDER' ? 'LIDER' : 'COLABORADOR';
+      const idColab = colabRevocar.IdColaborador || colabRevocar.id;
+      const res = await api.revocarAdminDO(idColab, rolDestino);
       if (res.success) {
         mostrarToast(res.message);
         setColabRevocar(null);
@@ -102,7 +114,7 @@ export default function AdminDORolesPage({ currentUser }) {
     }
   }
 
-  // Filtrado de candidatos a promover
+  // Filtrado de candidatos a promover (orden alfabético estricto A - Z por apellidos)
   const candidatosFiltrados = colaboradoresActivos.filter(c => {
     if (!busquedaColab.trim()) return true;
     const term = busquedaColab.toLowerCase();
@@ -112,7 +124,7 @@ export default function AdminDORolesPage({ currentUser }) {
       (c.Empresa && c.Empresa.toLowerCase().includes(term)) ||
       (c.Departamento && c.Departamento.toLowerCase().includes(term))
     );
-  }).slice(0, 15);
+  }).sort((a, b) => compararPorApellidos(a, b, 'asc')).slice(0, 20);
 
   const callerColabId = currentUser?.idColaborador || currentUser?.id;
 
@@ -213,7 +225,7 @@ export default function AdminDORolesPage({ currentUser }) {
                         <span className="block text-[10px] text-slate-400 font-normal">Nómina: {a.CodigoEmpleado}</span>
                       </td>
                       <td className="py-3 px-4">
-                        <span className="font-bold text-slate-900 block">{a.NombreCompleto}</span>
+                        <span className="font-bold text-slate-900 block">{formatearNombreColaborador(a)}</span>
                         <span className="text-[11px] text-slate-400">{a.Email || 'Sin email registrado'}</span>
                       </td>
                       <td className="py-3 px-4">
@@ -309,9 +321,9 @@ export default function AdminDORolesPage({ currentUser }) {
                         }`}
                       >
                         <div>
-                          <div className="text-slate-900 font-semibold">{c.NombreCompleto}</div>
-                          <div className="text-[11px] text-slate-500 font-mono">
-                            {c.CodigoEmpleado} • {c.Empresa} ({c.Departamento || 'General'})
+                          <div className="text-slate-900 font-bold">{formatearEtiquetaSelector(c)}</div>
+                          <div className="text-[11px] text-slate-500 font-medium">
+                            {c.Puesto || 'Puesto General'} • {c.Departamento || 'General'}
                           </div>
                         </div>
                         <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-white border border-slate-200 text-slate-600">
@@ -327,7 +339,7 @@ export default function AdminDORolesPage({ currentUser }) {
                 <div className="p-3 rounded-xl bg-blue-50 border border-blue-200 text-blue-900 text-xs flex items-start gap-2">
                   <Shield className="w-4 h-4 text-blue-700 shrink-0 mt-0.5" />
                   <div>
-                    <span className="font-bold">Colaborador Seleccionado:</span> {colabSeleccionado.NombreCompleto} ({colabSeleccionado.CodigoEmpleado}).
+                    <span className="font-bold">Colaborador Seleccionado:</span> {formatearEtiquetaSelector(colabSeleccionado)}.
                     <p className="text-[11px] text-blue-800 mt-0.5">
                       Tendrá acceso global a autorizaciones de DO, Kárdex de las 8 empresas y Sincronización NOMIPAQ.
                     </p>
@@ -367,7 +379,7 @@ export default function AdminDORolesPage({ currentUser }) {
                 </div>
                 <div>
                   <h3 className="font-black text-slate-900 text-base">Revocar Rol ADMIN_DO</h3>
-                  <p className="text-xs text-slate-500">{colabRevocar.NombreCompleto}</p>
+                  <p className="text-xs text-slate-500">{formatearNombreColaborador(colabRevocar)}</p>
                 </div>
               </div>
               <button onClick={() => setColabRevocar(null)} className="text-slate-400 hover:text-slate-600 p-1">
@@ -377,7 +389,7 @@ export default function AdminDORolesPage({ currentUser }) {
 
             <form onSubmit={handleConfirmarRevocar} className="mt-4 space-y-4">
               <p className="text-xs text-slate-600 leading-relaxed">
-                ¿A qué rol base deseas reasignar a <strong>{colabRevocar.NombreCompleto}</strong> tras revocar sus privilegios de Recursos Humanos?
+                ¿A qué rol base deseas reasignar a <strong>{formatearNombreColaborador(colabRevocar)}</strong> tras revocar sus privilegios de Recursos Humanos?
               </p>
 
               <div>
@@ -386,7 +398,7 @@ export default function AdminDORolesPage({ currentUser }) {
                 </label>
                 <select
                   value={nuevoRolRevocar}
-                  onChange={(e) => setNuevoRolRevocar(e.target.value)}
+                  onChange={(e) => setNuevoRolRevocar(e.target.value === 'LIDER' ? 'LIDER' : 'COLABORADOR')}
                   className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl text-xs focus:ring-2 focus:ring-rose-600 outline-none"
                 >
                   <option value="COLABORADOR">COLABORADOR (Solo consulta su propio saldo)</option>

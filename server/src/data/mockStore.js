@@ -68,6 +68,7 @@ const festivosOficialesMexico = [
 class MockStore {
   constructor() {
     this.empresasNomipaq = [...EMPRESAS_NOMIPAQ_CATALOGO];
+    this.empresas = this.empresasNomipaq;
     this.departamentos = [];
     this.puestos = [];
     this.colaboradores = [];
@@ -75,6 +76,17 @@ class MockStore {
     this.solicitudes = [];
     this.historialAprobaciones = [];
     this.bitacoraSync = [];
+    this.colaboradorHijos = [
+      { idHijo: 1, IdHijo: 1, idColaborador: 147, IdColaborador: 147, numeroHijo: 1, NumeroHijo: 1, fechaNacimiento: '2005-08-25', FechaNacimiento: '2005-08-25', sexo: 'X', Sexo: 'X', fechaRegistro: '2026-10-12T19:50:00Z', FechaRegistro: '2026-10-12T19:50:00Z' },
+      { idHijo: 2, IdHijo: 2, idColaborador: 147, IdColaborador: 147, numeroHijo: 2, NumeroHijo: 2, fechaNacimiento: '2008-08-24', FechaNacimiento: '2008-08-24', sexo: 'X', Sexo: 'X', fechaRegistro: '2026-10-12T19:50:00Z', FechaRegistro: '2026-10-12T19:50:00Z' },
+      { idHijo: 3, IdHijo: 3, idColaborador: 1, IdColaborador: 1, numeroHijo: 1, NumeroHijo: 1, fechaNacimiento: '2016-04-12', FechaNacimiento: '2016-04-12', sexo: 'M', Sexo: 'M', fechaRegistro: '2026-10-12T19:50:00Z', FechaRegistro: '2026-10-12T19:50:00Z' },
+      { idHijo: 4, IdHijo: 4, idColaborador: 1, IdColaborador: 1, numeroHijo: 2, NumeroHijo: 2, fechaNacimiento: '2019-08-20', FechaNacimiento: '2019-08-20', sexo: 'F', Sexo: 'F', fechaRegistro: '2026-10-12T19:50:00Z', FechaRegistro: '2026-10-12T19:50:00Z' },
+      { idHijo: 5, IdHijo: 5, idColaborador: 46, IdColaborador: 46, numeroHijo: 1, NumeroHijo: 1, fechaNacimiento: '2014-02-10', FechaNacimiento: '2014-02-10', sexo: 'F', Sexo: 'F', fechaRegistro: '2026-10-12T19:50:00Z', FechaRegistro: '2026-10-12T19:50:00Z' },
+      { idHijo: 6, IdHijo: 6, idColaborador: 46, IdColaborador: 46, numeroHijo: 2, NumeroHijo: 2, fechaNacimiento: '2018-11-05', FechaNacimiento: '2018-11-05', sexo: 'M', Sexo: 'M', fechaRegistro: '2026-10-12T19:50:00Z', FechaRegistro: '2026-10-12T19:50:00Z' },
+      { idHijo: 7, IdHijo: 7, idColaborador: 594, IdColaborador: 594, numeroHijo: 1, NumeroHijo: 1, fechaNacimiento: '2021-06-15', FechaNacimiento: '2021-06-15', sexo: 'M', Sexo: 'M', fechaRegistro: '2026-10-12T19:50:00Z', FechaRegistro: '2026-10-12T19:50:00Z' },
+      { idHijo: 8, IdHijo: 8, idColaborador: 383, IdColaborador: 383, numeroHijo: 1, NumeroHijo: 1, fechaNacimiento: '2015-09-30', FechaNacimiento: '2015-09-30', sexo: 'F', Sexo: 'F', fechaRegistro: '2026-10-12T19:50:00Z', FechaRegistro: '2026-10-12T19:50:00Z' },
+      { idHijo: 9, IdHijo: 9, idColaborador: 383, IdColaborador: 383, numeroHijo: 2, NumeroHijo: 2, fechaNacimiento: '2020-01-14', FechaNacimiento: '2020-01-14', sexo: 'M', Sexo: 'M', fechaRegistro: '2026-10-12T19:50:00Z', FechaRegistro: '2026-10-12T19:50:00Z' }
+    ];
     this.folioCounter = 100;
     this.init();
   }
@@ -103,8 +115,24 @@ class MockStore {
           else if (empNombre.includes('LATINO')) idEmpresa = 7;
           else if (empNombre.includes('TRAMO')) idEmpresa = 8;
 
+          // Estandarización obligatoria: "APELLIDOS, NOMBRES"
+          const apPat = (c.apellidoPaterno || '').trim();
+          const apMat = (c.apellidoMaterno || '').trim();
+          const nom = (c.nombre || '').trim();
+          const apellidos = [apPat, apMat].filter(Boolean).join(' ');
+          const nombreCompleto = apellidos && nom ? `${apellidos}, ${nom}` : (c.nombreCompleto || `${apellidos} ${nom}`.trim());
+
+          const isActivo = c.activo !== false && c.Activo !== false;
+          const estatusNomina = isActivo ? 'ALTA' : 'BAJA';
+
           return {
             ...c,
+            activo: isActivo,
+            Activo: isActivo,
+            estatusNomina,
+            EstatusNomina: estatusNomina,
+            nombreCompleto,
+            NombreCompleto: nombreCompleto,
             idEmpresa,
             antiguedadAnios: antiguedad,
             diasCorrespondientes,
@@ -114,7 +142,113 @@ class MockStore {
             saldos: generarPeriodosVacaciones(c.fechaAlta, diasGozados)
           };
         });
-        console.log(`[MockStore-DESARROLLO_O] Cargados ${this.colaboradores.length} colaboradores en 8 empresas.`);
+
+        // Configuración de perfiles clave para simulación y pruebas
+        if (!this.colaboradores.some(c => c.id === 2022)) {
+          this.colaboradores.push({
+            id: 2022,
+            codigoEmpleado: 'SIS-001',
+            nombre: 'ADMINISTRADOR',
+            apellidoPaterno: 'DE SISTEMAS',
+            apellidoMaterno: 'TI',
+            nombreCompleto: 'DE SISTEMAS TI, ADMINISTRADOR',
+            NombreCompleto: 'DE SISTEMAS TI, ADMINISTRADOR',
+            email: 'sistemas@grupojama.com.mx',
+            rolApp: 'SISTEMAS',
+            rol: 'SISTEMAS',
+            idEmpresa: 1,
+            empresa: 'CEMENTOS MOCTEZUMA',
+            aliasEmpresa: 'CEMENTOS MOCTEZUMA',
+            puesto: 'Administrador de Sistemas TI',
+            departamento: 'Tecnologías de la Información',
+            fechaAlta: '2020-01-01',
+            antiguedadAnios: 6,
+            diasCorrespondientes: 22,
+            diasGozados: 0,
+            diasDisponibles: 22,
+            jornadaLaboralDias: 5,
+            activo: true,
+            saldos: generarPeriodosVacaciones('2020-01-01', 0)
+          });
+        }
+
+        // Ordenamiento Alfabético Obligatorio A - Z por Apellidos
+        this.colaboradores.sort((a, b) => {
+          const apA = (a.apellidoPaterno || '').toUpperCase();
+          const apB = (b.apellidoPaterno || '').toUpperCase();
+          if (apA !== apB) return apA.localeCompare(apB, 'es', { sensitivity: 'base' });
+          const amA = (a.apellidoMaterno || '').toUpperCase();
+          const amB = (b.apellidoMaterno || '').toUpperCase();
+          if (amA !== amB) return amA.localeCompare(amB, 'es', { sensitivity: 'base' });
+          const nomA = (a.nombre || '').toUpperCase();
+          const nomB = (b.nombre || '').toUpperCase();
+          return nomA.localeCompare(nomB, 'es', { sensitivity: 'base' });
+        });
+
+        // Configurar Ulises Garcés como Líder y asignarle equipo
+        const ulises = this.colaboradores.find(c => c.id === 46 || c.codigoEmpleado === 'LAT-155');
+        if (ulises) {
+          ulises.rolApp = 'LIDER';
+          ulises.rol = 'LIDER';
+          this.colaboradores
+            .filter(c => c.empresa && c.empresa.toUpperCase().includes('LATINO') && c.id !== ulises.id)
+            .slice(0, 10)
+            .forEach(c => {
+              c.idJefeDirecto = ulises.id;
+            });
+        }
+
+        // Configurar Gonzalo Ramírez como Colaborador con Ulises de jefe
+        const gonzalo = this.colaboradores.find(c => c.id === 594 || c.codigoEmpleado === 'LAT-1077');
+        if (gonzalo && ulises) {
+          gonzalo.idJefeDirecto = ulises.id;
+          gonzalo.rolApp = 'COLABORADOR';
+          gonzalo.rol = 'COLABORADOR';
+        }
+
+        // Configurar Tania Hurtado como ADMIN_DO
+        const tania = this.colaboradores.find(c => c.id === 383 || c.codigoEmpleado === 'CONT-906');
+        if (tania) {
+          tania.rolApp = 'ADMIN_DO';
+          tania.rol = 'ADMIN_DO';
+        }
+
+        // Resolución de Nombres de Jefes Directos y Sucursales para todo el catálogo
+        const colabMap = new Map(this.colaboradores.map(c => [c.id, c]));
+        this.colaboradores.forEach(c => {
+          c.Sucursal = c.Sucursal || c.sucursal || 'SAN LUIS';
+          c.sucursal = c.Sucursal;
+          
+          const jefeId = c.idJefeDirecto || c.IdJefeDirecto;
+          if (jefeId && colabMap.has(Number(jefeId))) {
+            const j = colabMap.get(Number(jefeId));
+            c.idJefeDirecto = Number(jefeId);
+            c.IdJefeDirecto = Number(jefeId);
+            c.NombreJefeDirecto = j.nombreCompleto || j.NombreCompleto;
+            c.JefeDirectoNombre = j.nombreCompleto || j.NombreCompleto;
+          } else if (c.NombreJefeDirecto || c.JefeDirectoNombre) {
+            // Ya asignado desde seedData enriquecido
+            c.NombreJefeDirecto = c.NombreJefeDirecto || c.JefeDirectoNombre;
+            c.JefeDirectoNombre = c.NombreJefeDirecto;
+          } else if (c.jefeInmediato && c.jefeInmediato.trim()) {
+            c.NombreJefeDirecto = c.jefeInmediato.trim();
+            c.JefeDirectoNombre = c.jefeInmediato.trim();
+          } else {
+            c.NombreJefeDirecto = null;
+            c.JefeDirectoNombre = null;
+          }
+
+          const segundoId = c.idAprobadorSegundo || c.IdAprobadorSegundo;
+          if (segundoId && colabMap.has(Number(segundoId))) {
+            const g = colabMap.get(Number(segundoId));
+            c.idAprobadorSegundo = Number(segundoId);
+            c.IdAprobadorSegundo = Number(segundoId);
+            c.NombreGerenteSucursal = g.nombreCompleto || g.NombreCompleto;
+            c.SegundoAprobadorNombre = g.nombreCompleto || g.NombreCompleto;
+          }
+        });
+
+        console.log(`[MockStore-DESARROLLO_O] Cargados ${this.colaboradores.length} colaboradores en 8 empresas con sucursales y jefes mapeados.`);
       } catch (err) {
         console.error('[MockStore-DESARROLLO_O] Error cargando seedData.json:', err);
       }
@@ -214,6 +348,46 @@ class MockStore {
         }
       );
     }
+
+    // Solicitud pendiente de Gonzalo Ramírez para su Líder Ulises Garcés
+    const gonzalo = this.colaboradores.find(c => c.id === 594 || c.codigoEmpleado === 'LAT-1077');
+    const ulises = this.colaboradores.find(c => c.id === 46 || c.codigoEmpleado === 'LAT-155');
+    if (gonzalo && ulises) {
+      this.solicitudes.push({
+        idSolicitud: 3,
+        folio: 'VAC-2026-00003',
+        idColaborador: gonzalo.id,
+        idEmpresa: gonzalo.idEmpresa || 7,
+        colaboradorNombre: gonzalo.nombreCompleto,
+        colaboradorCodigo: gonzalo.codigoEmpleado,
+        colaboradorPuesto: gonzalo.puesto || 'Operador de Revolvedora',
+        colaboradorDepartamento: gonzalo.departamento || 'Operaciones',
+        colaboradorEmpresa: gonzalo.empresa || 'LATINO CONCRETOS',
+        idJefeDirecto: ulises.id,
+        fechaCreacion: '2026-10-10T11:00:00Z',
+        fechaInicio: '2026-11-16',
+        fechaFin: '2026-11-20',
+        totalDiasLaborables: 5,
+        totalDiasNaturales: 5,
+        motivoComentarios: 'Vacaciones programadas de fin de año.',
+        estado: 'PENDIENTE_LIDER',
+        fechaResolucion: null,
+        idAprobadorFinal: null,
+        motivoRechazo: null
+      });
+
+      this.historialAprobaciones.push({
+        idAprobacion: 4,
+        idSolicitud: 3,
+        idAprobador: gonzalo.id,
+        aprobadorNombre: gonzalo.nombreCompleto,
+        nivelAprobacion: 'COLABORADOR',
+        accion: 'ENVIADA',
+        comentarios: 'Solicitud enviada a líder Ulises Antonio Garcés',
+        metodoAutorizacion: 'WEB',
+        fechaAccion: '2026-10-10T11:00:00Z'
+      });
+    }
   }
 
   getDiasInhabilesMap() {
@@ -273,12 +447,19 @@ class MockStore {
       if (index >= 0) {
         // MATCHED: Actualizar datos de nómina preservando IdJefeDirecto y RolApp
         const existente = this.colaboradores[index];
+        const apPat = (emp.apellidoPaterno || '').trim();
+        const apMat = (emp.apellidoMaterno || '').trim();
+        const nom = (emp.nombre || '').trim();
+        const apellidos = [apPat, apMat].filter(Boolean).join(' ');
+        const nombreCompleto = apellidos && nom ? `${apellidos}, ${nom}` : (emp.nombreCompleto || `${apellidos} ${nom}`.trim());
+
         this.colaboradores[index] = {
           ...existente,
           nombre: emp.nombre,
           apellidoPaterno: emp.apellidoPaterno,
           apellidoMaterno: emp.apellidoMaterno,
-          nombreCompleto: `${emp.nombre} ${emp.apellidoPaterno} ${emp.apellidoMaterno}`.trim(),
+          nombreCompleto,
+          NombreCompleto: nombreCompleto,
           curp: emp.curp,
           rfc: emp.rfc,
           email: emp.email || existente.email,
@@ -298,6 +479,11 @@ class MockStore {
         // NOT MATCHED: Insertar nuevo colaborador inicializando rol y jefe nulo
         const antiguedad = calcularAntiguedad(emp.fechaAlta);
         const diasCorrespondientes = calcularDiasLFT(antiguedad);
+        const apPat = (emp.apellidoPaterno || '').trim();
+        const apMat = (emp.apellidoMaterno || '').trim();
+        const nom = (emp.nombre || '').trim();
+        const apellidos = [apPat, apMat].filter(Boolean).join(' ');
+        const nombreCompleto = apellidos && nom ? `${apellidos}, ${nom}` : (emp.nombreCompleto || `${apellidos} ${nom}`.trim());
 
         const nuevoColab = {
           id: this.colaboradores.length + 1,
@@ -306,7 +492,8 @@ class MockStore {
           nombre: emp.nombre,
           apellidoPaterno: emp.apellidoPaterno,
           apellidoMaterno: emp.apellidoMaterno,
-          nombreCompleto: `${emp.nombre} ${emp.apellidoPaterno} ${emp.apellidoMaterno}`.trim(),
+          nombreCompleto,
+          NombreCompleto: nombreCompleto,
           curp: emp.curp,
           rfc: emp.rfc,
           email: emp.email || `${emp.codigoEmpleado.toLowerCase()}@grupojama.com`,
@@ -563,6 +750,54 @@ class MockStore {
     });
 
     return solicitud;
+  }
+
+  agregarHijo(idColaborador, { idHijo, numeroHijo, fechaNacimiento, sexo }) {
+    if (idHijo) {
+      const h = this.colaboradorHijos.find(x => (x.idHijo === Number(idHijo) || x.IdHijo === Number(idHijo)));
+      if (h) {
+        h.fechaNacimiento = fechaNacimiento;
+        h.FechaNacimiento = fechaNacimiento;
+        h.sexo = sexo;
+        h.Sexo = sexo;
+        return { success: true };
+      }
+    }
+    const colabHijos = this.colaboradorHijos.filter(x => (x.idColaborador === Number(idColaborador) || x.IdColaborador === Number(idColaborador)));
+    const num = numeroHijo || (colabHijos.length > 0 ? Math.max(...colabHijos.map(x => x.numeroHijo || x.NumeroHijo || 0)) + 1 : 1);
+    const existing = colabHijos.find(x => (x.numeroHijo === Number(num) || x.NumeroHijo === Number(num)));
+    if (existing) {
+      existing.fechaNacimiento = fechaNacimiento;
+      existing.FechaNacimiento = fechaNacimiento;
+      existing.sexo = sexo;
+      existing.Sexo = sexo;
+    } else {
+      const newId = Date.now();
+      const nuevo = {
+        idHijo: newId,
+        IdHijo: newId,
+        idColaborador: Number(idColaborador),
+        IdColaborador: Number(idColaborador),
+        numeroHijo: Number(num),
+        NumeroHijo: Number(num),
+        fechaNacimiento,
+        FechaNacimiento: fechaNacimiento,
+        sexo,
+        Sexo: sexo,
+        fechaRegistro: new Date().toISOString(),
+        FechaRegistro: new Date().toISOString()
+      };
+      this.colaboradorHijos.push(nuevo);
+    }
+    return { success: true };
+  }
+
+  eliminarHijo(idColaborador, idHijo) {
+    this.colaboradorHijos = this.colaboradorHijos.filter(x => 
+      !( (x.idColaborador === Number(idColaborador) || x.IdColaborador === Number(idColaborador)) && 
+         (x.idHijo === Number(idHijo) || x.IdHijo === Number(idHijo)) )
+    );
+    return { success: true };
   }
 }
 

@@ -70,7 +70,7 @@ const syncController = {
 
       if (poolLocal && !isUsingMock()) {
         const empRes = await poolLocal.request().query(`
-          SELECT IdEmpresa, NombreBaseDatos, AliasEmpresa, Activa, UltimaSincronizacion 
+          SELECT IdEmpresa, NombreBaseDatos, AliasEmpresa, Activa
           FROM dbo.EmpresasNomipaq ORDER BY IdEmpresa
         `);
         empresas = empRes.recordset;

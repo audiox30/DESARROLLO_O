@@ -6,6 +6,7 @@ import {
 } from 'lucide-react';
 import { api } from '../api/client';
 import ModalAprobacion from '../components/ModalAprobacion';
+import { formatearNombreColaborador, compararPorApellidos } from '../utils/formatters';
 
 export default function AdminDOPanel({ currentUser }) {
   const [tab, setTab] = useState('solicitudes'); // 'solicitudes', 'sync', 'festivos', 'kardex'
@@ -59,7 +60,10 @@ export default function AdminDOPanel({ currentUser }) {
       if (filtroEstado && filtroEstado !== 'TODAS') params.append('estado', filtroEstado);
       if (filtroEmpresa) params.append('empresa', filtroEmpresa);
       const res = await api.getBandejaDO(params.toString());
-      if (res.success) setSolicitudes(res.data);
+      if (res.success) {
+        const sorted = (res.data || []).sort((a, b) => compararPorApellidos(a.colaboradorNombre, b.colaboradorNombre, 'asc'));
+        setSolicitudes(sorted);
+      }
     } catch (err) {
       console.error(err);
     } finally {
@@ -185,7 +189,10 @@ export default function AdminDOPanel({ currentUser }) {
     try {
       setLoadingKardex(true);
       const res = await api.getKardexGlobal();
-      if (res.success) setKardexList(res.data);
+      if (res.success) {
+        const sorted = (res.data || []).sort((a, b) => compararPorApellidos(a.nombreCompleto, b.nombreCompleto, 'asc'));
+        setKardexList(sorted);
+      }
     } catch (err) {
       console.error(err);
     } finally {
@@ -197,13 +204,13 @@ export default function AdminDOPanel({ currentUser }) {
     if (!busquedaKardex) return true;
     const b = busquedaKardex.toLowerCase();
     return (
-      c.nombreCompleto.toLowerCase().includes(b) ||
-      c.codigoEmpleado.toLowerCase().includes(b) ||
-      c.puesto.toLowerCase().includes(b) ||
-      c.departamento.toLowerCase().includes(b) ||
+      (c.nombreCompleto && c.nombreCompleto.toLowerCase().includes(b)) ||
+      (c.codigoEmpleado && c.codigoEmpleado.toLowerCase().includes(b)) ||
+      (c.puesto && c.puesto.toLowerCase().includes(b)) ||
+      (c.departamento && c.departamento.toLowerCase().includes(b)) ||
       (c.empresa && c.empresa.toLowerCase().includes(b))
     );
-  });
+  }).sort((a, b) => compararPorApellidos(a.nombreCompleto, b.nombreCompleto, 'asc'));
 
   return (
     <div className="space-y-6">
@@ -344,7 +351,7 @@ export default function AdminDOPanel({ currentUser }) {
                     <tr key={s.idSolicitud} className="hover:bg-slate-50/70 transition-colors">
                       <td className="py-3.5 px-3 font-mono font-bold text-slate-900">{s.folio}</td>
                       <td className="py-3.5 px-3 font-bold text-slate-800">
-                        {s.colaboradorNombre}
+                        {formatearNombreColaborador(s.colaboradorNombre)}
                         <span className="block text-[10px] font-normal text-slate-400">{s.colaboradorPuesto}</span>
                       </td>
                       <td className="py-3.5 px-3 text-slate-600">
@@ -643,7 +650,7 @@ export default function AdminDOPanel({ currentUser }) {
                   {kardexFiltrado.map((c) => (
                     <tr key={c.idColaborador} className="hover:bg-slate-50/70 transition-colors">
                       <td className="py-2.5 px-3 font-mono font-bold text-slate-700">{c.codigoEmpleado}</td>
-                      <td className="py-2.5 px-3 font-bold text-slate-900">{c.nombreCompleto}</td>
+                      <td className="py-2.5 px-3 font-bold text-slate-900">{formatearNombreColaborador(c.nombreCompleto)}</td>
                       <td className="py-2.5 px-3 text-slate-500 truncate max-w-[140px]">{c.empresa || 'Grupo JAMA'}</td>
                       <td className="py-2.5 px-3 text-slate-600 truncate max-w-[150px]">{c.puesto}</td>
                       <td className="py-2.5 px-3 text-center text-slate-500 font-mono text-[11px]">{c.fechaAlta}</td>

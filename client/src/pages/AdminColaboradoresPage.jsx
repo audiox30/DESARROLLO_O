@@ -1,11 +1,19 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import { 
   Users, Search, Filter, RefreshCw, KeyRound, Edit3, 
   ShieldCheck, AlertCircle, CheckCircle2, X, Phone, Heart, 
-  Clock, Shield, ArrowUpDown, Copy, Check, Baby, Trash2, Plus, Calendar,
-  ChevronDown, ChevronUp, Lock, Building2, User, CreditCard, Briefcase, Mail
+  Clock, Shield, ArrowUpDown, Copy, Check, Baby, Eye, Trash2, Plus, Calendar,
+  ChevronDown, ChevronUp, Lock, Building2, User, CreditCard, Briefcase, Mail, MapPin
 } from 'lucide-react';
 import { api } from '../api/client';
+import { 
+  formatearNombreColaborador, 
+  formatearEtiquetaSelector, 
+  compararPorApellidos,
+  obtenerInicialesColaborador,
+  desglosarNombre
+} from '../utils/formatters';
 
 function calcularAntiguedad(fechaAltaStr) {
   if (!fechaAltaStr) return '';
@@ -115,7 +123,7 @@ function parseDiasDescanso(val) {
   return OPCIONES_DIAS_SEMANA.filter(d => selected.has(d.id)).map(d => d.id);
 }
 
-function SelectorDiasDescanso({ value = ['DOMINGO'], onChange }) {
+function SelectorDiasDescanso({ value = ['DOMINGO'], onChange, disabled = false }) {
   const [abierto, setAbierto] = useState(false);
   const containerRef = useRef(null);
 
@@ -132,6 +140,7 @@ function SelectorDiasDescanso({ value = ['DOMINGO'], onChange }) {
   const seleccionados = Array.isArray(value) && value.length > 0 ? value : ['DOMINGO'];
 
   function toggleDia(id) {
+    if (disabled) return;
     let nuevo;
     if (seleccionados.includes(id)) {
       nuevo = seleccionados.filter(d => d !== id);
@@ -148,6 +157,7 @@ function SelectorDiasDescanso({ value = ['DOMINGO'], onChange }) {
   }
 
   function aplicarPreset(preset) {
+    if (disabled) return;
     if (preset === 'DOMINGO') {
       onChange(['DOMINGO']);
     } else if (preset === 'SAB_DOM') {
@@ -163,8 +173,9 @@ function SelectorDiasDescanso({ value = ['DOMINGO'], onChange }) {
       {/* Botón trigger cerrado */}
       <button
         type="button"
-        onClick={() => setAbierto(!abierto)}
-        className="w-full min-h-[40px] px-3 py-1.5 bg-slate-50 hover:bg-slate-100/70 border border-slate-300 rounded-xl text-left flex items-center justify-between gap-2 focus:ring-2 focus:ring-blue-600 outline-none transition cursor-pointer"
+        disabled={disabled}
+        onClick={() => !disabled && setAbierto(!abierto)}
+        className={`w-full min-h-[40px] px-3 py-1.5 ${disabled ? 'bg-slate-100 cursor-not-allowed opacity-90' : 'bg-slate-50 hover:bg-slate-100/70 cursor-pointer'} border border-slate-300 rounded-xl text-left flex items-center justify-between gap-2 focus:ring-2 focus:ring-blue-600 outline-none transition`}
       >
         <div className="flex flex-wrap items-center gap-1.5 flex-1 py-0.5">
           {seleccionados.map(id => {
@@ -271,6 +282,26 @@ function SelectorDiasDescanso({ value = ['DOMINGO'], onChange }) {
   );
 }
 
+function calcularEdad(fechaNacimiento) {
+  if (!fechaNacimiento) return 'No especificada';
+  try {
+    const nacimiento = new Date(fechaNacimiento);
+    if (isNaN(nacimiento.getTime())) return 'No especificada';
+    const hoy = new Date();
+    let edad = hoy.getFullYear() - nacimiento.getFullYear();
+    const m = hoy.getMonth() - nacimiento.getMonth();
+    if (m < 0 || (m === 0 && hoy.getDate() < nacimiento.getDate())) {
+      edad--;
+    }
+    if (edad <= 0) {
+      const meses = Math.max(0, (hoy.getFullYear() - nacimiento.getFullYear()) * 12 + hoy.getMonth() - nacimiento.getMonth());
+      return meses === 1 ? '1 mes' : `${meses} meses`;
+    }
+    return `${edad} ${edad === 1 ? 'año' : 'años'}`;
+  } catch (e) {
+    return 'No especificada';
+  }
+}
 export default function AdminColaboradoresPage() {
   const [colaboradores, setColaboradores] = useState([]);
   const [todosLosJefes, setTodosLosJefes] = useState([]);
@@ -284,14 +315,20 @@ export default function AdminColaboradoresPage() {
   const [empresa, setEmpresa] = useState('');
   const [departamento, setDepartamento] = useState('');
   const [sucursal, setSucursal] = useState('');
-  const [estatus, setEstatus] = useState('ACTIVO');
+  const [estatus, setEstatus] = useState('activos');
 
   // Modales
   const [colabEditar, setColabEditar] = useState(null);
+  const [isReadOnly, setIsReadOnly] = useState(false);
   const [formEditar, setFormEditar] = useState({});
   const [guardandoEditar, setGuardandoEditar] = useState(false);
   const [errorEditar, setErrorEditar] = useState('');
   const [acordeonNominaAbierto, setAcordeonNominaAbierto] = useState(true);
+
+  // Modal Ficha Completa
+  const [colabFicha, setColabFicha] = useState(null);
+  const [fichaData, setFichaData] = useState(null);
+  const [loadingFicha, setLoadingFicha] = useState(false);
 
   const [colabReset, setColabReset] = useState(null);
   const [passwordManual, setPasswordManual] = useState('');
@@ -412,11 +449,15 @@ export default function AdminColaboradoresPage() {
     }
   }
 
+  // Ordenación Alfabética Obligatoria (defaultSort: 'asc' A - Z por Apellidos)
+  const [sortDirection, setSortDirection] = useState('asc');
+
   async function cargarCatalogoJefes() {
     try {
-      const res = await api.getColaboradoresAdmin('estatus=ACTIVO&limit=1000');
+      const res = await api.getColaboradoresAdmin('estatus=activos&limit=1000');
       if (res.success) {
-        setTodosLosJefes(res.data);
+        const sorted = (res.data || []).sort((a, b) => compararPorApellidos(a, b, 'asc'));
+        setTodosLosJefes(sorted);
       }
     } catch (err) {
       console.error('Error cargando catálogo de jefes:', err);
@@ -440,7 +481,8 @@ export default function AdminColaboradoresPage() {
 
       const res = await api.getColaboradoresAdmin(params.toString());
       if (res.success) {
-        setColaboradores(res.data);
+        const sorted = (res.data || []).sort((a, b) => compararPorApellidos(a, b, sortDirection));
+        setColaboradores(sorted);
         setTotal(res.total);
         setTotalPages(res.totalPages || 1);
       }
@@ -457,8 +499,9 @@ export default function AdminColaboradoresPage() {
     cargarColaboradores();
   }
 
-  function abrirModalEditar(c) {
+  function abrirModalEditar(c, readOnly = false) {
     setColabEditar(c);
+    setIsReadOnly(Boolean(readOnly));
     setAcordeonNominaAbierto(true);
     setFormEditar({
       idJefeDirecto: c.IdJefeDirecto || '',
@@ -476,26 +519,78 @@ export default function AdminColaboradoresPage() {
     setErrorEditar('');
   }
 
+  async function abrirModalFicha(c) {
+    setColabFicha(c);
+    setLoadingFicha(true);
+    setFichaData(null);
+    try {
+      const idColab = c.IdColaborador || c.id;
+      const res = await api.getColaborador(idColab);
+      if (res.success) {
+        setFichaData(res.data);
+      }
+    } catch (err) {
+      console.error('Error cargando expediente del colaborador:', err);
+      alert('Error cargando expediente: ' + err.message);
+    } finally {
+      setLoadingFicha(false);
+    }
+  }
+
   async function handleGuardarEditar(e) {
     e.preventDefault();
     setErrorEditar('');
     try {
       setGuardandoEditar(true);
-      const emailCorpVal = formEditar.emailCorporativo ? formEditar.emailCorporativo.trim().toLowerCase() : null;
+
+      // 1. Sanitización de Segundo Aprobador (IdAprobadorSegundo)
+      // Si el valor es "", "none" o no se seleccionó ninguno, convertir forzosamente a null
+      const idAprobadorSegundoSanitizado = (formEditar.idAprobadorSegundo && formEditar.idAprobadorSegundo !== 'none' && String(formEditar.idAprobadorSegundo).trim() !== '')
+        ? Number(formEditar.idAprobadorSegundo)
+        : null;
+
+      // 2. Sanitización de Jefe Directo (IdJefeDirecto)
+      const idJefeDirectoSanitizado = (formEditar.idJefeDirecto && formEditar.idJefeDirecto !== 'none' && String(formEditar.idJefeDirecto).trim() !== '')
+        ? Number(formEditar.idJefeDirecto)
+        : null;
+
+      // 3. Sanitización de Días de Descanso Semanal (DiasDescanso)
+      // Si viene como arreglo (ej. ['DOMINGO']), convertirlo a string con .join(', ')
+      let diasDescansoSanitizado = 'DOMINGO';
+      if (Array.isArray(formEditar.diasDescanso)) {
+        diasDescansoSanitizado = formEditar.diasDescanso.length > 0 ? formEditar.diasDescanso.join(', ') : 'DOMINGO';
+      } else if (typeof formEditar.diasDescanso === 'string' && formEditar.diasDescanso.trim() !== '') {
+        diasDescansoSanitizado = formEditar.diasDescanso.trim().toUpperCase();
+      }
+
+      // 4. Sanitización de Correo Corporativo (EmailCorporativo)
+      // Si viene como string vacío "", guardar como NULL o trim() del correo
+      const emailCorpVal = (formEditar.emailCorporativo && typeof formEditar.emailCorporativo === 'string' && formEditar.emailCorporativo.trim() !== '')
+        ? formEditar.emailCorporativo.trim().toLowerCase()
+        : null;
+
       const payload = {
         ...formEditar,
         email_corporativo: emailCorpVal,
         emailCorporativo: emailCorpVal,
         EmailCorporativo: emailCorpVal,
-        idJefeDirecto: formEditar.idJefeDirecto ? Number(formEditar.idJefeDirecto) : null,
-        idAprobadorSegundo: formEditar.idAprobadorSegundo ? Number(formEditar.idAprobadorSegundo) : null,
-        diasDescanso: Array.isArray(formEditar.diasDescanso)
-          ? (formEditar.diasDescanso.length > 0 ? formEditar.diasDescanso.join(', ') : 'DOMINGO')
-          : (formEditar.diasDescanso || 'DOMINGO')
+        idJefeDirecto: idJefeDirectoSanitizado,
+        IdJefeDirecto: idJefeDirectoSanitizado,
+        idAprobadorSegundo: idAprobadorSegundoSanitizado,
+        IdAprobadorSegundo: idAprobadorSegundoSanitizado,
+        diasDescanso: diasDescansoSanitizado,
+        DiasDescanso: diasDescansoSanitizado,
+        telefono: (formEditar.telefono && typeof formEditar.telefono === 'string' && formEditar.telefono.trim() !== '') ? formEditar.telefono.trim() : null,
+        avisarEmergencia: (formEditar.avisarEmergencia && typeof formEditar.avisarEmergencia === 'string' && formEditar.avisarEmergencia.trim() !== '') ? formEditar.avisarEmergencia.trim() : null,
+        parentescoEmergencia: (formEditar.parentescoEmergencia && typeof formEditar.parentescoEmergencia === 'string' && formEditar.parentescoEmergencia.trim() !== '') ? formEditar.parentescoEmergencia.trim() : null,
+        telefonoEmergencia: (formEditar.telefonoEmergencia && typeof formEditar.telefonoEmergencia === 'string' && formEditar.telefonoEmergencia.trim() !== '') ? formEditar.telefonoEmergencia.trim() : null,
+        tipoSangre: (formEditar.tipoSangre && typeof formEditar.tipoSangre === 'string' && formEditar.tipoSangre.trim() !== '') ? formEditar.tipoSangre.trim() : null,
+        alergiasPadecimientos: (formEditar.alergiasPadecimientos && typeof formEditar.alergiasPadecimientos === 'string' && formEditar.alergiasPadecimientos.trim() !== '') ? formEditar.alergiasPadecimientos.trim() : null
       };
+
       const res = await api.updateColaboradorComplementarios(colabEditar.IdColaborador, payload);
       if (res.success) {
-        mostrarToast(res.message);
+        mostrarToast(res.message || 'Información complementaria guardada correctamente.');
         const jefeSel = todosLosJefes.find(j => String(j.IdColaborador) === String(payload.idJefeDirecto));
         const segundoSel = todosLosJefes.find(j => String(j.IdColaborador) === String(payload.idAprobadorSegundo));
         
@@ -516,7 +611,10 @@ export default function AdminColaboradoresPage() {
         setColabEditar(null);
       }
     } catch (err) {
-      setErrorEditar(err.message || 'Error guardando información complementaria.');
+      console.error('Error al actualizar colaborador:', err);
+      const errorMsg = err.message || 'Error al actualizar información complementaria.';
+      setErrorEditar(errorMsg);
+      alert('Error al actualizar información complementaria: ' + errorMsg);
     } finally {
       setGuardandoEditar(false);
     }
@@ -611,6 +709,10 @@ export default function AdminColaboradoresPage() {
           ? { ...prev, TotalHijos: res.data?.length || ((prev.TotalHijos || 0) + 1) }
           : prev
         );
+        setFichaData(prev => prev && (prev.IdColaborador === colabHijos.IdColaborador)
+          ? { ...prev, hijos: res.data || [] }
+          : prev
+        );
       }
     } catch (err) {
       setErrorHijos(err.message || 'Error guardando hijo.');
@@ -638,6 +740,10 @@ export default function AdminColaboradoresPage() {
         ));
         setColabEditar(prev => prev && prev.IdColaborador === colabHijos.IdColaborador
           ? { ...prev, TotalHijos: res.data?.length || Math.max(0, (prev.TotalHijos || 1) - 1) }
+          : prev
+        );
+        setFichaData(prev => prev && (prev.IdColaborador === colabHijos.IdColaborador)
+          ? { ...prev, hijos: res.data || [] }
           : prev
         );
       }
@@ -739,11 +845,11 @@ export default function AdminColaboradoresPage() {
           <select
             value={estatus}
             onChange={(e) => { setEstatus(e.target.value); setPage(1); }}
-            className="bg-slate-50 border border-slate-300 rounded-xl text-xs px-3 py-2 focus:ring-2 focus:ring-blue-600 outline-none"
+            className="bg-slate-50 border border-slate-300 rounded-xl text-xs px-3 py-2 focus:ring-2 focus:ring-blue-600 outline-none font-medium text-slate-700"
           >
-            <option value="ACTIVO">Solo Activos</option>
-            <option value="BAJA">Solo Bajas</option>
-            <option value="TODOS">Todos los Registros</option>
+            <option value="activos">Solo Activos</option>
+            <option value="bajas">Solo Bajas</option>
+            <option value="todos">Todos los Registros</option>
           </select>
 
           <button
@@ -761,20 +867,36 @@ export default function AdminColaboradoresPage() {
           <table className="w-full text-left text-xs">
             <thead className="bg-slate-100 text-slate-700 font-bold uppercase text-[10px] tracking-wider border-b border-slate-200">
               <tr>
-                <th className="py-2.5 px-3 w-24 min-w-[90px] whitespace-nowrap">Nómina / Código</th>
-                <th className="py-2.5 px-3 min-w-[160px]">Colaborador</th>
+                <th className="py-2.5 px-3 w-28 min-w-[110px] whitespace-nowrap">Nómina / Código</th>
+                <th className="py-2.5 px-3 min-w-[190px]">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const next = sortDirection === 'asc' ? 'desc' : 'asc';
+                      setSortDirection(next);
+                      setColaboradores(prev => [...prev].sort((a, b) => compararPorApellidos(a, b, next)));
+                    }}
+                    className="flex items-center gap-1.5 font-bold text-slate-700 hover:text-blue-700 cursor-pointer uppercase text-[10px] tracking-wider transition group"
+                    title="Ordenamiento Alfabético Obligatorio A - Z por Apellidos"
+                  >
+                    <span>Colaborador</span>
+                    <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded bg-blue-100/90 text-blue-800 text-[9px] font-black border border-blue-200">
+                      <ArrowUpDown className="w-2.5 h-2.5" />
+                      {sortDirection === 'asc' ? 'A - Z' : 'Z - A'}
+                    </span>
+                  </button>
+                </th>
                 <th className="py-2.5 px-3 min-w-[130px]">Empresa / Sucursal</th>
                 <th className="py-2.5 px-3 min-w-[140px]">Departamento / Puesto</th>
-                <th className="py-2.5 px-3 min-w-[140px]">Jefe Directo (Aprobador)</th>
-                <th className="py-2.5 px-3 w-28 text-center whitespace-nowrap">Rol App</th>
-                <th className="py-2.5 px-3 w-20 text-center whitespace-nowrap">Estatus</th>
-                <th className="py-2.5 px-3 text-right w-36 min-w-[140px] sticky right-0 bg-slate-100 shadow-[-4px_0_6px_-2px_rgba(0,0,0,0.05)] z-10 whitespace-nowrap">Acciones</th>
+                <th className="py-2.5 px-3 min-w-[150px]">Jefe Directo (Aprobador)</th>
+                <th className="py-2.5 px-3 w-24 text-center whitespace-nowrap">Rol App</th>
+                <th className="py-2.5 px-3 text-center w-28 min-w-[110px] sticky right-0 bg-slate-100 shadow-[-4px_0_6px_-2px_rgba(0,0,0,0.05)] z-10 whitespace-nowrap">Acciones</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100 text-slate-600">
               {loading ? (
                 <tr>
-                  <td colSpan="8" className="py-12 text-center text-slate-400">
+                  <td colSpan="7" className="py-12 text-center text-slate-400">
                     <div className="flex items-center justify-center gap-2">
                       <div className="w-5 h-5 border-2 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
                       <span>Consultando catálogo de colaboradores...</span>
@@ -783,95 +905,174 @@ export default function AdminColaboradoresPage() {
                 </tr>
               ) : colaboradores.length === 0 ? (
                 <tr>
-                  <td colSpan="8" className="py-12 text-center text-slate-400">
+                  <td colSpan="7" className="py-12 text-center text-slate-400">
                     No se encontraron colaboradores con los filtros especificados.
                   </td>
                 </tr>
               ) : (
-                colaboradores.map((c) => (
-                  <tr key={c.IdColaborador} className="group hover:bg-slate-50/80 transition">
-                    <td className="py-2.5 px-3 font-mono font-bold text-slate-800 whitespace-nowrap">
-                      {c.CodigoEmpleado}
-                      {c.Subfijo && <span className="block text-[10px] text-slate-400 font-normal">{c.Subfijo}</span>}
-                    </td>
-                    <td className="py-2.5 px-3 min-w-[160px]">
-                      <span className="font-bold text-slate-900 block truncate max-w-[200px]" title={c.NombreCompleto}>{c.NombreCompleto}</span>
-                      <div className="flex items-center gap-1 truncate max-w-[200px]">
-                        {c.EmailCorporativo ? (
-                          <span className="text-[11px] text-blue-700 font-semibold truncate flex items-center gap-1" title={`Corporativo: ${c.EmailCorporativo}`}>
-                            <Mail className="w-2.5 h-2.5 shrink-0 text-blue-600" />
-                            {c.EmailCorporativo}
-                          </span>
-                        ) : (
-                          <span className="text-[11px] text-slate-400 truncate" title={`Nómina: ${c.Email || 'Sin correo'}`}>
-                            {c.Email || 'Sin correo registrado'}
-                          </span>
-                        )}
-                      </div>
-                    </td>
-                    <td className="py-2.5 px-3 min-w-[130px]">
-                      <span className="font-semibold text-slate-800 block truncate max-w-[160px]" title={c.Empresa}>{c.Empresa}</span>
-                      <span className="text-[11px] text-slate-400 block truncate max-w-[160px]" title={c.Sucursal || 'Matriz'}>{c.Sucursal || 'Matriz'}</span>
-                    </td>
-                    <td className="py-2.5 px-3 min-w-[140px]">
-                      <span className="text-slate-800 font-medium block truncate max-w-[160px]" title={c.Departamento || 'General'}>{c.Departamento || 'General'}</span>
-                      <span className="text-[11px] text-slate-400 block truncate max-w-[160px]" title={c.Puesto || '—'}>{c.Puesto || '—'}</span>
-                    </td>
-                    <td className="py-2.5 px-3 min-w-[140px]">
-                      {c.JefeDirectoNombre ? (
-                        <div className="space-y-1">
-                          <span className="font-semibold text-amber-900 bg-amber-50 px-2 py-0.5 rounded border border-amber-200 text-[11px] block truncate max-w-[150px]" title={`Nivel 1 (Jefe Directo): ${c.JefeDirectoNombre}`}>
-                            {c.JefeDirectoNombre}
-                          </span>
-                          {c.SegundoAprobadorNombre && (
-                            <span className="font-semibold text-indigo-900 bg-indigo-50 px-1.5 py-0.5 rounded border border-indigo-200 text-[10px] block truncate max-w-[150px]" title={`Nivel 2 (Gerente): ${c.SegundoAprobadorNombre}`}>
-                              NV2: {c.SegundoAprobadorNombre}
+                colaboradores.map((c) => {
+                  const colabNombres = desglosarNombre(c);
+                  const jefeVal = c.NombreJefeDirecto || c.JefeDirectoNombre;
+                  const jefeNombres = jefeVal ? desglosarNombre(jefeVal) : null;
+                  const segundoVal = c.NombreGerenteSucursal || c.SegundoAprobadorNombre;
+                  const segundoNombres = segundoVal ? desglosarNombre(segundoVal) : null;
+
+                  return (
+                    <tr key={c.IdColaborador || c.id} className="group hover:bg-slate-50/80 transition">
+                      <td className="py-2.5 px-3 whitespace-nowrap">
+                        <div className="flex flex-col items-start justify-center">
+                          {/* Renglón 1 (Superior): Código / Número de Nómina en negrita */}
+                          <div className="flex items-baseline gap-1">
+                            <span className="text-sm font-bold text-slate-800 font-mono leading-tight">
+                              {c.CodigoEmpleado}
+                            </span>
+                            {c.Subfijo && (
+                              <span className="text-[10px] text-slate-400 font-mono">
+                                {c.Subfijo}
+                              </span>
+                            )}
+                          </div>
+
+                          {/* Renglón 2 (Inferior): Badge de estatus justo debajo del código */}
+                          {c.Activo ? (
+                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200 mt-1">
+                              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
+                              Alta
+                            </span>
+                          ) : (
+                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-semibold bg-rose-50 text-rose-700 border border-rose-200 mt-1">
+                              <span className="w-1.5 h-1.5 rounded-full bg-rose-500"></span>
+                              Baja
                             </span>
                           )}
                         </div>
-                      ) : (
-                        <span className="text-slate-400 italic text-[11px]">Sin Jefe Directo</span>
-                      )}
-                    </td>
-                    <td className="py-2.5 px-3 text-center whitespace-nowrap">
-                      <span className={`inline-block px-2.5 py-0.5 rounded-full font-bold text-[10px] border ${
-                        c.RolApp === 'ADMIN_DO' ? 'bg-blue-100 text-blue-800 border-blue-300' :
-                        c.RolApp === 'LIDER' ? 'bg-amber-100 text-amber-800 border-amber-300' :
-                        'bg-emerald-100 text-emerald-800 border-emerald-300'
-                      }`}>
-                        {c.RolApp}
-                      </span>
-                    </td>
-                    <td className="py-2.5 px-3 text-center whitespace-nowrap">
-                      <span className={`inline-flex items-center gap-1 font-bold text-[11px] ${
-                        c.Activo ? 'text-emerald-700' : 'text-rose-600'
-                      }`}>
-                        <span className={`w-2 h-2 rounded-full ${c.Activo ? 'bg-emerald-500' : 'bg-rose-500'}`}></span>
-                        {c.Activo ? 'Alta' : 'Baja'}
-                      </span>
-                    </td>
-                    <td className="py-2.5 px-3 text-right whitespace-nowrap sticky right-0 bg-white group-hover:bg-slate-50 shadow-[-4px_0_6px_-2px_rgba(0,0,0,0.05)] z-10">
-                      <div className="flex items-center justify-end gap-1.5">
-                        <button
-                          onClick={() => abrirModalEditar(c)}
-                          title="Editar Ficha del Colaborador e Información Complementaria"
-                          className="flex items-center gap-1.5 px-2.5 py-1.5 bg-blue-50 hover:bg-blue-100 text-blue-700 border border-blue-200/80 rounded-xl text-xs font-semibold transition cursor-pointer shadow-2xs"
-                        >
-                          <Edit3 className="w-3.5 h-3.5" />
-                          <span>Editar</span>
-                        </button>
-                        <button
-                          onClick={() => abrirModalReset(c)}
-                          title="Restablecer Contraseña Institucional"
-                          className="flex items-center gap-1.5 px-2.5 py-1.5 bg-slate-100 hover:bg-amber-50 text-slate-700 hover:text-amber-700 border border-slate-200 rounded-xl text-xs font-semibold transition cursor-pointer shadow-2xs"
-                        >
-                          <KeyRound className="w-3.5 h-3.5" />
-                          <span>Clave</span>
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                ))
+                      </td>
+
+                      {/* Colaborador: Desglose en dos renglones (Apellidos arriba, Nombres abajo) */}
+                      <td className="py-2.5 px-3 min-w-[190px]">
+                        <div className="flex flex-col justify-center gap-0.5 max-w-[240px]">
+                          {/* Enlace/botón interactivo para consultar la Ficha en modo SOLO LECTURA */}
+                          <button
+                            type="button"
+                            onClick={() => abrirModalEditar(c, true)}
+                            title="Consultar Ficha del Colaborador (Solo Lectura)"
+                            className="text-left group/colab cursor-pointer focus:outline-none"
+                          >
+                            {/* Renglón 1: Apellidos en mayúsculas, negrita destacada */}
+                            <span className="font-semibold text-slate-900 text-sm uppercase leading-tight truncate block group-hover/colab:text-blue-700 group-hover/colab:underline transition" title={colabNombres.apellidos}>
+                              {colabNombres.apellidos}
+                            </span>
+                            {/* Renglón 2: Nombres en fuente regular */}
+                            {colabNombres.nombres && (
+                              <span className="text-xs text-slate-600 font-medium leading-tight truncate block group-hover/colab:text-blue-600 transition" title={colabNombres.nombres}>
+                                {colabNombres.nombres}
+                              </span>
+                            )}
+                          </button>
+                          {/* Renglón 3: Correo electrónico tenue */}
+                          <div className="flex items-center gap-1 truncate max-w-[240px] mt-0.5">
+                            {c.EmailCorporativo ? (
+                              <span className="text-[11px] text-blue-700 font-medium truncate flex items-center gap-1" title={`Corporativo: ${c.EmailCorporativo}`}>
+                                <Mail className="w-2.5 h-2.5 shrink-0 text-blue-600" />
+                                {c.EmailCorporativo}
+                              </span>
+                            ) : (
+                              <span className="text-[11px] text-slate-400 truncate" title={`Nómina: ${c.Email || 'Sin correo'}`}>
+                                {c.Email || 'Sin correo registrado'}
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                      </td>
+
+                      {/* Empresa / Sucursal */}
+                      <td className="py-2.5 px-3 min-w-[130px]">
+                        <div className="flex flex-col justify-center gap-0.5">
+                          <span className="font-semibold text-slate-800 block truncate max-w-[160px]" title={c.Empresa}>{c.Empresa}</span>
+                          <span className="text-[11px] text-slate-400 block truncate max-w-[160px]" title={c.Sucursal || c.sucursal || 'Matriz'}>{c.Sucursal || c.sucursal || 'Matriz'}</span>
+                        </div>
+                      </td>
+
+                      {/* Departamento / Puesto */}
+                      <td className="py-2.5 px-3 min-w-[140px]">
+                        <div className="flex flex-col justify-center gap-0.5">
+                          <span className="text-slate-800 font-medium block truncate max-w-[160px]" title={c.Departamento || 'General'}>{c.Departamento || 'General'}</span>
+                          <span className="text-[11px] text-slate-400 block truncate max-w-[160px]" title={c.Puesto || '—'}>{c.Puesto || '—'}</span>
+                        </div>
+                      </td>
+
+                      {/* Jefe Directo (Aprobador): Desglose en dos renglones */}
+                      <td className="py-2.5 px-3 min-w-[150px]">
+                        <div className="flex flex-col justify-center gap-1">
+                          {jefeNombres ? (
+                            <div className="bg-amber-50/70 border border-amber-200/60 rounded px-2 py-1 inline-block max-w-[180px]">
+                              <div className="flex flex-col justify-center gap-0.5">
+                                {/* Renglón 1: Apellidos del Jefe */}
+                                <span className="font-medium text-slate-800 text-xs uppercase leading-tight truncate" title={jefeNombres.apellidos}>
+                                  {jefeNombres.apellidos}
+                                </span>
+                                {/* Renglón 2: Nombres del Jefe */}
+                                {jefeNombres.nombres && (
+                                  <span className="text-[11px] text-slate-500 leading-tight truncate" title={jefeNombres.nombres}>
+                                    {jefeNombres.nombres}
+                                  </span>
+                                )}
+                              </div>
+                            </div>
+                          ) : (
+                            <span className="italic text-slate-400 text-xs">Sin Jefe Directo</span>
+                          )}
+
+                          {segundoNombres && (
+                            <div className="bg-indigo-50/60 border border-indigo-200/60 rounded px-1.5 py-0.5 inline-block max-w-[180px]">
+                              <div className="flex flex-col justify-center text-[10px]">
+                                <span className="font-semibold text-indigo-900 uppercase leading-tight truncate" title={`NV2: ${segundoNombres.apellidos}`}>
+                                  NV2: {segundoNombres.apellidos}
+                                </span>
+                                {segundoNombres.nombres && (
+                                  <span className="text-[9px] text-indigo-700 leading-tight truncate">
+                                    {segundoNombres.nombres}
+                                  </span>
+                                )}
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      </td>
+
+                      <td className="py-2.5 px-3 text-center whitespace-nowrap">
+                        <span className={`inline-block px-2.5 py-0.5 rounded-full font-bold text-[10px] border ${
+                          c.RolApp === 'ADMIN_DO' ? 'bg-blue-100 text-blue-800 border-blue-300' :
+                          c.RolApp === 'LIDER' ? 'bg-amber-100 text-amber-800 border-amber-300' :
+                          'bg-emerald-100 text-emerald-800 border-emerald-300'
+                        }`}>
+                          {c.RolApp}
+                        </span>
+                      </td>
+
+                      <td className="py-2 px-3 text-center whitespace-nowrap sticky right-0 bg-white group-hover:bg-slate-50 shadow-[-4px_0_6px_-2px_rgba(0,0,0,0.05)] z-10 w-28 min-w-[110px]">
+                        <div className="flex flex-col items-stretch justify-center gap-1.5 w-full">
+                          <button
+                            onClick={() => abrirModalEditar(c, false)}
+                            title="Editar Ficha del Colaborador e Información Complementaria"
+                            className="w-full flex items-center justify-center gap-1.5 text-xs py-1 px-2 bg-blue-50 hover:bg-blue-100 text-blue-700 border border-blue-200/80 rounded-lg font-semibold transition cursor-pointer shadow-2xs"
+                          >
+                            <Edit3 className="w-3.5 h-3.5" />
+                            <span>Editar</span>
+                          </button>
+                          <button
+                            onClick={() => abrirModalReset(c)}
+                            title="Restablecer Contraseña Institucional"
+                            className="w-full flex items-center justify-center gap-1 text-[11px] py-0.5 px-2 bg-white hover:bg-amber-50 text-slate-600 hover:text-amber-700 border border-slate-200 hover:border-amber-300 rounded-lg font-medium transition cursor-pointer"
+                          >
+                            <KeyRound className="w-3 h-3 text-slate-400 group-hover:text-amber-600" />
+                            <span>Clave</span>
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })
               )}
             </tbody>
           </table>
@@ -899,7 +1100,7 @@ export default function AdminColaboradoresPage() {
         </div>
       </div>
 
-      {/* MODAL 1: EDICIÓN DE CAMPOS COMPLEMENTARIOS (PROTEGIDOS DE NOMIPAQ) */}
+      {/* MODAL 1: EDICIÓN DE CAMPOS COMPLEMENTARIOS */}
       {colabEditar && (
         <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 overflow-y-auto">
           <div className="bg-white rounded-3xl max-w-4xl w-full p-6 shadow-2xl border border-slate-100 my-8 max-h-[92vh] overflow-y-auto">
@@ -907,26 +1108,41 @@ export default function AdminColaboradoresPage() {
             <div className="flex items-center justify-between pb-3 border-b border-slate-100">
               <div>
                 <div className="flex items-center gap-2">
-                  <span className="text-[10px] font-bold px-2.5 py-0.5 bg-blue-100 text-blue-800 rounded-full border border-blue-200 uppercase">
-                    Ficha de Colaborador
+                  <span className={`text-[10px] font-bold px-2.5 py-0.5 rounded-full border uppercase ${
+                    isReadOnly 
+                      ? 'bg-purple-100 text-purple-800 border-purple-200' 
+                      : 'bg-blue-100 text-blue-800 border-blue-200'
+                  }`}>
+                    {isReadOnly ? 'Consulta / Solo Lectura 🔒' : 'Ficha de Colaborador'}
                   </span>
                   <span className="text-[10px] font-bold px-2 py-0.5 bg-emerald-100 text-emerald-800 rounded-full border border-emerald-200">
                     CONTPAQi Sincronizado
                   </span>
                 </div>
                 <h3 className="text-lg font-black text-slate-900 mt-1">
-                  Editar Colaborador: {colabEditar.NombreCompleto}
+                  {isReadOnly ? 'Ficha del Colaborador: ' : 'Editar Colaborador: '}{formatearNombreColaborador(colabEditar)}
                 </h3>
                 <p className="text-xs text-slate-500 font-mono">
                   Nómina: {colabEditar.CodigoEmpleado} • Empresa: {colabEditar.Empresa || '—'}
                 </p>
               </div>
-              <button 
-                onClick={() => setColabEditar(null)} 
-                className="text-slate-400 hover:text-slate-600 p-1.5 rounded-xl hover:bg-slate-100 transition cursor-pointer"
-              >
-                <X className="w-5 h-5" />
-              </button>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => abrirModalFicha(colabEditar)}
+                  title="Ver Expediente / Ficha Técnica Completa"
+                  className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-100 hover:bg-indigo-50 text-slate-700 hover:text-indigo-700 border border-slate-200 rounded-xl text-xs font-semibold transition cursor-pointer"
+                >
+                  <Eye className="w-3.5 h-3.5 text-indigo-600" />
+                  <span>Ver Expediente</span>
+                </button>
+                <button 
+                  onClick={() => setColabEditar(null)} 
+                  className="text-slate-400 hover:text-slate-600 p-1.5 rounded-xl hover:bg-slate-100 transition cursor-pointer"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
             </div>
 
             {/* ACORDEÓN: DATOS MAESTROS DE NÓMINA (CONTPAQi NÓMINAS) - SOLO LECTURA */}
@@ -1076,20 +1292,24 @@ export default function AdminColaboradoresPage() {
               )}
             </div>
 
-            {/* SECCIÓN: DATOS COMPLEMENTARIOS EDITABLES */}
+            {/* SECCIÓN: DATOS COMPLEMENTARIOS */}
             <div className="mt-6 pt-4 border-t border-slate-200">
               <div className="flex items-center justify-between mb-4">
                 <div>
                   <h4 className="text-xs font-black uppercase tracking-wider text-blue-900 flex items-center gap-2">
                     <Edit3 className="w-4 h-4 text-blue-700" />
-                    Datos Complementarios Editables (Internos de la Aplicación)
+                    {isReadOnly 
+                      ? 'Datos Complementarios (Consulta / Solo Lectura)' 
+                      : 'Datos Complementarios Editables (Internos de la Aplicación)'}
                   </h4>
                   <p className="text-[11px] text-slate-500">
-                    Campos de operación interna y bienestar que se preservan intactos durante la sincronización con Nóminas.
+                    {isReadOnly 
+                      ? 'Información de operación interna y bienestar del colaborador.' 
+                      : 'Campos de operación interna y bienestar que se preservan intactos durante la sincronización con Nóminas.'}
                   </p>
                 </div>
-                <span className="text-[10px] font-bold px-2 py-0.5 bg-blue-100 text-blue-800 rounded-full border border-blue-200">
-                  Editable en App ✏️
+                <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${isReadOnly ? 'bg-slate-200 text-slate-700 border-slate-300' : 'bg-blue-100 text-blue-800 border-blue-200'}`}>
+                  {isReadOnly ? 'Solo Lectura 🔒' : 'Editable en App ✏️'}
                 </span>
               </div>
 
@@ -1100,7 +1320,8 @@ export default function AdminColaboradoresPage() {
                 </div>
               )}
 
-              <form onSubmit={handleGuardarEditar} className="space-y-4">
+              <form onSubmit={isReadOnly ? (e) => e.preventDefault() : handleGuardarEditar} className="space-y-4">
+                <fieldset disabled={isReadOnly} className="contents space-y-4">
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   {/* Jefe Directo (Aprobador Nivel 1) */}
                   <div className="sm:col-span-2">
@@ -1110,15 +1331,17 @@ export default function AdminColaboradoresPage() {
                     </label>
                     <select
                       value={formEditar.idJefeDirecto}
+                      disabled={isReadOnly}
                       onChange={(e) => setFormEditar({ ...formEditar, idJefeDirecto: e.target.value })}
-                      className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl text-xs focus:ring-2 focus:ring-blue-600 outline-none"
+                      className="w-full px-3 py-2 bg-slate-50 disabled:bg-slate-100 disabled:text-slate-700 disabled:cursor-not-allowed border border-slate-300 rounded-xl text-xs focus:ring-2 focus:ring-blue-600 outline-none"
                     >
                       <option value="">-- Sin Jefe Directo Asignado --</option>
                       {todosLosJefes
                         .filter(j => j.IdColaborador !== colabEditar.IdColaborador)
+                        .sort((a, b) => compararPorApellidos(a, b, 'asc'))
                         .map(j => (
                           <option key={j.IdColaborador} value={j.IdColaborador}>
-                            {j.NombreCompleto} ({j.CodigoEmpleado} - {j.Empresa})
+                            {formatearEtiquetaSelector(j)}
                           </option>
                         ))}
                     </select>
@@ -1132,15 +1355,17 @@ export default function AdminColaboradoresPage() {
                     </label>
                     <select
                       value={formEditar.idAprobadorSegundo}
+                      disabled={isReadOnly}
                       onChange={(e) => setFormEditar({ ...formEditar, idAprobadorSegundo: e.target.value })}
-                      className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl text-xs focus:ring-2 focus:ring-indigo-600 outline-none"
+                      className="w-full px-3 py-2 bg-slate-50 disabled:bg-slate-100 disabled:text-slate-700 disabled:cursor-not-allowed border border-slate-300 rounded-xl text-xs focus:ring-2 focus:ring-indigo-600 outline-none"
                     >
                       <option value="">-- Ninguno / No aplica (Aprobación directa con Nivel 1) --</option>
                       {todosLosJefes
                         .filter(j => j.IdColaborador !== colabEditar.IdColaborador && (!formEditar.idJefeDirecto || j.IdColaborador !== Number(formEditar.idJefeDirecto)))
+                        .sort((a, b) => compararPorApellidos(a, b, 'asc'))
                         .map(j => (
                           <option key={j.IdColaborador} value={j.IdColaborador}>
-                            {j.NombreCompleto} ({j.CodigoEmpleado} - {j.Empresa})
+                            {formatearEtiquetaSelector(j)}
                           </option>
                         ))}
                     </select>
@@ -1156,8 +1381,9 @@ export default function AdminColaboradoresPage() {
                     </label>
                     <select
                       value={formEditar.rolApp}
+                      disabled={isReadOnly}
                       onChange={(e) => setFormEditar({ ...formEditar, rolApp: e.target.value })}
-                      className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl text-xs focus:ring-2 focus:ring-blue-600 outline-none"
+                      className="w-full px-3 py-2 bg-slate-50 disabled:bg-slate-100 disabled:text-slate-700 disabled:cursor-not-allowed border border-slate-300 rounded-xl text-xs focus:ring-2 focus:ring-blue-600 outline-none"
                     >
                       <option value="COLABORADOR">COLABORADOR (Solicitante estándar)</option>
                       <option value="LIDER">LÍDER (Jefe con bandeja de autorización)</option>
@@ -1173,6 +1399,7 @@ export default function AdminColaboradoresPage() {
                     </label>
                     <SelectorDiasDescanso
                       value={formEditar.diasDescanso}
+                      disabled={isReadOnly}
                       onChange={(nuevos) => setFormEditar({ ...formEditar, diasDescanso: nuevos })}
                     />
                   </div>
@@ -1193,10 +1420,11 @@ export default function AdminColaboradoresPage() {
                       <input
                         type="email"
                         name="email_corporativo"
+                        disabled={isReadOnly}
                         value={formEditar.emailCorporativo}
                         onChange={(e) => setFormEditar({ ...formEditar, emailCorporativo: e.target.value })}
                         placeholder="ejemplo@grupojama.com.mx / @latinoconcretos.com"
-                        className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl text-xs focus:ring-2 focus:ring-blue-600 outline-none"
+                        className="w-full px-3 py-2 bg-white disabled:bg-slate-100 disabled:text-slate-700 disabled:cursor-not-allowed border border-slate-300 rounded-xl text-xs focus:ring-2 focus:ring-blue-600 outline-none"
                       />
                       <p className="text-[10px] text-slate-500 mt-1 truncate" title="Recepción de avisos de vacaciones y Teams">
                         Avisos de vacaciones y Teams
@@ -1214,10 +1442,11 @@ export default function AdminColaboradoresPage() {
                       <input
                         type="text"
                         name="telefono"
+                        disabled={isReadOnly}
                         value={formEditar.telefono}
                         onChange={(e) => setFormEditar({ ...formEditar, telefono: e.target.value })}
                         placeholder="Ej. 4441234567"
-                        className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl text-xs focus:ring-2 focus:ring-blue-600 outline-none"
+                        className="w-full px-3 py-2 bg-white disabled:bg-slate-100 disabled:text-slate-700 disabled:cursor-not-allowed border border-slate-300 rounded-xl text-xs focus:ring-2 focus:ring-blue-600 outline-none"
                       />
                       <p className="text-[10px] text-slate-500 mt-1 truncate">
                         Contacto telefónico directo
@@ -1235,10 +1464,11 @@ export default function AdminColaboradoresPage() {
                       <input
                         type="text"
                         name="tipo_sangre"
+                        disabled={isReadOnly}
                         value={formEditar.tipoSangre}
                         onChange={(e) => setFormEditar({ ...formEditar, tipoSangre: e.target.value })}
                         placeholder="Ej. O+, A+, B+, etc."
-                        className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl text-xs focus:ring-2 focus:ring-blue-600 outline-none"
+                        className="w-full px-3 py-2 bg-white disabled:bg-slate-100 disabled:text-slate-700 disabled:cursor-not-allowed border border-slate-300 rounded-xl text-xs focus:ring-2 focus:ring-blue-600 outline-none"
                       />
                       <p className="text-[10px] text-slate-500 mt-1 truncate">
                         Registro médico interno
@@ -1275,10 +1505,11 @@ export default function AdminColaboradoresPage() {
                     </label>
                     <input
                       type="text"
+                      disabled={isReadOnly}
                       value={formEditar.avisarEmergencia}
                       onChange={(e) => setFormEditar({ ...formEditar, avisarEmergencia: e.target.value })}
                       placeholder="Nombre del familiar o contacto"
-                      className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl text-xs focus:ring-2 focus:ring-blue-600 outline-none"
+                      className="w-full px-3 py-2 bg-slate-50 disabled:bg-slate-100 disabled:text-slate-700 disabled:cursor-not-allowed border border-slate-300 rounded-xl text-xs focus:ring-2 focus:ring-blue-600 outline-none"
                     />
                   </div>
 
@@ -1290,10 +1521,11 @@ export default function AdminColaboradoresPage() {
                       </label>
                       <input
                         type="text"
+                        disabled={isReadOnly}
                         value={formEditar.parentescoEmergencia}
                         onChange={(e) => setFormEditar({ ...formEditar, parentescoEmergencia: e.target.value })}
                         placeholder="Esposa, Padre..."
-                        className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl text-xs focus:ring-2 focus:ring-blue-600 outline-none"
+                        className="w-full px-3 py-2 bg-slate-50 disabled:bg-slate-100 disabled:text-slate-700 disabled:cursor-not-allowed border border-slate-300 rounded-xl text-xs focus:ring-2 focus:ring-blue-600 outline-none"
                       />
                     </div>
                     <div>
@@ -1302,10 +1534,11 @@ export default function AdminColaboradoresPage() {
                       </label>
                       <input
                         type="text"
+                        disabled={isReadOnly}
                         value={formEditar.telefonoEmergencia}
                         onChange={(e) => setFormEditar({ ...formEditar, telefonoEmergencia: e.target.value })}
                         placeholder="Teléfono"
-                        className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl text-xs focus:ring-2 focus:ring-blue-600 outline-none"
+                        className="w-full px-3 py-2 bg-slate-50 disabled:bg-slate-100 disabled:text-slate-700 disabled:cursor-not-allowed border border-slate-300 rounded-xl text-xs focus:ring-2 focus:ring-blue-600 outline-none"
                       />
                     </div>
                   </div>
@@ -1317,10 +1550,11 @@ export default function AdminColaboradoresPage() {
                     </label>
                     <input
                       type="text"
+                      disabled={isReadOnly}
                       value={formEditar.alergiasPadecimientos}
                       onChange={(e) => setFormEditar({ ...formEditar, alergiasPadecimientos: e.target.value })}
                       placeholder="Alergias a medicamentos, padecimientos crónicos, etc."
-                      className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl text-xs focus:ring-2 focus:ring-blue-600 outline-none"
+                      className="w-full px-3 py-2 bg-slate-50 disabled:bg-slate-100 disabled:text-slate-700 disabled:cursor-not-allowed border border-slate-300 rounded-xl text-xs focus:ring-2 focus:ring-blue-600 outline-none"
                     />
                   </div>
 
@@ -1345,31 +1579,46 @@ export default function AdminColaboradoresPage() {
                       className="flex items-center gap-1.5 px-3 py-1.5 bg-purple-700 hover:bg-purple-800 text-white rounded-xl text-xs font-bold transition shadow-xs cursor-pointer"
                     >
                       <Baby className="w-3.5 h-3.5" />
-                      <span>Ver / Gestionar Hijos ({colabEditar.TotalHijos || 0})</span>
+                      <span>{isReadOnly ? 'Ver Hijos' : 'Ver / Gestionar Hijos'} ({colabEditar.TotalHijos || 0})</span>
                     </button>
                   </div>
 
                 </div>
+                </fieldset>
 
                 <div className="pt-4 border-t border-slate-100 flex items-center justify-between">
                   <span className="text-[11px] text-slate-400">
-                    🔒 Campos blindados: NUNCA son sobreescritos al sincronizar con CONTPAQi.
+                    {isReadOnly 
+                      ? 'ℹ️ Modo de solo lectura: los datos mostrados son de consulta.' 
+                      : '🔒 Campos blindados: NUNCA son sobreescritos al sincronizar con CONTPAQi.'}
                   </span>
                   <div className="flex items-center gap-2">
-                    <button
-                      type="button"
-                      onClick={() => setColabEditar(null)}
-                      className="px-4 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-100 rounded-xl transition cursor-pointer"
-                    >
-                      Cancelar
-                    </button>
-                    <button
-                      type="submit"
-                      disabled={guardandoEditar}
-                      className="px-4 py-2 bg-blue-700 hover:bg-blue-800 text-white rounded-xl text-xs font-bold transition shadow-xs disabled:opacity-50 cursor-pointer"
-                    >
-                      {guardandoEditar ? 'Guardando...' : 'Guardar Cambios'}
-                    </button>
+                    {isReadOnly ? (
+                      <button
+                        type="button"
+                        onClick={() => setColabEditar(null)}
+                        className="px-5 py-2 bg-slate-800 hover:bg-slate-900 text-white rounded-xl text-xs font-bold transition shadow-xs cursor-pointer"
+                      >
+                        Cerrar
+                      </button>
+                    ) : (
+                      <>
+                        <button
+                          type="button"
+                          onClick={() => setColabEditar(null)}
+                          className="px-4 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-100 rounded-xl transition cursor-pointer"
+                        >
+                          Cancelar
+                        </button>
+                        <button
+                          type="submit"
+                          disabled={guardandoEditar}
+                          className="px-4 py-2 bg-blue-700 hover:bg-blue-800 text-white rounded-xl text-xs font-bold transition shadow-xs disabled:opacity-50 cursor-pointer"
+                        >
+                          {guardandoEditar ? 'Guardando...' : 'Guardar Cambios'}
+                        </button>
+                      </>
+                    )}
                   </div>
                 </div>
               </form>
@@ -1377,6 +1626,8 @@ export default function AdminColaboradoresPage() {
           </div>
         </div>
       )}
+
+
 
       {/* MODAL 2: RESTABLECIMIENTO DE CONTRASEÑA */}
       {colabReset && (
@@ -1389,7 +1640,7 @@ export default function AdminColaboradoresPage() {
                 </div>
                 <div>
                   <h3 className="font-black text-slate-900 text-sm">Restablecer Contraseña</h3>
-                  <p className="text-xs text-slate-500">{colabReset.NombreCompleto}</p>
+                  <p className="text-xs text-slate-500">{formatearNombreColaborador(colabReset)}</p>
                 </div>
               </div>
               <button onClick={() => setColabReset(null)} className="text-slate-400 hover:text-slate-600 p-1">
@@ -1478,219 +1729,546 @@ export default function AdminColaboradoresPage() {
                 </div>
               </form>
             )}
+
           </div>
         </div>
       )}
 
-      {/* MODAL 3: GESTIÓN Y CONSULTA DE HIJOS / DEPENDIENTES */}
-      {colabHijos && (
-        <div className="fixed inset-0 z-60 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 overflow-y-auto">
-          <div className="bg-white rounded-3xl max-w-2xl w-full p-6 shadow-2xl border border-slate-100 my-8 animate-in fade-in zoom-in duration-100">
-            {/* Modal Header */}
-            <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+      {/* MODAL 3: FICHA TÉCNICA / EXPEDIENTE COMPLETO DEL COLABORADOR */}
+      {colabFicha && (
+        <div className="fixed inset-0 z-[60] bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 overflow-y-auto">
+          <div className="bg-white rounded-3xl max-w-3xl w-full p-6 shadow-2xl border border-slate-100 my-8">
+            {/* Encabezado Ficha */}
+            <div className="flex items-start justify-between pb-4 border-b border-slate-100">
               <div className="flex items-center gap-3">
-                <div className="p-2.5 bg-purple-100 text-purple-700 rounded-2xl">
-                  <Baby className="w-6 h-6" />
+                <div className="w-12 h-12 rounded-2xl bg-gradient-to-tr from-blue-600 to-indigo-600 text-white flex items-center justify-center font-black text-base shadow-sm">
+                  {obtenerInicialesColaborador(colabFicha)}
                 </div>
                 <div>
                   <div className="flex items-center gap-2">
-                    <h3 className="font-black text-slate-900 text-base">Hijos y Dependientes Registrados</h3>
-                    <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-purple-100 text-purple-800">
-                      {hijosList.length} {hijosList.length === 1 ? 'hijo' : 'hijos'}
+                    <span className="text-[10px] font-bold px-2 py-0.5 bg-indigo-100 text-indigo-800 rounded-full border border-indigo-200 uppercase">
+                      Expediente del Colaborador
+                    </span>
+                    <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${colabFicha.Activo ? 'bg-emerald-100 text-emerald-800 border-emerald-300' : 'bg-rose-100 text-rose-800 border-rose-300'}`}>
+                      {colabFicha.Activo ? 'Alta / Activo' : 'Baja'}
                     </span>
                   </div>
+                  <h3 className="text-lg font-black text-slate-900 mt-1">
+                    {formatearNombreColaborador(colabFicha)}
+                  </h3>
                   <p className="text-xs text-slate-500 font-medium">
-                    {colabHijos.NombreCompleto} <span className="font-mono text-slate-400">({colabHijos.CodigoEmpleado} • {colabHijos.Empresa})</span>
+                    Nómina: <span className="font-mono font-bold text-slate-700">{colabFicha.CodigoEmpleado}</span> • {colabFicha.Empresa} • {colabFicha.Puesto}
                   </p>
                 </div>
               </div>
-              <button 
-                onClick={() => setColabHijos(null)} 
-                className="text-slate-400 hover:text-slate-600 p-1 rounded-xl hover:bg-slate-100 transition cursor-pointer"
-              >
+              <button onClick={() => setColabFicha(null)} className="text-slate-400 hover:text-slate-600 p-1.5 rounded-xl hover:bg-slate-100 transition cursor-pointer">
                 <X className="w-5 h-5" />
               </button>
             </div>
 
-            {errorHijos && (
-              <div className="mt-3 p-3 bg-rose-50 border border-rose-200 text-rose-800 rounded-xl text-xs flex items-center gap-2">
-                <AlertCircle className="w-4 h-4 shrink-0 text-rose-600" />
-                <span>{errorHijos}</span>
+            {loadingFicha ? (
+              <div className="py-16 text-center text-slate-400">
+                <RefreshCw className="w-8 h-8 animate-spin mx-auto mb-2 text-indigo-600" />
+                <p className="text-xs font-semibold">Cargando expediente completo y dependientes familiares...</p>
+              </div>
+            ) : (
+              <div className="mt-5 space-y-5 max-h-[70vh] overflow-y-auto pr-1">
+                {/* 1. Datos Institucionales */}
+                <div className="bg-slate-50/70 border border-slate-200/80 rounded-2xl p-4">
+                  <h4 className="text-xs font-bold text-slate-800 uppercase tracking-wider mb-3 flex items-center gap-1.5">
+                    <Briefcase className="w-4 h-4 text-blue-600" />
+                    <span>Información Laboral & Organización</span>
+                  </h4>
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs">
+                    <div>
+                      <span className="text-[11px] text-slate-400 block">Empresa</span>
+                      <span className="font-semibold text-slate-800">{fichaData?.Empresa || colabFicha.Empresa || '—'}</span>
+                    </div>
+                    <div>
+                      <span className="text-[11px] text-slate-400 block">Sucursal</span>
+                      <span className="font-semibold text-slate-800">{fichaData?.Sucursal || colabFicha.Sucursal || colabFicha.sucursal || 'Matriz'}</span>
+                    </div>
+                    <div>
+                      <span className="text-[11px] text-slate-400 block">Departamento</span>
+                      <span className="font-semibold text-slate-800">{fichaData?.Departamento || colabFicha.Departamento || 'General'}</span>
+                    </div>
+                    <div>
+                      <span className="text-[11px] text-slate-400 block">Puesto</span>
+                      <span className="font-semibold text-slate-800">{fichaData?.Puesto || colabFicha.Puesto || '—'}</span>
+                    </div>
+                    <div>
+                      <span className="text-[11px] text-slate-400 block">Jefe Directo (Aprobador NV1)</span>
+                      <span className="font-semibold text-amber-800">
+                        {formatearNombreColaborador(fichaData?.NombreJefeDirecto || fichaData?.JefeDirectoNombre || colabFicha.NombreJefeDirecto || colabFicha.JefeDirectoNombre || 'Sin Jefe Asignado')}
+                      </span>
+                    </div>
+                    <div>
+                      <span className="text-[11px] text-slate-400 block">Segundo Aprobador (NV2)</span>
+                      <span className="font-semibold text-indigo-800">
+                        {(fichaData?.NombreGerenteSucursal || fichaData?.SegundoAprobadorNombre || colabFicha.NombreGerenteSucursal || colabFicha.SegundoAprobadorNombre)
+                          ? formatearNombreColaborador(fichaData?.NombreGerenteSucursal || fichaData?.SegundoAprobadorNombre || colabFicha.NombreGerenteSucursal || colabFicha.SegundoAprobadorNombre)
+                          : 'Sin Segundo Aprobador'}
+                      </span>
+                    </div>
+                    <div>
+                      <span className="text-[11px] text-slate-400 block">Fecha de Alta</span>
+                      <span className="font-mono text-slate-700">
+                        {fichaData?.FechaAlta ? `${formatearFecha(fichaData.FechaAlta)} (${calcularAntiguedad(fichaData.FechaAlta)})` : (colabFicha.FechaAlta ? `${formatearFecha(colabFicha.FechaAlta)} (${calcularAntiguedad(colabFicha.FechaAlta)})` : '—')}
+                      </span>
+                    </div>
+                    <div>
+                      <span className="text-[11px] text-slate-400 block">Días de Descanso</span>
+                      <span className="font-medium text-slate-700">{fichaData?.DiasDescanso || colabFicha.DiasDescanso || 'DOMINGO'}</span>
+                    </div>
+                    <div>
+                      <span className="text-[11px] text-slate-400 block">Rol en la App</span>
+                      <span className="font-bold text-blue-700">{fichaData?.RolApp || colabFicha.RolApp || 'COLABORADOR'}</span>
+                    </div>
+                    <div>
+                      <span className="text-[11px] text-slate-400 block">Tipo Nómina / Contrato</span>
+                      <span className="font-medium text-slate-700">{fichaData?.TipoNomina || 'Quincenal'} • {fichaData?.TipoContrato || 'Planta'}</span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* 2. Datos Personales y Fiscales */}
+                <div className="bg-slate-50/70 border border-slate-200/80 rounded-2xl p-4">
+                  <h4 className="text-xs font-bold text-slate-800 uppercase tracking-wider mb-3 flex items-center gap-1.5">
+                    <User className="w-4 h-4 text-emerald-600" />
+                    <span>Identidad & Datos Fiscales</span>
+                  </h4>
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs">
+                    <div>
+                      <span className="text-[11px] text-slate-400 block">CURP</span>
+                      <span className="font-mono text-slate-800 font-semibold">{fichaData?.CURP || colabFicha.CURP || '—'}</span>
+                    </div>
+                    <div>
+                      <span className="text-[11px] text-slate-400 block">RFC</span>
+                      <span className="font-mono text-slate-800 font-semibold">{fichaData?.RFC || colabFicha.RFC || '—'}</span>
+                    </div>
+                    <div>
+                      <span className="text-[11px] text-slate-400 block">NSS (Seguro Social)</span>
+                      <span className="font-mono text-slate-800 font-semibold">{fichaData?.NSS || colabFicha.NSS || '—'}</span>
+                    </div>
+                    <div>
+                      <span className="text-[11px] text-slate-400 block">Fecha Nacimiento</span>
+                      <span className="font-medium text-slate-700">
+                        {fichaData?.FechaNacimiento ? formatearFecha(fichaData.FechaNacimiento) : (colabFicha.FechaNacimiento ? formatearFecha(colabFicha.FechaNacimiento) : '—')}
+                      </span>
+                    </div>
+                    <div>
+                      <span className="text-[11px] text-slate-400 block">Teléfono / Celular</span>
+                      <span className="font-mono text-slate-800">{fichaData?.Telefono || colabFicha.Telefono || '—'}</span>
+                    </div>
+                    <div>
+                      <span className="text-[11px] text-slate-400 block">Correo Corporativo</span>
+                      <span className="text-slate-800 font-medium truncate block" title={fichaData?.EmailCorporativo || colabFicha.EmailCorporativo || 'Sin correo corporativo'}>
+                        {fichaData?.EmailCorporativo || colabFicha.EmailCorporativo || 'Sin correo corporativo'}
+                      </span>
+                    </div>
+                    <div>
+                      <span className="text-[11px] text-slate-400 block">Correo Nómina</span>
+                      <span className="text-slate-600 truncate block" title={fichaData?.EmailNomina || fichaData?.Email || colabFicha.Email || 'Sin correo registrado'}>
+                        {fichaData?.EmailNomina || fichaData?.Email || colabFicha.Email || 'Sin correo registrado'}
+                      </span>
+                    </div>
+                    <div>
+                      <span className="text-[11px] text-slate-400 block">Estado Civil</span>
+                      <span className="font-medium text-slate-700">{fichaData?.EstadoCivil || colabFicha.EstadoCivil || '—'}</span>
+                    </div>
+                    <div>
+                      <span className="text-[11px] text-slate-400 block">Nacionalidad</span>
+                      <span className="font-medium text-slate-700">{fichaData?.Nacionalidad || colabFicha.Nacionalidad || 'Mexicana'}</span>
+                    </div>
+                    <div>
+                      <span className="text-[11px] text-slate-400 block">Escolaridad</span>
+                      <span className="font-medium text-slate-700">{fichaData?.Escolaridad || colabFicha.Escolaridad || '—'}</span>
+                    </div>
+                    <div className="col-span-2">
+                      <span className="text-[11px] text-slate-400 block">Domicilio</span>
+                      <span className="font-medium text-slate-700 truncate block" title={fichaData?.Domicilio || colabFicha.Domicilio || '—'}>
+                        {fichaData?.Domicilio || colabFicha.Domicilio || '—'}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* 3. Datos Financieros para Dispersión de Nómina */}
+                <div className="bg-slate-50/70 border border-slate-200/80 rounded-2xl p-4">
+                  <h4 className="text-xs font-bold text-slate-800 uppercase tracking-wider mb-3 flex items-center gap-1.5">
+                    <CreditCard className="w-4 h-4 text-emerald-600" />
+                    <span>Datos Financieros (Dispersión de Nómina CONTPAQi)</span>
+                  </h4>
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs">
+                    <div>
+                      <span className="text-[11px] text-slate-400 block">Institución Bancaria</span>
+                      <span className="font-semibold text-slate-800">{fichaData?.InstitucionBancaria || 'BBVA BANCOMER'}</span>
+                    </div>
+                    <div>
+                      <span className="text-[11px] text-slate-400 block">Número de Cuenta</span>
+                      <span className="font-mono text-slate-800 font-semibold">{fichaData?.NumeroCuenta || '—'}</span>
+                    </div>
+                    <div>
+                      <span className="text-[11px] text-slate-400 block">CLABE Interbancaria</span>
+                      <span className="font-mono text-slate-800 font-semibold">{fichaData?.ClabeInterbancaria || '—'}</span>
+                    </div>
+                    <div>
+                      <span className="text-[11px] text-slate-400 block">Forma de Pago</span>
+                      <span className="font-medium text-slate-700">{fichaData?.FormaPago || 'Transferencia Electrónica'}</span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* 4. Contacto de Emergencia & Salud */}
+                <div className="bg-slate-50/70 border border-slate-200/80 rounded-2xl p-4">
+                  <h4 className="text-xs font-bold text-slate-800 uppercase tracking-wider mb-3 flex items-center gap-1.5">
+                    <Heart className="w-4 h-4 text-rose-600" />
+                    <span>Contacto de Emergencia & Salud</span>
+                  </h4>
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs">
+                    <div>
+                      <span className="text-[11px] text-slate-400 block">Contacto de Emergencia</span>
+                      <span className="font-bold text-slate-800">{fichaData?.ContactoEmergenciaNombre || fichaData?.AvisarEmergencia || colabFicha.AvisarEmergencia || 'Sin registrar'}</span>
+                    </div>
+                    <div>
+                      <span className="text-[11px] text-slate-400 block">Parentesco</span>
+                      <span className="font-medium text-slate-700">{fichaData?.ContactoEmergenciaParentesco || fichaData?.ParentescoEmergencia || colabFicha.ParentescoEmergencia || '—'}</span>
+                    </div>
+                    <div>
+                      <span className="text-[11px] text-slate-400 block">Teléfono de Emergencia</span>
+                      <span className="font-mono font-bold text-rose-700">{fichaData?.ContactoEmergenciaTelefono || fichaData?.TelefonoEmergencia || colabFicha.TelefonoEmergencia || '—'}</span>
+                    </div>
+                    <div>
+                      <span className="text-[11px] text-slate-400 block">Tipo de Sangre</span>
+                      <span className="font-bold text-rose-900 bg-rose-50 px-2 py-0.5 rounded border border-rose-200 inline-block">
+                        {fichaData?.TipoSangre || colabFicha.TipoSangre || 'No registrado'}
+                      </span>
+                    </div>
+                    <div className="sm:col-span-4">
+                      <span className="text-[11px] text-slate-400 block">Alergias / Padecimientos Médicos</span>
+                      <span className="text-slate-700 font-medium">{fichaData?.PadecimientosMedicos || fichaData?.AlergiasPadecimientos || colabFicha.AlergiasPadecimientos || 'Ninguno manifestado'}</span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* 4. Hijos y Dependientes Familiares (dbo.ColaboradorHijos) */}
+                <div className="bg-white border-2 border-indigo-100 rounded-2xl p-5 shadow-xs">
+                  <div className="flex items-center justify-between mb-4">
+                    <div className="flex items-center gap-2">
+                      <div className="w-8 h-8 rounded-xl bg-pink-100 text-pink-700 flex items-center justify-center">
+                        <Baby className="w-4 h-4" />
+                      </div>
+                      <div>
+                        <h4 className="text-xs font-black text-slate-900 uppercase tracking-wide">
+                          Hijos & Dependientes Familiares
+                        </h4>
+                        <p className="text-[11px] text-slate-500">Datos registrados en dbo.ColaboradorHijos para prestaciones y SGMM</p>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() => abrirModalHijos(colabFicha)}
+                        className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-purple-700 hover:bg-purple-800 text-white rounded-xl text-xs font-bold transition shadow-xs cursor-pointer"
+                        title="Ver / Gestionar Hijos"
+                      >
+                        <Baby className="w-3.5 h-3.5" />
+                        <span>Ver / Gestionar Hijos</span>
+                      </button>
+                      <span className="text-xs font-bold px-2.5 py-1 bg-pink-50 text-pink-700 rounded-full border border-pink-200">
+                        {(fichaData?.hijos || []).length} {((fichaData?.hijos || []).length === 1) ? 'hijo registrado' : 'hijos registrados'}
+                      </span>
+                    </div>
+                  </div>
+
+                  {(!fichaData?.hijos || fichaData.hijos.length === 0) ? (
+                    <div className="p-6 text-center bg-slate-50 rounded-xl border border-dashed border-slate-200">
+                      <Baby className="w-8 h-8 text-slate-300 mx-auto mb-1" />
+                      <p className="text-xs font-bold text-slate-600">No cuenta con hijos o dependientes registrados</p>
+                      <button
+                        type="button"
+                        onClick={() => abrirModalHijos(colabFicha)}
+                        className="mt-2 inline-flex items-center gap-1.5 px-3 py-1.5 bg-purple-700 hover:bg-purple-800 text-white rounded-xl text-xs font-bold transition shadow-xs cursor-pointer"
+                      >
+                        <Plus className="w-3.5 h-3.5" />
+                        <span>Registrar Hijos</span>
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
+                      {fichaData.hijos.map((h, i) => {
+                        const fn = h.FechaNacimiento || h.fechaNacimiento;
+                        const sx = (h.Sexo || h.sexo || '').toUpperCase();
+                        const num = h.NumeroHijo || h.numeroHijo || (i + 1);
+                        return (
+                          <div key={h.IdHijo || h.idHijo || i} className="p-3.5 bg-slate-50 border border-slate-200/80 rounded-xl flex items-start gap-3">
+                            <div className="w-9 h-9 rounded-xl bg-white border border-slate-200 text-slate-700 font-black text-xs flex items-center justify-center shrink-0 shadow-xs">
+                              #{num}
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-center justify-between gap-1">
+                                <span className="text-xs font-black text-slate-800">Hijo #{num}</span>
+                                {sx === 'M' ? (
+                                  <span className="text-[10px] font-bold px-1.5 py-0.5 bg-blue-100 text-blue-800 rounded">Niño</span>
+                                ) : sx === 'F' ? (
+                                  <span className="text-[10px] font-bold px-1.5 py-0.5 bg-pink-100 text-pink-800 rounded">Niña</span>
+                                ) : (
+                                  <span className="text-[10px] font-bold px-1.5 py-0.5 bg-slate-100 text-slate-600 rounded">Indef.</span>
+                                )}
+                              </div>
+                              <p className="text-[11px] text-slate-500 mt-1">
+                                Nacimiento: <span className="font-mono text-slate-700">{fn ? new Date(fn).toLocaleDateString('es-MX', { year: 'numeric', month: 'short', day: 'numeric', timeZone: 'UTC' }) : 'No capturada'}</span>
+                              </p>
+                              <p className="text-[11px] font-bold text-slate-700 mt-0.5">
+                                Edad: <span className="text-indigo-600">{calcularEdad(fn)}</span>
+                              </p>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
               </div>
             )}
 
-            {/* Listado de Hijos */}
-            <div className="mt-4 space-y-3">
-              <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block">
-                Descendientes Registrados en Base de Datos (dbo.ColaboradorHijos)
-              </span>
-
-              {loadingHijos ? (
-                <div className="py-8 text-center text-slate-400 text-xs">
-                  <RefreshCw className="w-5 h-5 animate-spin mx-auto mb-2 text-purple-600" />
-                  Cargando información de hijos...
-                </div>
-              ) : hijosList.length === 0 ? (
-                <div className="p-6 bg-slate-50 rounded-2xl border border-dashed border-slate-200 text-center text-slate-400 text-xs">
-                  <Baby className="w-8 h-8 mx-auto mb-1.5 text-slate-300" />
-                  Este colaborador no tiene hijos registrados actualmente en el sistema.
-                </div>
-              ) : (
-                <div className="border border-slate-200 rounded-2xl overflow-hidden shadow-xs">
-                  <div className="overflow-x-auto max-h-60">
-                    <table className="w-full text-left text-xs">
-                      <thead className="bg-slate-50 text-[11px] font-bold text-slate-600 uppercase border-b border-slate-200 sticky top-0 z-10">
-                        <tr>
-                          <th className="py-2.5 px-3 w-12 text-center">#</th>
-                          <th className="py-2.5 px-3">Nombre Completo</th>
-                          <th className="py-2.5 px-3">Fecha de Nacimiento</th>
-                          <th className="py-2.5 px-3">Edad Actual</th>
-                          <th className="py-2.5 px-3">Sexo</th>
-                          <th className="py-2.5 px-3 text-center w-16">Acción</th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-slate-100 bg-white">
-                        {hijosList.map((hijo) => {
-                          const edadTexto = hijo.EdadCalculada !== undefined && hijo.EdadCalculada !== null
-                            ? `${hijo.EdadCalculada} ${hijo.EdadCalculada === 1 ? 'año' : 'años'}`
-                            : calcularEdad(hijo.FechaNacimiento);
-                          const isMasc = hijo.Sexo === 'M';
-                          const isFem = hijo.Sexo === 'F';
-                          return (
-                            <tr key={hijo.IdHijo || hijo.NumeroHijo} className="hover:bg-purple-50/30 transition">
-                              <td className="py-2.5 px-3 text-center">
-                                <span className={`inline-flex items-center justify-center w-6 h-6 rounded-lg text-xs font-bold ${
-                                  isMasc ? 'bg-blue-100 text-blue-700' :
-                                  isFem ? 'bg-pink-100 text-pink-700' :
-                                  'bg-slate-100 text-slate-700'
-                                }`}>
-                                  #{hijo.NumeroHijo}
-                                </span>
-                              </td>
-                              <td className="py-2.5 px-3 font-semibold text-slate-900">
-                                {hijo.Nombre || <span className="text-slate-400 italic font-normal">Sin nombre registrado</span>}
-                              </td>
-                              <td className="py-2.5 px-3 text-slate-600 font-mono text-[11px]">
-                                {hijo.FechaNacimiento || <span className="text-slate-400">No registrada</span>}
-                              </td>
-                              <td className="py-2.5 px-3 font-semibold text-purple-700">
-                                {hijo.FechaNacimiento ? edadTexto : <span className="text-slate-400 font-normal">—</span>}
-                              </td>
-                              <td className="py-2.5 px-3">
-                                <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
-                                  isMasc ? 'bg-blue-50 text-blue-700 border border-blue-200' :
-                                  isFem ? 'bg-pink-50 text-pink-700 border border-pink-200' :
-                                  'bg-slate-100 text-slate-600'
-                                }`}>
-                                  {isMasc ? 'Masculino' : isFem ? 'Femenino' : 'No especificado'}
-                                </span>
-                              </td>
-                              <td className="py-2.5 px-3 text-center">
-                                <button
-                                  type="button"
-                                  onClick={() => handleEliminarHijo(hijo.IdHijo)}
-                                  title="Eliminar registro de hijo"
-                                  className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition cursor-pointer"
-                                >
-                                  <Trash2 className="w-4 h-4" />
-                                </button>
-                              </td>
-                            </tr>
-                          );
-                        })}
-                      </tbody>
-                    </table>
-                  </div>
-                </div>
-              )}
-            </div>
-
-            {/* Formulario para Agregar Nuevo Hijo */}
-            <form onSubmit={handleAgregarHijo} className="mt-5 p-4 rounded-2xl bg-purple-50/50 border border-purple-100 space-y-3">
-              <div className="flex items-center gap-1.5 text-purple-900 font-bold text-xs">
-                <Plus className="w-4 h-4 text-purple-700" />
-                <span>Registrar Nuevo Hijo para este Colaborador</span>
-              </div>
-
-              <div className="grid grid-cols-1 sm:grid-cols-12 gap-3 items-end">
-                <div className="sm:col-span-2">
-                  <label className="block text-[11px] font-bold text-slate-600 mb-1">
-                    No. de Hijo
-                  </label>
-                  <div className="w-full px-3 py-1.5 bg-slate-100 border border-slate-300 rounded-xl text-xs font-bold text-purple-800 flex items-center justify-center h-[34px]">
-                    #{hijosList.length + 1} (Auto)
-                  </div>
-                </div>
-
-                <div className="sm:col-span-4">
-                  <label className="block text-[11px] font-bold text-slate-600 mb-1">
-                    Nombre Completo <span className="text-rose-500">*</span>
-                  </label>
-                  <input
-                    type="text"
-                    required
-                    placeholder="Ej. Sofía Hernández"
-                    value={nuevoHijo.nombre || ''}
-                    onChange={(e) => setNuevoHijo({ ...nuevoHijo, nombre: e.target.value })}
-                    className="w-full px-3 py-1.5 bg-white border border-slate-300 rounded-xl text-xs font-semibold text-slate-900 focus:ring-2 focus:ring-purple-600 outline-none h-[34px]"
-                  />
-                </div>
-
-                <div className="sm:col-span-3">
-                  <label className="block text-[11px] font-bold text-slate-600 mb-1">
-                    Fecha de Nacimiento
-                  </label>
-                  <input
-                    type="date"
-                    value={nuevoHijo.fechaNacimiento || ''}
-                    onChange={(e) => setNuevoHijo({ ...nuevoHijo, fechaNacimiento: e.target.value })}
-                    className="w-full px-3 py-1.5 bg-white border border-slate-300 rounded-xl text-xs text-slate-900 focus:ring-2 focus:ring-purple-600 outline-none h-[34px]"
-                  />
-                </div>
-
-                <div className="sm:col-span-3">
-                  <label className="block text-[11px] font-bold text-slate-600 mb-1">
-                    Sexo
-                  </label>
-                  <select
-                    value={nuevoHijo.sexo || 'M'}
-                    onChange={(e) => setNuevoHijo({ ...nuevoHijo, sexo: e.target.value })}
-                    className="w-full px-3 py-1.5 bg-white border border-slate-300 rounded-xl text-xs font-semibold text-slate-900 focus:ring-2 focus:ring-purple-600 outline-none h-[34px]"
-                  >
-                    <option value="M">Masculino (M)</option>
-                    <option value="F">Femenino (F)</option>
-                    <option value="X">No especificado</option>
-                  </select>
-                </div>
-              </div>
-
-              <div className="flex justify-end pt-1">
-                <button
-                  type="submit"
-                  disabled={guardandoHijo}
-                  className="flex items-center gap-1.5 px-4 py-2 bg-purple-700 hover:bg-purple-800 disabled:opacity-50 text-white rounded-xl text-xs font-bold transition shadow-xs cursor-pointer"
-                >
-                  <Plus className="w-3.5 h-3.5" />
-                  <span>{guardandoHijo ? 'Registrando...' : 'Agregar Hijo a Expediente'}</span>
-                </button>
-              </div>
-            </form>
-
-            {/* Footer */}
-            <div className="mt-5 pt-3 border-t border-slate-100 flex items-center justify-between">
+            {/* Pie Modal Ficha */}
+            <div className="pt-4 border-t border-slate-100 flex items-center justify-between mt-4">
               <span className="text-[11px] text-slate-400">
-                Información protegida en tabla relacional <code className="font-mono bg-slate-100 px-1 py-0.5 rounded text-slate-600">dbo.ColaboradorHijos</code>.
+                Expediente consultado en tiempo real desde Microsoft SQL Server DESARROLLO_O
               </span>
               <button
                 type="button"
-                onClick={() => setColabHijos(null)}
-                className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl text-xs transition cursor-pointer"
+                onClick={() => setColabFicha(null)}
+                className="px-5 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl text-xs transition cursor-pointer"
               >
-                Cerrar
+                Cerrar Expediente
               </button>
             </div>
           </div>
         </div>
+      )}
+
+      {/* MODAL 3: GESTIÓN Y CONSULTA DE HIJOS / DEPENDIENTES (dbo.ColaboradorHijos) */}
+      {colabHijos && typeof document !== 'undefined' && createPortal(
+        <div className="fixed inset-0 z-[60] overflow-y-auto">
+          {/* Overlay Semitransparente Independiente */}
+          <div 
+            className="fixed inset-0 bg-black/40 backdrop-blur-xs z-[60] transition-opacity" 
+            onClick={() => setColabHijos(null)}
+          />
+
+          {/* Diálogo Centrado en Capa Superior */}
+          <div className="fixed inset-0 flex items-center justify-center z-[70] p-4 overflow-y-auto pointer-events-none">
+            <div className="bg-white rounded-3xl max-w-2xl w-full p-6 shadow-2xl border border-slate-100 my-8 animate-in fade-in zoom-in duration-100 pointer-events-auto relative z-[70] max-h-[90vh] overflow-y-auto">
+              {/* Modal Header */}
+              <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+                <div className="flex items-center gap-3">
+                  <div className="p-2.5 bg-purple-100 text-purple-700 rounded-2xl">
+                    <Baby className="w-6 h-6" />
+                  </div>
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <h3 className="font-black text-slate-900 text-base">Hijos y Dependientes Registrados</h3>
+                      <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-purple-100 text-purple-800">
+                        {hijosList.length} {hijosList.length === 1 ? 'hijo' : 'hijos'}
+                      </span>
+                    </div>
+                    <p className="text-xs text-slate-500 font-medium">
+                      {formatearNombreColaborador(colabHijos)} <span className="font-mono text-slate-400">({colabHijos.CodigoEmpleado} • {colabHijos.Empresa})</span>
+                    </p>
+                  </div>
+                </div>
+                <button 
+                  type="button"
+                  onClick={() => setColabHijos(null)} 
+                  className="text-slate-400 hover:text-slate-600 p-1.5 rounded-xl hover:bg-slate-100 transition cursor-pointer"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              {errorHijos && (
+                <div className="mt-3 p-3 bg-rose-50 border border-rose-200 text-rose-800 rounded-xl text-xs flex items-center gap-2">
+                  <AlertCircle className="w-4 h-4 shrink-0 text-rose-600" />
+                  <span>{errorHijos}</span>
+                </div>
+              )}
+
+              {/* Listado de Hijos */}
+              <div className="mt-4 space-y-3">
+                <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block">
+                  Descendientes Registrados en Base de Datos (dbo.ColaboradorHijos)
+                </span>
+
+                {loadingHijos ? (
+                  <div className="py-8 text-center text-slate-400 text-xs">
+                    <RefreshCw className="w-5 h-5 animate-spin mx-auto mb-2 text-purple-600" />
+                    Cargando información de hijos...
+                  </div>
+                ) : hijosList.length === 0 ? (
+                  <div className="p-6 bg-slate-50 rounded-2xl border border-dashed border-slate-200 text-center text-slate-400 text-xs">
+                    <Baby className="w-8 h-8 mx-auto mb-1.5 text-slate-300" />
+                    Este colaborador no tiene hijos registrados actualmente en el sistema.
+                  </div>
+                ) : (
+                  <div className="border border-slate-200 rounded-2xl overflow-hidden shadow-xs">
+                    <div className="overflow-x-auto max-h-60">
+                      <table className="w-full text-left text-xs">
+                        <thead className="bg-slate-50 text-[11px] font-bold text-slate-600 uppercase border-b border-slate-200 sticky top-0 z-10">
+                          <tr>
+                            <th className="py-2.5 px-3 w-12 text-center">#</th>
+                            <th className="py-2.5 px-3">Nombre Completo</th>
+                            <th className="py-2.5 px-3">Fecha de Nacimiento</th>
+                            <th className="py-2.5 px-3">Edad Actual</th>
+                            <th className="py-2.5 px-3">Sexo</th>
+                            <th className="py-2.5 px-3 text-center w-16">Acción</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-100 bg-white">
+                          {hijosList.map((hijo) => {
+                            const edadTexto = hijo.EdadCalculada !== undefined && hijo.EdadCalculada !== null
+                              ? `${hijo.EdadCalculada} ${hijo.EdadCalculada === 1 ? 'año' : 'años'}`
+                              : calcularEdad(hijo.FechaNacimiento);
+                            const isMasc = hijo.Sexo === 'M';
+                            const isFem = hijo.Sexo === 'F';
+                            return (
+                              <tr key={hijo.IdHijo || hijo.NumeroHijo} className="hover:bg-purple-50/30 transition">
+                                <td className="py-2.5 px-3 text-center">
+                                  <span className={`inline-flex items-center justify-center w-6 h-6 rounded-lg text-xs font-bold ${
+                                    isMasc ? 'bg-blue-100 text-blue-700' :
+                                    isFem ? 'bg-pink-100 text-pink-700' :
+                                    'bg-slate-100 text-slate-700'
+                                  }`}>
+                                    #{hijo.NumeroHijo}
+                                  </span>
+                                </td>
+                                <td className="py-2.5 px-3 font-semibold text-slate-900">
+                                  {hijo.Nombre || <span className="text-slate-400 italic font-normal">Sin nombre registrado</span>}
+                                </td>
+                                <td className="py-2.5 px-3 text-slate-600 font-mono text-[11px]">
+                                  {hijo.FechaNacimiento || <span className="text-slate-400">No registrada</span>}
+                                </td>
+                                <td className="py-2.5 px-3 font-semibold text-purple-700">
+                                  {hijo.FechaNacimiento ? edadTexto : <span className="text-slate-400 font-normal">—</span>}
+                                </td>
+                                <td className="py-2.5 px-3">
+                                  <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
+                                    isMasc ? 'bg-blue-50 text-blue-700 border border-blue-200' :
+                                    isFem ? 'bg-pink-50 text-pink-700 border border-pink-200' :
+                                    'bg-slate-100 text-slate-600'
+                                  }`}>
+                                    {isMasc ? 'Masculino' : isFem ? 'Femenino' : 'No especificado'}
+                                  </span>
+                                </td>
+                                <td className="py-2.5 px-3 text-center">
+                                  <button
+                                    type="button"
+                                    onClick={() => handleEliminarHijo(hijo.IdHijo)}
+                                    title="Eliminar registro de hijo"
+                                    className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition cursor-pointer"
+                                  >
+                                    <Trash2 className="w-4 h-4" />
+                                  </button>
+                                </td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* Formulario para Agregar Nuevo Hijo */}
+              <form onSubmit={handleAgregarHijo} className="mt-5 p-4 rounded-2xl bg-purple-50/50 border border-purple-100 space-y-3">
+                <div className="flex items-center gap-1.5 text-purple-900 font-bold text-xs">
+                  <Plus className="w-4 h-4 text-purple-700" />
+                  <span>Registrar Nuevo Hijo para este Colaborador</span>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-12 gap-3 items-end">
+                  <div className="sm:col-span-2">
+                    <label className="block text-[11px] font-bold text-slate-600 mb-1">
+                      No. de Hijo
+                    </label>
+                    <div className="w-full px-3 py-1.5 bg-slate-100 border border-slate-300 rounded-xl text-xs font-bold text-purple-800 flex items-center justify-center h-[34px]">
+                      #{hijosList.length + 1} (Auto)
+                    </div>
+                  </div>
+
+                  <div className="sm:col-span-4">
+                    <label className="block text-[11px] font-bold text-slate-600 mb-1">
+                      Nombre Completo <span className="text-rose-500">*</span>
+                    </label>
+                    <input
+                      type="text"
+                      required
+                      placeholder="Ej. Sofía Hernández"
+                      value={nuevoHijo.nombre || ''}
+                      onChange={(e) => setNuevoHijo({ ...nuevoHijo, nombre: e.target.value })}
+                      className="w-full px-3 py-1.5 bg-white border border-slate-300 rounded-xl text-xs font-semibold text-slate-900 focus:ring-2 focus:ring-purple-600 outline-none h-[34px]"
+                    />
+                  </div>
+
+                  <div className="sm:col-span-3">
+                    <label className="block text-[11px] font-bold text-slate-600 mb-1">
+                      Fecha de Nacimiento
+                    </label>
+                    <input
+                      type="date"
+                      value={nuevoHijo.fechaNacimiento || ''}
+                      onChange={(e) => setNuevoHijo({ ...nuevoHijo, fechaNacimiento: e.target.value })}
+                      className="w-full px-3 py-1.5 bg-white border border-slate-300 rounded-xl text-xs text-slate-900 focus:ring-2 focus:ring-purple-600 outline-none h-[34px]"
+                    />
+                  </div>
+
+                  <div className="sm:col-span-3">
+                    <label className="block text-[11px] font-bold text-slate-600 mb-1">
+                      Sexo
+                    </label>
+                    <select
+                      value={nuevoHijo.sexo || 'M'}
+                      onChange={(e) => setNuevoHijo({ ...nuevoHijo, sexo: e.target.value })}
+                      className="w-full px-3 py-1.5 bg-white border border-slate-300 rounded-xl text-xs font-semibold text-slate-900 focus:ring-2 focus:ring-purple-600 outline-none h-[34px]"
+                    >
+                      <option value="M">Masculino (M)</option>
+                      <option value="F">Femenino (F)</option>
+                      <option value="X">No especificado</option>
+                    </select>
+                  </div>
+                </div>
+
+                <div className="flex justify-end pt-1">
+                  <button
+                    type="submit"
+                    disabled={guardandoHijo}
+                    className="flex items-center gap-1.5 px-4 py-2 bg-purple-700 hover:bg-purple-800 disabled:opacity-50 text-white rounded-xl text-xs font-bold transition shadow-xs cursor-pointer"
+                  >
+                    <Plus className="w-3.5 h-3.5" />
+                    <span>{guardandoHijo ? 'Registrando...' : 'Agregar Hijo a Expediente'}</span>
+                  </button>
+                </div>
+              </form>
+
+              {/* Footer */}
+              <div className="mt-5 pt-3 border-t border-slate-100 flex items-center justify-between">
+                <span className="text-[11px] text-slate-400">
+                  Información protegida en tabla relacional <code className="font-mono bg-slate-100 px-1 py-0.5 rounded text-slate-600">dbo.ColaboradorHijos</code>.
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setColabHijos(null)}
+                  className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl text-xs transition cursor-pointer"
+                >
+                  Cerrar
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>,
+        document.body
       )}
 
     </div>

@@ -11,7 +11,7 @@ import AdminDORolesPage from './pages/AdminDORolesPage';
 import ReportesAnaliticaPage from './pages/ReportesAnaliticaPage';
 import ModalCambiarPassword from './components/ModalCambiarPassword';
 import SimulateBanner from './components/SimulateBanner';
-import { api, setAuthToken, clearAuth, setSimulationHeaders } from './api/client';
+import { api, setAuthToken, clearAuth, setSimulationHeaders, setActiveSimulation } from './api/client';
 import logoJama from './assets/logo-jama.png';
 
 export default function App() {
@@ -98,6 +98,7 @@ export default function App() {
 
   function handleLogout() {
     clearAuth();
+    setActiveSimulation(null, null);
     setCurrentUser(null);
     setIsAuthenticated(false);
     setActiveRoleView('COLABORADOR');
@@ -105,44 +106,67 @@ export default function App() {
     setSimulationHeaders({});
   }
 
-  // Manejo de cambio de rol simulado (Role Switcher de SuperAdmin)
+  // Manejo de cambio de rol simulado (Role Impersonator de SuperAdmin)
   function handleRoleViewChange(newRole, sampleColab = null) {
     setActiveRoleView(newRole);
 
+    // Mapeo estricto de pestañas permitidas por cada rol
+    const validTabsByRole = {
+      'COLABORADOR': ['colaborador'],
+      'LIDER': ['colaborador', 'lider', 'mi-equipo'],
+      'ADMIN_DO': ['colaborador', 'admin', 'colaboradores', 'reportes'],
+      'SISTEMAS': ['colaborador', 'lider', 'mi-equipo', 'admin', 'colaboradores', 'admin-do', 'reportes', 'sistemas'],
+      'SUPERADMIN': ['colaborador', 'lider', 'mi-equipo', 'admin', 'colaboradores', 'admin-do', 'reportes', 'sistemas']
+    };
+
+    const allowed = validTabsByRole[newRole] || ['colaborador'];
+    if (!allowed.includes(activeTab)) {
+      if (newRole === 'COLABORADOR') setActiveTab('colaborador');
+      else if (newRole === 'LIDER') setActiveTab('lider');
+      else if (newRole === 'ADMIN_DO') setActiveTab('admin');
+      else setActiveTab('sistemas');
+    }
+
     if (newRole === 'SISTEMAS' || newRole === 'SUPERADMIN') {
       setSimulatedColaborador(null);
+      setActiveSimulation('SISTEMAS', null);
       setSimulationHeaders({});
-      setActiveTab('sistemas');
     } else if (newRole === 'ADMIN_DO') {
-      setSimulatedColaborador(null);
-      setSimulationHeaders({ 'x-simulate-role': 'ADMIN_DO' });
-      setActiveTab('admin');
+      const adminColab = sampleColab || {
+        idColaborador: 383,
+        id: 383,
+        codigoEmpleado: 'CONT-906',
+        nombreCompleto: 'TANIA DEL CARMEN HURTADO AVALOS',
+        empresa: 'CONTROLADORA JAMA, S.C.',
+        rolApp: 'ADMIN_DO',
+        rol: 'ADMIN_DO'
+      };
+      setSimulatedColaborador(adminColab);
+      setActiveSimulation('ADMIN_DO', adminColab.idColaborador);
     } else if (newRole === 'LIDER') {
       const leader = sampleColab || {
-        idColaborador: 850,
-        codigoEmpleado: '850',
+        idColaborador: 46,
+        id: 46,
+        codigoEmpleado: 'LAT-155',
         nombreCompleto: 'ULISES ANTONIO GARCES RODRIGUEZ',
-        empresa: 'LATINO CONCRETOS, S.A. DE C.V.'
+        empresa: 'LATINO CONCRETOS, S.A. DE C.V.',
+        rolApp: 'LIDER',
+        rol: 'LIDER'
       };
       setSimulatedColaborador(leader);
-      setSimulationHeaders({ 
-        'x-simulate-role': 'LIDER',
-        'x-simulate-colaborador': String(leader.idColaborador)
-      });
-      setActiveTab('lider');
+      setActiveSimulation('LIDER', leader.idColaborador);
     } else if (newRole === 'COLABORADOR') {
       const colab = sampleColab || {
-        idColaborador: 1039,
-        codigoEmpleado: '1077',
+        idColaborador: 594,
+        id: 594,
+        codigoEmpleado: 'LAT-1077',
         nombreCompleto: 'GONZALO RAMIREZ GALLARDO',
-        empresa: 'LATINO CONCRETOS, S.A. DE C.V.'
+        empresa: 'LATINO CONCRETOS, S.A. DE C.V.',
+        rolApp: 'COLABORADOR',
+        rol: 'COLABORADOR'
       };
       setSimulatedColaborador(colab);
-      setSimulationHeaders({ 
-        'x-simulate-role': 'COLABORADOR',
-        'x-simulate-colaborador': String(colab.idColaborador)
-      });
-      setActiveTab('colaborador');
+      setActiveSimulation('COLABORADOR', colab.idColaborador);
     }
   }
 
@@ -175,7 +199,7 @@ export default function App() {
 
   // Usuario efectivo para las vistas hijas (si simula, hereda datos del rol o colaborador simulado)
   const isSimulating = Boolean(
-    (currentUser?.rolApp === 'SUPERADMIN' || currentUser?.rolApp === 'SISTEMAS') &&
+    (currentUser?.rolApp === 'SUPERADMIN' || currentUser?.rolApp === 'SISTEMAS' || currentUser?.rol === 'SUPERADMIN' || currentUser?.rol === 'SISTEMAS' || currentUser?.username === 'sistemas') &&
     activeRoleView !== 'SUPERADMIN' &&
     activeRoleView !== 'SISTEMAS'
   );

@@ -37,10 +37,21 @@ async function deploy() {
     END
   `);
 
-  // Asegurar que CURP en Colaboradores acepte NULL
-  console.log('Asegurando flexibilidad en columnas de Colaboradores...');
+  // Asegurar que CURP en Colaboradores acepte NULL y existan columnas complementarias
+  console.log('Asegurando columnas en dbo.Colaboradores...');
   await pool.request().query(`
     ALTER TABLE dbo.Colaboradores ALTER COLUMN CURP VARCHAR(18) NULL;
+
+    IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('dbo.Colaboradores') AND name = 'EmailCorporativo')
+        ALTER TABLE dbo.Colaboradores ADD EmailCorporativo VARCHAR(150) NULL;
+
+    IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('dbo.Colaboradores') AND name = 'IdAprobadorSegundo')
+        ALTER TABLE dbo.Colaboradores ADD IdAprobadorSegundo INT NULL;
+
+    IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('dbo.Colaboradores') AND name = 'DiasDescanso')
+        ALTER TABLE dbo.Colaboradores ADD DiasDescanso VARCHAR(100) NULL;
+    ELSE
+        ALTER TABLE dbo.Colaboradores ALTER COLUMN DiasDescanso VARCHAR(100) NULL;
   `);
 
   // 2. Función LFT
@@ -383,6 +394,12 @@ async function deploy() {
             THROW;
         END CATCH;
     END;
+  `);
+
+  console.log('Homologando EstatusNomina (ALTA/BAJA) en dbo.Colaboradores...');
+  await pool.request().query(`
+    UPDATE dbo.Colaboradores SET EstatusNomina = 'ALTA' WHERE Activo = 1;
+    UPDATE dbo.Colaboradores SET EstatusNomina = 'BAJA' WHERE Activo = 0;
   `);
 
   console.log('✅ Despliegue de procedimientos y tablas en DESARROLLO_O concluido con éxito.');

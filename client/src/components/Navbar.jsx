@@ -5,6 +5,7 @@ import {
   Terminal, FileSpreadsheet, UserPlus, Menu, X
 } from 'lucide-react';
 import logoJama from '../assets/logo-jama.png';
+import { formatearNombreColaborador, obtenerInicialesColaborador } from '../utils/formatters';
 
 export default function Navbar({ 
   currentUser, 
@@ -54,12 +55,14 @@ export default function Navbar({
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
-  const isRealSuperAdmin = realUser?.rolApp === 'SUPERADMIN' || 
-                           realUser?.rolApp === 'SISTEMAS' || 
-                           currentUser?.rolApp === 'SUPERADMIN' || 
-                           currentUser?.rolApp === 'SISTEMAS' ||
-                           realUser?.rol === 'SUPERADMIN' ||
-                           realUser?.rol === 'SISTEMAS';
+  const isRealSuperAdmin = Boolean(
+    realUser?.rolApp === 'SUPERADMIN' || realUser?.rolApp === 'SISTEMAS' ||
+    realUser?.rol === 'SUPERADMIN' || realUser?.rol === 'SISTEMAS' ||
+    realUser?.username === 'sistemas' ||
+    currentUser?.rolApp === 'SUPERADMIN' || currentUser?.rolApp === 'SISTEMAS' ||
+    currentUser?.rol === 'SUPERADMIN' || currentUser?.rol === 'SISTEMAS' ||
+    currentUser?.username === 'sistemas'
+  );
 
   const rolEfectivo = activeRoleView || currentUser?.rolApp || 'COLABORADOR';
 
@@ -95,6 +98,14 @@ export default function Navbar({
 
   const esEquipoActivo = activeTab === 'lider' || activeTab === 'mi-equipo';
   const esGestionDOActivo = activeTab === 'admin' || activeTab === 'colaboradores' || activeTab === 'admin-do' || activeTab === 'sistemas';
+
+  const currentRoleConfig = {
+    'SISTEMAS': { icon: '🛠️', label: 'Sistemas (TI)' },
+    'SUPERADMIN': { icon: '🛠️', label: 'Sistemas (TI)' },
+    'ADMIN_DO': { icon: '🏢', label: 'ADMIN_DO' },
+    'LIDER': { icon: '👔', label: 'Líder / Jefe' },
+    'COLABORADOR': { icon: '👤', label: 'Colaborador' }
+  }[activeRoleView || 'SISTEMAS'] || { icon: '🛠️', label: 'Sistemas (TI)' };
 
   return (
     <header className="sticky top-0 z-40 bg-white border-b border-slate-200 shadow-xs">
@@ -362,10 +373,11 @@ export default function Navbar({
           {/* 3. SECCIÓN DERECHA: Badge Vista Actual + Tarjeta de Usuario con Avatar */}
           <div className="flex items-center gap-2.5 shrink-0 ml-auto">
             
-            {/* CONMUTADOR DE ROLES EXCLUSIVO PARA ROL SISTEMAS (SuperAdmin) */}
+            {/* CONMUTADOR INTERACTIVO DE ROLES (DROPDOWN ROLE IMPERSONATOR) */}
             {isRealSuperAdmin && (
               <div className="relative" ref={roleDropdownRef}>
                 <button
+                  id="role-impersonator-dropdown-btn"
                   type="button"
                   onClick={() => {
                     setShowRoleDropdown(!showRoleDropdown);
@@ -373,36 +385,40 @@ export default function Navbar({
                     setShowEquipoDropdown(false);
                     setShowGestionDropdown(false);
                   }}
-                  className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl border text-xs font-bold transition shadow-2xs cursor-pointer max-w-[170px] sm:max-w-[210px] ${
+                  className={`flex items-center gap-2 px-3 py-1.5 rounded-xl border text-xs font-bold transition shadow-xs cursor-pointer select-none ${
                     activeRoleView === 'SISTEMAS' || activeRoleView === 'SUPERADMIN'
-                      ? 'bg-purple-50 text-purple-900 border-purple-200 hover:bg-purple-100/80'
-                      : 'bg-amber-100 text-amber-950 border-amber-300 hover:bg-amber-200'
+                      ? 'bg-purple-50 text-purple-900 border-purple-300 hover:bg-purple-100 hover:border-purple-400'
+                      : 'bg-amber-100 text-amber-950 border-amber-400 hover:bg-amber-200 ring-2 ring-amber-400/50'
                   }`}
-                  title="Conmutador de Vista de Roles (SuperAdmin)"
+                  title="Selector interactivo de roles (Role Impersonator)"
                 >
                   <Eye className="w-3.5 h-3.5 text-purple-700 shrink-0" />
-                  <span className="hidden sm:inline text-slate-500 font-medium">Vista:</span>
-                  <span className="font-extrabold truncate">{roleLabel}</span>
-                  <ChevronDown className="w-3 h-3 ml-0.5 opacity-60 shrink-0" />
+                  <span className="hidden sm:inline text-slate-600 font-medium">Vista Actual:</span>
+                  <span className="font-extrabold underline flex items-center gap-1">
+                    <span>{currentRoleConfig.icon}</span>
+                    <span>{currentRoleConfig.label}</span>
+                  </span>
+                  <ChevronDown className={`w-3.5 h-3.5 ml-0.5 transition-transform duration-200 opacity-80 ${showRoleDropdown ? 'rotate-180' : ''}`} />
                 </button>
 
                 {showRoleDropdown && (
-                  <div className="absolute right-0 mt-2 w-80 bg-white rounded-2xl shadow-2xl border border-slate-200 py-2 z-50 animate-in fade-in zoom-in-95 duration-100">
+                  <div className="absolute right-0 mt-2 w-84 bg-white rounded-2xl shadow-2xl border border-slate-200 py-2 z-50 animate-in fade-in zoom-in-95 duration-100">
                     <div className="px-4 py-2 border-b border-slate-100">
                       <div className="flex items-center gap-2 text-purple-900 font-extrabold text-xs">
                         <Sparkles className="w-4 h-4 text-purple-600" />
-                        <span>Ver Aplicación Como... (Role Switcher)</span>
+                        <span>Selector de Roles (Role Impersonator)</span>
                       </div>
                       <p className="text-[11px] text-slate-500 mt-0.5">
-                        Muta la interfaz, permisos y vistas en tiempo real para simular la experiencia de cualquier perfil:
+                        Selecciona un perfil para auditar y navegar la aplicación con los permisos exactos de ese rol:
                       </p>
                     </div>
 
                     <div className="py-1">
-                      {/* Modo Real: Sistemas */}
+                      {/* Opción 1: SISTEMAS (TI) */}
                       <button
+                        type="button"
                         onClick={() => {
-                          onRoleViewChange('SISTEMAS');
+                          onRoleViewChange('SISTEMAS', null);
                           setShowRoleDropdown(false);
                         }}
                         className={`w-full text-left px-4 py-2.5 hover:bg-slate-50 flex items-start justify-between transition cursor-pointer ${
@@ -410,23 +426,33 @@ export default function Navbar({
                         }`}
                       >
                         <div className="flex items-start gap-2.5">
-                          <Terminal className="w-4 h-4 text-purple-700 shrink-0 mt-0.5" />
+                          <span className="text-base shrink-0 mt-0.5 select-none">🛠️</span>
                           <div>
-                            <div className="text-xs font-bold text-slate-900 flex items-center gap-1.5">
-                              <span>Modo Real: SISTEMAS (SuperAdmin)</span>
+                            <div className="text-xs font-bold text-slate-900 flex items-center gap-1.5 flex-wrap">
+                              <span>SISTEMAS (TI)</span>
+                              <span className="text-[10px] font-semibold text-purple-700 bg-purple-50 px-1.5 py-0.5 rounded border border-purple-200">[Vista Real SuperAdmin]</span>
                               {(activeRoleView === 'SISTEMAS' || activeRoleView === 'SUPERADMIN') && (
                                 <Check className="w-3.5 h-3.5 text-purple-700" />
                               )}
                             </div>
-                            <p className="text-[11px] text-slate-500">Acceso total, auditoría, BD y sincronización</p>
+                            <p className="text-[11px] text-slate-500 mt-0.5">Acceso total, auditoría, sincronización y configuración de TI</p>
                           </div>
                         </div>
                       </button>
 
-                      {/* Simular: ADMIN_DO */}
+                      {/* Opción 2: ADMIN_DO */}
                       <button
+                        type="button"
                         onClick={() => {
-                          onRoleViewChange('ADMIN_DO');
+                          onRoleViewChange('ADMIN_DO', {
+                            idColaborador: 383,
+                            id: 383,
+                            codigoEmpleado: 'CONT-906',
+                            nombreCompleto: 'HURTADO AVALOS, TANIA DEL CARMEN',
+                            empresa: 'CONTROLADORA JAMA, S.C.',
+                            rolApp: 'ADMIN_DO',
+                            rol: 'ADMIN_DO'
+                          });
                           setShowRoleDropdown(false);
                         }}
                         className={`w-full text-left px-4 py-2.5 hover:bg-slate-50 flex items-start justify-between transition cursor-pointer ${
@@ -434,25 +460,30 @@ export default function Navbar({
                         }`}
                       >
                         <div className="flex items-start gap-2.5">
-                          <ShieldCheck className="w-4 h-4 text-blue-700 shrink-0 mt-0.5" />
+                          <span className="text-base shrink-0 mt-0.5 select-none">🏢</span>
                           <div>
-                            <div className="text-xs font-bold text-slate-900 flex items-center gap-1.5">
-                              <span>Simular: ADMIN_DO (Desarrollo Org.)</span>
+                            <div className="text-xs font-bold text-slate-900 flex items-center gap-1.5 flex-wrap">
+                              <span>ADMIN_DO</span>
+                              <span className="text-[10px] font-semibold text-blue-700 bg-blue-50 px-1.5 py-0.5 rounded border border-blue-200">[Desarrollo Organizacional]</span>
                               {activeRoleView === 'ADMIN_DO' && <Check className="w-3.5 h-3.5 text-blue-700" />}
                             </div>
-                            <p className="text-[11px] text-slate-500">Gestión global de vacaciones, catálogo y reportes</p>
+                            <p className="text-[11px] text-slate-500 mt-0.5">Gestión global de 8 empresas, VoBo DO, saldos y catálogos</p>
                           </div>
                         </div>
                       </button>
 
-                      {/* Simular: LIDER */}
+                      {/* Opción 3: LÍDER / JEFE */}
                       <button
+                        type="button"
                         onClick={() => {
                           onRoleViewChange('LIDER', {
-                            idColaborador: 850,
-                            codigoEmpleado: '850',
-                            nombreCompleto: 'ULISES ANTONIO GARCES RODRIGUEZ',
-                            empresa: 'LATINO CONCRETOS, S.A. DE C.V.'
+                            idColaborador: 46,
+                            id: 46,
+                            codigoEmpleado: 'LAT-155',
+                            nombreCompleto: 'GARCES RODRIGUEZ, ULISES ANTONIO',
+                            empresa: 'LATINO CONCRETOS, S.A. DE C.V.',
+                            rolApp: 'LIDER',
+                            rol: 'LIDER'
                           });
                           setShowRoleDropdown(false);
                         }}
@@ -461,25 +492,30 @@ export default function Navbar({
                         }`}
                       >
                         <div className="flex items-start gap-2.5">
-                          <UserCheck className="w-4 h-4 text-amber-700 shrink-0 mt-0.5" />
+                          <span className="text-base shrink-0 mt-0.5 select-none">👔</span>
                           <div>
-                            <div className="text-xs font-bold text-slate-900 flex items-center gap-1.5">
-                              <span>Simular: LÍDER / JEFE DIRECTO</span>
+                            <div className="text-xs font-bold text-slate-900 flex items-center gap-1.5 flex-wrap">
+                              <span>LÍDER / JEFE</span>
+                              <span className="text-[10px] font-semibold text-amber-800 bg-amber-50 px-1.5 py-0.5 rounded border border-amber-200">[Aprobaciones y Mi Equipo]</span>
                               {activeRoleView === 'LIDER' && <Check className="w-3.5 h-3.5 text-amber-700" />}
                             </div>
-                            <p className="text-[11px] text-slate-500">Bandeja de aprobaciones y catálogo de equipo a cargo</p>
+                            <p className="text-[11px] text-slate-500 mt-0.5">GARCES RODRIGUEZ, ULISES ANTONIO (LAT-155): Bandeja de aprobación y equipo a cargo</p>
                           </div>
                         </div>
                       </button>
 
-                      {/* Simular: COLABORADOR */}
+                      {/* Opción 4: COLABORADOR */}
                       <button
+                        type="button"
                         onClick={() => {
                           onRoleViewChange('COLABORADOR', {
-                            idColaborador: 1039,
-                            codigoEmpleado: '1077',
-                            nombreCompleto: 'GONZALO RAMIREZ GALLARDO',
-                            empresa: 'LATINO CONCRETOS, S.A. DE C.V.'
+                            idColaborador: 594,
+                            id: 594,
+                            codigoEmpleado: 'LAT-1077',
+                            nombreCompleto: 'RAMIREZ GALLARDO, GONZALO',
+                            empresa: 'LATINO CONCRETOS, S.A. DE C.V.',
+                            rolApp: 'COLABORADOR',
+                            rol: 'COLABORADOR'
                           });
                           setShowRoleDropdown(false);
                         }}
@@ -488,13 +524,14 @@ export default function Navbar({
                         }`}
                       >
                         <div className="flex items-start gap-2.5">
-                          <CalendarCheck className="w-4 h-4 text-emerald-700 shrink-0 mt-0.5" />
+                          <span className="text-base shrink-0 mt-0.5 select-none">👤</span>
                           <div>
-                            <div className="text-xs font-bold text-slate-900 flex items-center gap-1.5">
-                              <span>Simular: COLABORADOR (Base)</span>
+                            <div className="text-xs font-bold text-slate-900 flex items-center gap-1.5 flex-wrap">
+                              <span>COLABORADOR</span>
+                              <span className="text-[10px] font-semibold text-emerald-800 bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-200">[Portal Colaborador]</span>
                               {activeRoleView === 'COLABORADOR' && <Check className="w-3.5 h-3.5 text-emerald-700" />}
                             </div>
-                            <p className="text-[11px] text-slate-500">Saldo individual LFT y registro de solicitudes</p>
+                            <p className="text-[11px] text-slate-500 mt-0.5">RAMIREZ GALLARDO, GONZALO (LAT-1077): Saldo LFT individual y solicitudes</p>
                           </div>
                         </div>
                       </button>
@@ -522,12 +559,12 @@ export default function Navbar({
                 className="flex items-center gap-2 p-1.5 pr-2.5 rounded-xl border border-slate-200 hover:border-slate-300 hover:bg-slate-50 transition text-left cursor-pointer"
               >
                 <div className="w-8 h-8 rounded-lg bg-slate-900 text-white flex items-center justify-center font-bold text-xs uppercase shadow-xs shrink-0">
-                  {currentUser?.nombreCompleto ? currentUser.nombreCompleto.substring(0, 2) : 'EM'}
+                  {obtenerInicialesColaborador(currentUser)}
                 </div>
                 <div className="hidden sm:block max-w-[130px] md:max-w-[170px]">
                   <div className="flex items-center gap-1.5">
                     <span className="text-xs font-bold text-slate-800 truncate block">
-                      {currentUser?.nombreCompleto || 'Colaborador'}
+                      {formatearNombreColaborador(currentUser?.nombreCompleto || 'Colaborador')}
                     </span>
                   </div>
                   <p className="text-[10px] text-slate-400 truncate block">
@@ -542,7 +579,7 @@ export default function Navbar({
                 <div className="absolute right-0 mt-2 w-64 bg-white rounded-2xl shadow-xl border border-slate-200 py-2 z-50 animate-in fade-in zoom-in-95 duration-100">
                   <div className="px-4 py-2.5 border-b border-slate-100">
                     <p className="text-xs font-extrabold text-slate-900 truncate">
-                      {currentUser?.nombreCompleto || 'Colaborador'}
+                      {formatearNombreColaborador(currentUser?.nombreCompleto || 'Colaborador')}
                     </p>
                     <p className="text-[11px] text-slate-500 font-mono mt-0.5">
                       Nómina: {currentUser?.codigoEmpleado || '—'}

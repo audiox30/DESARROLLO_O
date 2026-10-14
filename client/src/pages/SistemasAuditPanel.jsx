@@ -5,6 +5,7 @@ import {
   Server, Cpu, Eye, Clock, Terminal, Filter
 } from 'lucide-react';
 import { api } from '../api/client';
+import { formatearNombreColaborador, compararPorApellidos } from '../utils/formatters';
 
 export default function SistemasAuditPanel({ currentUser }) {
   const [activeSubTab, setActiveSubTab] = useState('usuarios'); // 'usuarios', 'auditoria', 'diagnostico'
@@ -42,7 +43,8 @@ export default function SistemasAuditPanel({ currentUser }) {
       setLoadingUsuarios(true);
       const res = await api.getSistemasUsuarios();
       if (res.success) {
-        setUsuarios(res.usuarios || []);
+        const sorted = (res.usuarios || []).sort((a, b) => compararPorApellidos(a.NombreCompleto, b.NombreCompleto, 'asc'));
+        setUsuarios(sorted);
       }
     } catch (err) {
       console.error('Error cargando usuarios:', err);
@@ -288,7 +290,7 @@ export default function SistemasAuditPanel({ currentUser }) {
                         <div className="text-[11px] text-slate-400 font-mono">Nómina: {u.CodigoEmpleado || 'S/N'}</div>
                       </td>
                       <td className="py-3 px-4">
-                        <div className="font-semibold text-slate-800">{u.NombreCompleto || 'Sin Asignar'}</div>
+                        <div className="font-semibold text-slate-800">{formatearNombreColaborador(u.NombreCompleto || 'Sin Asignar')}</div>
                         <div className="text-[11px] text-slate-400">{u.Email || u.Puesto || '—'}</div>
                       </td>
                       <td className="py-3 px-4">

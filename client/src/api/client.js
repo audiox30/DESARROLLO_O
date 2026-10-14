@@ -3,6 +3,25 @@ const API_BASE = '/api';
 let currentToken = localStorage.getItem('jama_vacaciones_token') || '';
 let currentUserId = localStorage.getItem('jama_vacaciones_user_id') || '1';
 let simulationHeaders = {};
+let activeSimulatedRole = null;
+let activeSimulatedColabId = null;
+
+export function setActiveSimulation(role, colabId = null) {
+  if (role && role !== 'SISTEMAS' && role !== 'SUPERADMIN') {
+    activeSimulatedRole = role;
+    activeSimulatedColabId = colabId ? String(colabId) : null;
+    simulationHeaders = {
+      'x-simulate-role': role,
+      ...(activeSimulatedColabId ? { 
+        'x-simulate-colaborador': activeSimulatedColabId 
+      } : {})
+    };
+  } else {
+    activeSimulatedRole = null;
+    activeSimulatedColabId = null;
+    simulationHeaders = {};
+  }
+}
 
 export function setSimulationHeaders(headers) {
   simulationHeaders = headers || {};
@@ -21,6 +40,8 @@ export function clearAuth() {
   currentToken = '';
   currentUserId = '';
   simulationHeaders = {};
+  activeSimulatedRole = null;
+  activeSimulatedColabId = null;
   localStorage.removeItem('jama_vacaciones_token');
   localStorage.removeItem('jama_vacaciones_user_id');
   localStorage.removeItem('jama_vacaciones_user');
@@ -31,10 +52,22 @@ export function getCurrentUserId() {
 }
 
 async function request(endpoint, options = {}) {
+  const method = (options.method || 'GET').toUpperCase();
+  const interceptorHeaders = {};
+
+  // Interceptor: adjuntar x-simulate-role si hay simulación activa
+  if (activeSimulatedRole) {
+    interceptorHeaders['x-simulate-role'] = activeSimulatedRole;
+    if (activeSimulatedColabId) {
+      interceptorHeaders['x-simulate-colaborador'] = String(activeSimulatedColabId);
+    }
+  }
+
   const headers = {
     'Content-Type': 'application/json',
     ...(currentToken ? { 'Authorization': `Bearer ${currentToken}` } : {}),
     ...(currentUserId ? { 'x-user-id': String(currentUserId) } : {}),
+    ...interceptorHeaders,
     ...simulationHeaders,
     ...options.headers
   };
@@ -81,6 +114,9 @@ export const api = {
   getEquipoLider: () => request('/colaboradores/equipo'),
   getColaborador: (id) => request(`/colaboradores/${id}`),
   updateColaborador: (id, data) => request(`/colaboradores/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
+  getColaboradorHijos: (id) => request(`/colaboradores/${id}/hijos`),
+  agregarHijo: (id, data) => request(`/colaboradores/${id}/hijos`, { method: 'POST', body: JSON.stringify(data) }),
+  eliminarHijo: (id, idHijo) => request(`/colaboradores/${id}/hijos/${idHijo}`, { method: 'DELETE' }),
   getKardexColaborador: (id) => request(`/saldos/colaborador/${id}`),
   getHijosColaborador: (id) => request(`/colaboradores/${id}/hijos`),
   agregarHijoColaborador: (id, data) => request(`/colaboradores/${id}/hijos`, { method: 'POST', body: JSON.stringify(data) }),

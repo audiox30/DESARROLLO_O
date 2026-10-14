@@ -11,11 +11,16 @@ const saldosController = {
     try {
       const { empresa, empresa_id, empresaId, departamento, format } = req.query;
 
-      if (isUsingMock()) {
+      const pool = await getLocalPool();
+
+      if (!pool || isUsingMock()) {
         let list = mockStore.colaboradores.map(c => ({
           idColaborador: c.id,
           codigoEmpleado: c.codigoEmpleado,
           nombreCompleto: c.nombreCompleto,
+          apellidoPaterno: c.apellidoPaterno || '',
+          apellidoMaterno: c.apellidoMaterno || '',
+          nombre: c.nombre || '',
           empresa: c.empresa,
           idEmpresa: c.idEmpresa,
           sucursal: c.sucursal,
@@ -34,6 +39,19 @@ const saldosController = {
         }
         if (departamento) list = list.filter(item => item.departamento === departamento);
 
+        // Ordenamiento Alfabético Obligatorio A - Z por Apellidos
+        list.sort((a, b) => {
+          const apA = (a.apellidoPaterno || '').toUpperCase();
+          const apB = (b.apellidoPaterno || '').toUpperCase();
+          if (apA !== apB) return apA.localeCompare(apB, 'es', { sensitivity: 'base' });
+          const amA = (a.apellidoMaterno || '').toUpperCase();
+          const amB = (b.apellidoMaterno || '').toUpperCase();
+          if (amA !== amB) return amA.localeCompare(amB, 'es', { sensitivity: 'base' });
+          const nomA = (a.nombre || '').toUpperCase();
+          const nomB = (b.nombre || '').toUpperCase();
+          return nomA.localeCompare(nomB, 'es', { sensitivity: 'base' });
+        });
+
         if (format === 'csv') {
           const headers = 'Código,Nombre,Empresa,Sucursal,Departamento,Puesto,Fecha Alta,Antigüedad (Años),Días LFT,Días Gozados,Días Disponibles\n';
           const rows = list.map(c => 
@@ -48,7 +66,6 @@ const saldosController = {
         return res.json({ success: true, total: list.length, data: list });
       }
 
-      const pool = await getLocalPool();
       const request = pool.request();
       let whereClauses = ['c.Activo = 1'];
 
@@ -73,7 +90,14 @@ const saldosController = {
           c.IdColaborador AS idColaborador,
           c.CodigoEmpleado AS codigoEmpleado,
           c.Subfijo AS subfijo,
-          c.NombreCompleto AS nombreCompleto,
+          CASE 
+            WHEN c.ApellidoPaterno IS NOT NULL AND RTRIM(LTRIM(c.ApellidoPaterno)) <> ''
+              THEN RTRIM(LTRIM(c.ApellidoPaterno)) + 
+                   CASE WHEN c.ApellidoMaterno IS NOT NULL AND RTRIM(LTRIM(c.ApellidoMaterno)) <> '' 
+                        THEN ' ' + RTRIM(LTRIM(c.ApellidoMaterno)) ELSE '' END + 
+                   ', ' + RTRIM(LTRIM(ISNULL(c.Nombre, '')))
+            ELSE c.NombreCompleto
+          END AS nombreCompleto,
           c.Empresa AS empresa,
           c.Sucursal AS sucursal,
           e.AliasEmpresa AS empresaAlias,
@@ -97,7 +121,7 @@ const saldosController = {
           WHERE sv.IdColaborador = c.IdColaborador AND sv.EsCerrado = 0
         ) sal
         WHERE ${whereClauses.join(' AND ')}
-        ORDER BY c.Empresa, c.NombreCompleto;
+        ORDER BY c.ApellidoPaterno ASC, c.ApellidoMaterno ASC, c.Nombre ASC;
       `;
 
       const result = await request.query(queryStr);

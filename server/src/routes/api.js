@@ -32,8 +32,25 @@ router.get('/auth/personas', authController.getDemoPersonas);
 // =========================================================================
 router.get('/empresas', authMiddleware, async (req, res) => {
   try {
-    const { getLocalPool } = require('../config/database');
+    const { getLocalPool, isUsingMock } = require('../config/database');
     const pool = await getLocalPool();
+    if (!pool || isUsingMock()) {
+      const mockStore = require('../data/mockStore');
+      const list = mockStore.empresasNomipaq || mockStore.empresas || [];
+      return res.json({
+        success: true,
+        total: list.length,
+        data: list.map(e => ({
+          id: e.idEmpresa || e.id,
+          idEmpresa: e.idEmpresa || e.id,
+          alias: e.aliasEmpresa || e.alias,
+          aliasEmpresa: e.aliasEmpresa || e.alias,
+          nombreBaseDatos: e.nombreBaseDatos,
+          activa: true
+        }))
+      });
+    }
+
     const result = await pool.request().query(`
       SELECT IdEmpresa, NombreBaseDatos, AliasEmpresa, Activa
       FROM dbo.EmpresasNomipaq
@@ -68,7 +85,7 @@ router.get('/colaboradores/:id', authMiddleware, checkHierarchyOrSelf, colaborad
 router.put('/colaboradores/:id', authMiddleware, checkHierarchyOrSelf, colaboradoresController.update);
 router.get('/colaboradores/:id/hijos', authMiddleware, checkHierarchyOrSelf, colaboradoresController.getHijos);
 router.post('/colaboradores/:id/hijos', authMiddleware, checkHierarchyOrSelf, colaboradoresController.agregarHijo);
-router.delete('/colaboradores/:id/hijos/:idHijo', authMiddleware, requireRole('ADMIN_DO', 'SUPERADMIN', 'SISTEMAS'), colaboradoresController.eliminarHijo);
+router.delete('/colaboradores/:id/hijos/:idHijo', authMiddleware, checkHierarchyOrSelf, colaboradoresController.eliminarHijo);
 router.post('/colaboradores/:id/financieros', authMiddleware, requireRole('ADMIN_DO'), colaboradoresController.guardarDatosFinancieros);
 router.post('/colaboradores/:id/bajas', authMiddleware, requireRole('ADMIN_DO'), colaboradoresController.registrarBaja);
 
@@ -88,7 +105,7 @@ router.get('/solicitudes/mis', authMiddleware, solicitudesController.getMisSolic
 router.get('/solicitudes/mis-solicitudes', authMiddleware, solicitudesController.getMisSolicitudes);
 router.get('/solicitudes/colaborador/:id', authMiddleware, checkHierarchyOrSelf, solicitudesController.getByColaborador);
 router.get('/solicitudes/bandeja-lider', authMiddleware, requireRole('LIDER', 'ADMIN_DO'), liderController.getSolicitudesPendientes);
-router.get('/solicitudes/bandeja-do', authMiddleware, requireRole('ADMIN_DO'), solicitudesController.getBandejaDO);
+router.get('/solicitudes/bandeja-do', authMiddleware, requireRole('ADMIN_DO', 'SUPERADMIN', 'SISTEMAS'), solicitudesController.getBandejaDO);
 router.get('/solicitudes/:id', authMiddleware, checkSolicitudAccess, solicitudesController.getById);
 router.get('/solicitudes/:id/pdf', authMiddleware, solicitudesController.descargarPdfFdo84);
 router.post('/solicitudes/:id/cancelar', authMiddleware, checkSolicitudAccess, solicitudesController.cancelar);
@@ -96,31 +113,31 @@ router.post('/solicitudes/:id/cancelar', authMiddleware, checkSolicitudAccess, s
 // =========================================================================
 // 5. MÓDULO DE APROBACIONES GLOBALES (LÍDER / ADMIN_DO)
 // =========================================================================
-router.post('/aprobaciones/:id/aprobar', authMiddleware, requireRole('LIDER', 'ADMIN_DO'), aprobacionesController.aprobar);
-router.post('/aprobaciones/:id/rechazar', authMiddleware, requireRole('LIDER', 'ADMIN_DO'), aprobacionesController.rechazar);
+router.post('/aprobaciones/:id/aprobar', authMiddleware, requireRole('LIDER', 'ADMIN_DO', 'SUPERADMIN', 'SISTEMAS'), aprobacionesController.aprobar);
+router.post('/aprobaciones/:id/rechazar', authMiddleware, requireRole('LIDER', 'ADMIN_DO', 'SUPERADMIN', 'SISTEMAS'), aprobacionesController.rechazar);
 router.post('/aprobaciones/simular-teams', authMiddleware, aprobacionesController.simularNotificacionTeams);
 
 // =========================================================================
 // 6. MÓDULO DE SALDOS Y KÁRDEX LFT
 // =========================================================================
-router.get('/saldos/kardex-global', authMiddleware, requireRole('ADMIN_DO'), saldosController.getKardexGlobal);
+router.get('/saldos/kardex-global', authMiddleware, requireRole('ADMIN_DO', 'SUPERADMIN', 'SISTEMAS'), saldosController.getKardexGlobal);
 router.get('/saldos/colaborador/:id', authMiddleware, checkHierarchyOrSelf, saldosController.getKardexColaborador);
 
 // =========================================================================
 // 7. MÓDULO DE DÍAS INHÁBILES Y CALENDARIO OFICIAL
 // =========================================================================
 router.get('/dias-inhabiles', authMiddleware, diasInhabilesController.getAll);
-router.post('/dias-inhabiles', authMiddleware, requireRole('ADMIN_DO'), diasInhabilesController.create);
-router.delete('/dias-inhabiles/:fecha', authMiddleware, requireRole('ADMIN_DO'), diasInhabilesController.delete);
+router.post('/dias-inhabiles', authMiddleware, requireRole('ADMIN_DO', 'SUPERADMIN', 'SISTEMAS'), diasInhabilesController.create);
+router.delete('/dias-inhabiles/:fecha', authMiddleware, requireRole('ADMIN_DO', 'SUPERADMIN', 'SISTEMAS'), diasInhabilesController.delete);
 router.post('/dias-inhabiles/calcular', authMiddleware, diasInhabilesController.calcular);
 
 // =========================================================================
 // 8. MÓDULO DE SINCRONIZACIÓN CONTPAQi NÓMINAS (ADMIN_DO)
 // =========================================================================
-router.post('/admin/sincronizar-empleados', authMiddleware, requireRole('ADMIN_DO'), syncController.sincronizarEmpleados);
-router.get('/admin/sincronizar-empleados/status/:taskId', authMiddleware, requireRole('ADMIN_DO'), syncController.getTaskStatus);
-router.get('/sync-nomipaq/status', authMiddleware, requireRole('ADMIN_DO'), syncController.getStatus);
-router.get('/sync-nomipaq/logs', authMiddleware, requireRole('ADMIN_DO'), syncController.getLogs);
+router.post('/admin/sincronizar-empleados', authMiddleware, requireRole('ADMIN_DO', 'SUPERADMIN', 'SISTEMAS'), syncController.sincronizarEmpleados);
+router.get('/admin/sincronizar-empleados/status/:taskId', authMiddleware, requireRole('ADMIN_DO', 'SUPERADMIN', 'SISTEMAS'), syncController.getTaskStatus);
+router.get('/sync-nomipaq/status', authMiddleware, requireRole('ADMIN_DO', 'SUPERADMIN', 'SISTEMAS'), syncController.getStatus);
+router.get('/sync-nomipaq/logs', authMiddleware, requireRole('ADMIN_DO', 'SUPERADMIN', 'SISTEMAS'), syncController.getLogs);
 
 // =========================================================================
 // 9. MÓDULO DE SISTEMAS / TI (SUPERADMIN / SISTEMAS)

@@ -88,7 +88,16 @@ const liderController = {
             ISNULL(s.TotalDiasLaborables, 0) AS TotalDiasLaborables, 
             s.MotivoComentarios,
             s.Estado,
-            c.CodigoEmpleado, c.Subfijo, c.NombreCompleto, c.Email, c.Empresa, c.Sucursal,
+            c.CodigoEmpleado, c.Subfijo,
+            CASE 
+              WHEN c.ApellidoPaterno IS NOT NULL AND RTRIM(LTRIM(c.ApellidoPaterno)) <> ''
+                THEN RTRIM(LTRIM(c.ApellidoPaterno)) + 
+                     CASE WHEN c.ApellidoMaterno IS NOT NULL AND RTRIM(LTRIM(c.ApellidoMaterno)) <> '' 
+                          THEN ' ' + RTRIM(LTRIM(c.ApellidoMaterno)) ELSE '' END + 
+                     ', ' + RTRIM(LTRIM(ISNULL(c.Nombre, '')))
+              ELSE c.NombreCompleto
+            END AS NombreCompleto,
+            c.Email, c.Empresa, c.Sucursal,
             p.Nombre AS Puesto, d.Nombre AS Departamento,
             ISNULL(sal.DiasPendientes, 0) AS DiasPendientesColaborador,
             ISNULL(sal.DiasCorrespondientes, 0) AS DiasCorrespondientesColaborador,
@@ -275,6 +284,9 @@ const liderController = {
             idColaborador: c.id,
             codigoEmpleado: c.codigoEmpleado,
             nombreCompleto: c.nombreCompleto,
+            apellidoPaterno: c.apellidoPaterno || '',
+            apellidoMaterno: c.apellidoMaterno || '',
+            nombre: c.nombre || '',
             puesto: c.puesto || 'Sin Puesto',
             sucursal: c.sucursal || 'Matriz',
             fechaAlta: c.fechaAlta,
@@ -287,6 +299,20 @@ const liderController = {
             diasGozados: c.diasGozados || 0,
             diasCorrespondientes: c.diasCorrespondientes || 0
           }));
+
+        // Ordenamiento Alfabético Obligatorio A - Z por Apellidos
+        equipo.sort((a, b) => {
+          const apA = (a.apellidoPaterno || '').toUpperCase();
+          const apB = (b.apellidoPaterno || '').toUpperCase();
+          if (apA !== apB) return apA.localeCompare(apB, 'es', { sensitivity: 'base' });
+          const amA = (a.apellidoMaterno || '').toUpperCase();
+          const amB = (b.apellidoMaterno || '').toUpperCase();
+          if (amA !== amB) return amA.localeCompare(amB, 'es', { sensitivity: 'base' });
+          const nomA = (a.nombre || '').toUpperCase();
+          const nomB = (b.nombre || '').toUpperCase();
+          return nomA.localeCompare(nomB, 'es', { sensitivity: 'base' });
+        });
+
         return res.json({ success: true, total: equipo.length, data: equipo });
       }
 
@@ -298,7 +324,14 @@ const liderController = {
         SELECT 
             c.IdColaborador AS idColaborador,
             c.CodigoEmpleado AS codigoEmpleado,
-            c.NombreCompleto AS nombreCompleto,
+            CASE 
+              WHEN c.ApellidoPaterno IS NOT NULL AND RTRIM(LTRIM(c.ApellidoPaterno)) <> ''
+                THEN RTRIM(LTRIM(c.ApellidoPaterno)) + 
+                     CASE WHEN c.ApellidoMaterno IS NOT NULL AND RTRIM(LTRIM(c.ApellidoMaterno)) <> '' 
+                          THEN ' ' + RTRIM(LTRIM(c.ApellidoMaterno)) ELSE '' END + 
+                     ', ' + RTRIM(LTRIM(ISNULL(c.Nombre, '')))
+              ELSE c.NombreCompleto
+            END AS nombreCompleto,
             ISNULL(p.Nombre, 'Sin Puesto') AS puesto,
             ISNULL(c.Sucursal, 'Matriz') AS sucursal,
             CONVERT(VARCHAR(10), c.FechaAlta, 120) AS fechaAlta,
@@ -317,7 +350,7 @@ const liderController = {
             ON sv.IdColaborador = c.IdColaborador AND sv.EsCerrado = 0
         WHERE c.IdJefeDirecto = @CurrentUserId
           AND c.Activo = 1
-        ORDER BY c.NombreCompleto ASC;
+        ORDER BY c.ApellidoPaterno ASC, c.ApellidoMaterno ASC, c.Nombre ASC;
       `;
 
       const result = await request.query(query);

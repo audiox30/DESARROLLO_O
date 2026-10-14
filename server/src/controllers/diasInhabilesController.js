@@ -5,20 +5,28 @@ const { calcularDetalleDias } = require('../services/diasHabilesService');
 const diasInhabilesController = {
   getAll: async (req, res) => {
     try {
-      if (isUsingMock()) {
-        const sorted = [...mockStore.diasInhabiles].sort((a, b) => a.fecha.localeCompare(b.fecha));
+      const pool = await getPool();
+      if (!pool || isUsingMock()) {
+        const sorted = [...mockStore.diasInhabiles].sort((a, b) => (a.fecha || a.Fecha || '').localeCompare(b.fecha || b.Fecha || ''));
         return res.json({ success: true, total: sorted.length, data: sorted });
-      } else {
-        const pool = await getPool();
-        const result = await pool.request().query(`
-          SELECT CONVERT(VARCHAR(10), Fecha, 120) AS Fecha, Descripcion, EsFeriadoOficial, CAST(1 AS BIT) AS Activo
-          FROM dbo.DiasInhabiles
-          ORDER BY Fecha ASC
-        `);
-        return res.json({ success: true, total: result.recordset.length, data: result.recordset });
       }
+
+      const result = await pool.request().query(`
+        SELECT CONVERT(VARCHAR(10), Fecha, 120) AS Fecha, Descripcion, EsFeriadoOficial, CAST(1 AS BIT) AS Activo
+        FROM dbo.DiasInhabiles
+        ORDER BY Fecha ASC
+      `);
+
+      if (!result.recordset || result.recordset.length === 0) {
+        const sorted = [...mockStore.diasInhabiles].sort((a, b) => (a.fecha || a.Fecha || '').localeCompare(b.fecha || b.Fecha || ''));
+        return res.json({ success: true, total: sorted.length, data: sorted });
+      }
+
+      return res.json({ success: true, total: result.recordset.length, data: result.recordset });
     } catch (err) {
-      res.status(500).json({ error: err.message });
+      console.warn('[diasInhabiles.getAll] Error, usando festivos oficiales LFT:', err.message);
+      const sorted = [...mockStore.diasInhabiles].sort((a, b) => (a.fecha || a.Fecha || '').localeCompare(b.fecha || b.Fecha || ''));
+      return res.json({ success: true, total: sorted.length, data: sorted });
     }
   },
 

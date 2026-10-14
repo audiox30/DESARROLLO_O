@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { X, CheckCircle, XCircle, AlertTriangle, MessageSquare, ShieldCheck, Clock, Send, Eye, Mail, FileText } from 'lucide-react';
 import { api } from '../api/client';
+import { formatearNombreColaborador } from '../utils/formatters';
 
 export default function ModalAprobacion({ solicitud, isOpen, onClose, onSuccess, esAdminDO = false }) {
   const [modo, setModo] = useState('detalle'); // 'detalle', 'aprobar', 'rechazar'
@@ -99,7 +100,7 @@ export default function ModalAprobacion({ solicitud, isOpen, onClose, onSuccess,
             <div className="flex items-center justify-between">
               <div>
                 <span className="text-xs text-slate-400 font-semibold uppercase">Colaborador Solicitante</span>
-                <p className="text-sm font-bold text-slate-900">{solicitud.colaboradorNombre || 'Colaborador'}</p>
+                <p className="text-sm font-bold text-slate-900">{formatearNombreColaborador(solicitud.colaboradorNombre || 'Colaborador')}</p>
               </div>
               <span className="text-xs font-mono font-bold px-2 py-0.5 rounded bg-white border border-slate-200 text-slate-700">
                 {solicitud.colaboradorCodigo}

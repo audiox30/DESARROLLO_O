@@ -9,11 +9,47 @@ const sistemasController = {
   getUsuarios: async (req, res) => {
     try {
       const pool = await getLocalPool();
+      if (!pool || isUsingMock()) {
+        const mockStore = require('../data/mockStore');
+        const usuarios = (mockStore.colaboradores || []).map(c => ({
+          IdUsuario: c.id,
+          Username: c.username || c.codigoEmpleado,
+          RolApp: c.rolApp || c.rol || 'COLABORADOR',
+          DebeCambiarPassword: false,
+          Activo: c.activo !== false,
+          UltimoAcceso: new Date().toISOString(),
+          FechaCreacion: '2026-01-01',
+          IdColaborador: c.id,
+          CodigoEmpleado: c.codigoEmpleado,
+          Subfijo: c.subfijo || '',
+          NombreCompleto: c.nombreCompleto,
+          Email: c.email,
+          Departamento: c.departamento,
+          Puesto: c.puesto,
+          Empresa: c.empresa,
+          IdEmpresa: c.idEmpresa || 1
+        }));
+        return res.json({
+          success: true,
+          total: usuarios.length,
+          usuarios
+        });
+      }
+
       const result = await pool.request().query(`
         SELECT 
           u.IdUsuario, u.Username, u.RolApp, u.DebeCambiarPassword, u.Activo,
           u.UltimoAcceso, u.FechaCreacion,
-          c.IdColaborador, c.CodigoEmpleado, c.Subfijo, c.NombreCompleto, c.Email,
+          c.IdColaborador, c.CodigoEmpleado, c.Subfijo,
+          CASE 
+            WHEN c.ApellidoPaterno IS NOT NULL AND RTRIM(LTRIM(c.ApellidoPaterno)) <> ''
+              THEN RTRIM(LTRIM(c.ApellidoPaterno)) + 
+                   CASE WHEN c.ApellidoMaterno IS NOT NULL AND RTRIM(LTRIM(c.ApellidoMaterno)) <> '' 
+                        THEN ' ' + RTRIM(LTRIM(c.ApellidoMaterno)) ELSE '' END + 
+                   ', ' + RTRIM(LTRIM(ISNULL(c.Nombre, '')))
+            ELSE c.NombreCompleto
+          END AS NombreCompleto,
+          c.Email,
           d.Nombre AS Departamento, p.Nombre AS Puesto,
           e.AliasEmpresa AS Empresa, e.IdEmpresa
         FROM dbo.UsuariosApp u
@@ -21,7 +57,7 @@ const sistemasController = {
         LEFT JOIN dbo.EmpresasNomipaq e ON e.IdEmpresa = c.IdEmpresa
         LEFT JOIN dbo.Departamentos d ON d.IdDepartamento = c.IdDepartamento
         LEFT JOIN dbo.Puestos p ON p.IdPuesto = c.IdPuesto
-        ORDER BY u.RolApp DESC, c.NombreCompleto ASC
+        ORDER BY u.RolApp DESC, c.ApellidoPaterno ASC, c.ApellidoMaterno ASC, c.Nombre ASC
       `);
 
       return res.json({

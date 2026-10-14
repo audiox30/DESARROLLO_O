@@ -9,32 +9,83 @@ const colaboradoresController = {
    */
   getAll: async (req, res) => {
     try {
-      const { search, departamento, empresa, empresa_id, empresaId, rolApp, limit = 50, page = 1 } = req.query;
+      const { search, departamento, empresa, empresa_id, empresaId, rolApp, estatus, limit = 50, page = 1 } = req.query;
 
       if (isUsingMock()) {
-        let list = [...mockStore.colaboradores];
+        let list = [...mockStore.colaboradores].map(c => {
+          const isActivo = c.Activo !== false && c.activo !== false;
+          return {
+            ...c,
+            IdColaborador: c.id || c.IdColaborador,
+            id: c.id || c.IdColaborador,
+            CodigoEmpleado: c.codigoEmpleado || c.CodigoEmpleado,
+            NombreCompleto: c.nombreCompleto || c.NombreCompleto,
+            Empresa: c.empresa || c.Empresa,
+            Sucursal: c.Sucursal || c.sucursal || 'SAN LUIS',
+            sucursal: c.Sucursal || c.sucursal || 'SAN LUIS',
+            Departamento: c.departamento || c.Departamento,
+            Puesto: c.puesto || c.Puesto,
+            IdJefeDirecto: c.idJefeDirecto || c.IdJefeDirecto || null,
+            NombreJefeDirecto: c.NombreJefeDirecto || c.JefeDirectoNombre || null,
+            JefeDirectoNombre: c.NombreJefeDirecto || c.JefeDirectoNombre || null,
+            IdAprobadorSegundo: c.idAprobadorSegundo || c.IdAprobadorSegundo || null,
+            NombreGerenteSucursal: c.NombreGerenteSucursal || c.SegundoAprobadorNombre || null,
+            SegundoAprobadorNombre: c.NombreGerenteSucursal || c.SegundoAprobadorNombre || null,
+            Email: c.email || c.Email || null,
+            EmailNomina: c.email || c.Email || null,
+            EmailCorporativo: c.emailCorporativo || c.EmailCorporativo || null,
+            Activo: isActivo,
+            activo: isActivo,
+            EstatusNomina: isActivo ? 'ALTA' : 'BAJA',
+            estatusNomina: isActivo ? 'ALTA' : 'BAJA',
+            RolApp: c.rolApp || c.rol || 'COLABORADOR'
+          };
+        });
+
+        const estatusNorm = String(estatus || '').trim().toLowerCase();
+        if (['bajas', 'baja', '0', 'inactivos', 'inactivo'].includes(estatusNorm)) {
+          list = list.filter(c => !c.Activo);
+        } else if (['todos', 'all'].includes(estatusNorm)) {
+          // Mostrar activos y bajas
+        } else {
+          // Por defecto o 'activos' -> c.Activo = 1
+          list = list.filter(c => c.Activo);
+        }
 
         if (search) {
           const s = search.toLowerCase();
           list = list.filter(c => 
-            (c.nombreCompleto && c.nombreCompleto.toLowerCase().includes(s)) || 
-            (c.codigoEmpleado && c.codigoEmpleado.toLowerCase().includes(s)) ||
-            (c.curp && c.curp.toLowerCase().includes(s))
+            (c.NombreCompleto && c.NombreCompleto.toLowerCase().includes(s)) || 
+            (c.CodigoEmpleado && c.CodigoEmpleado.toLowerCase().includes(s)) ||
+            (c.CURP && c.CURP.toLowerCase().includes(s))
           );
         }
 
         if (departamento) {
-          list = list.filter(c => c.departamento === departamento);
+          list = list.filter(c => c.Departamento && c.Departamento.toLowerCase().includes(departamento.toLowerCase()));
         }
 
         if (empresa_id || empresa) {
           const target = String(empresa_id || empresa).toLowerCase();
-          list = list.filter(c => String(c.idEmpresa) === target || (c.empresa && c.empresa.toLowerCase().includes(target)));
+          list = list.filter(c => String(c.idEmpresa) === target || (c.Empresa && c.Empresa.toLowerCase().includes(target)));
         }
 
         if (rolApp) {
-          list = list.filter(c => c.rolApp === rolApp);
+          list = list.filter(c => c.RolApp === rolApp);
         }
+
+        // Ordenamiento Alfabético Obligatorio A - Z por Apellidos
+        list.sort((a, b) => {
+          const apA = (a.apellidoPaterno || a.ApellidoPaterno || '').toUpperCase();
+          const apB = (b.apellidoPaterno || b.ApellidoPaterno || '').toUpperCase();
+          if (apA !== apB) return apA.localeCompare(apB, 'es', { sensitivity: 'base' });
+          const amA = (a.apellidoMaterno || a.ApellidoMaterno || '').toUpperCase();
+          const amB = (b.apellidoMaterno || b.ApellidoMaterno || '').toUpperCase();
+          if (amA !== amB) return amA.localeCompare(amB, 'es', { sensitivity: 'base' });
+          const nomA = (a.nombre || a.Nombre || '').toUpperCase();
+          const nomB = (b.nombre || b.Nombre || '').toUpperCase();
+          return nomA.localeCompare(nomB, 'es', { sensitivity: 'base' });
+        });
 
         const total = list.length;
         const startIndex = (page - 1) * limit;
@@ -50,7 +101,17 @@ const colaboradoresController = {
       } else {
         const pool = await getLocalPool();
         const request = pool.request();
-        let whereClauses = ['c.Activo = 1'];
+        let whereClauses = [];
+
+        const estatusNorm = String(estatus || '').trim().toLowerCase();
+        if (['bajas', 'baja', '0', 'inactivos', 'inactivo'].includes(estatusNorm)) {
+          whereClauses.push('c.Activo = 0');
+        } else if (['todos', 'all'].includes(estatusNorm)) {
+          // Mostrar activos y bajas (sin filtro de Activo)
+        } else {
+          // Por defecto o 'activos' -> c.Activo = 1
+          whereClauses.push('c.Activo = 1');
+        }
 
         if (search) {
           request.input('Search', `%${search}%`);
@@ -80,17 +141,34 @@ const colaboradoresController = {
 
         const query = `
           SELECT 
-            c.IdColaborador AS id, c.IdEmpresa, e.AliasEmpresa AS Empresa,
+            c.IdColaborador AS id, c.IdColaborador, c.IdEmpresa, e.AliasEmpresa AS Empresa,
             c.CodigoEmpleado, c.Subfijo, c.Nombre, c.ApellidoPaterno, c.ApellidoMaterno,
-            c.NombreCompleto, c.CURP, c.RFC, c.NSS, c.Email, c.EmailCorporativo, c.Telefono,
+            CASE 
+              WHEN c.ApellidoPaterno IS NOT NULL AND RTRIM(LTRIM(c.ApellidoPaterno)) <> ''
+                THEN RTRIM(LTRIM(c.ApellidoPaterno)) + 
+                     CASE WHEN c.ApellidoMaterno IS NOT NULL AND RTRIM(LTRIM(c.ApellidoMaterno)) <> '' 
+                          THEN ' ' + RTRIM(LTRIM(c.ApellidoMaterno)) ELSE '' END + 
+                     ', ' + RTRIM(LTRIM(ISNULL(c.Nombre, '')))
+              ELSE c.NombreCompleto
+            END AS NombreCompleto,
+            c.Sucursal,
+            c.CURP, c.RFC, c.NSS, c.Email, c.Email AS EmailNomina, c.EmailCorporativo, c.Telefono,
             d.Nombre AS Departamento, p.Nombre AS Puesto,
-            c.FechaAlta, c.FechaReingreso, c.EstatusNomina, c.RolApp, c.JornadaLaboralDias, c.Activo
+            c.FechaAlta, c.FechaReingreso, c.EstatusNomina, c.RolApp, c.JornadaLaboralDias, c.Activo,
+            c.IdJefeDirecto,
+            jefe.NombreCompleto AS NombreJefeDirecto,
+            jefe.NombreCompleto AS JefeDirectoNombre,
+            c.IdAprobadorSegundo,
+            gerente.NombreCompleto AS NombreGerenteSucursal,
+            gerente.NombreCompleto AS SegundoAprobadorNombre
           FROM dbo.Colaboradores c
           LEFT JOIN dbo.EmpresasNomipaq e ON e.IdEmpresa = c.IdEmpresa
           LEFT JOIN dbo.Departamentos d ON d.IdDepartamento = c.IdDepartamento
           LEFT JOIN dbo.Puestos p ON p.IdPuesto = c.IdPuesto
+          LEFT JOIN dbo.Colaboradores jefe ON jefe.IdColaborador = c.IdJefeDirecto
+          LEFT JOIN dbo.Colaboradores gerente ON gerente.IdColaborador = c.IdAprobadorSegundo
           WHERE ${whereClauses.join(' AND ')}
-          ORDER BY c.ApellidoPaterno, c.Nombre;
+          ORDER BY c.ApellidoPaterno ASC, c.ApellidoMaterno ASC, c.Nombre ASC;
         `;
         const result = await request.query(query);
         return res.json({
@@ -141,8 +219,8 @@ const colaboradoresController = {
       await ColaboradorModel.actualizar(Number(id), req.body);
       return res.json({ success: true, message: 'Colaborador actualizado exitosamente.' });
     } catch (err) {
-      console.error('[colaboradores.update]', err);
-      res.status(500).json({ error: err.message });
+      console.error('Error al actualizar colaborador:', err);
+      return res.status(500).json({ error: err.message || 'Error al actualizar colaborador.' });
     }
   },
 
@@ -153,7 +231,7 @@ const colaboradoresController = {
     try {
       const { id } = req.params;
       const hijos = await ColaboradorModel.obtenerHijos(Number(id));
-      return res.json({ success: true, total: hijos.length, data: hijos });
+      return res.json({ success: true, total: (hijos || []).length, data: hijos });
     } catch (err) {
       console.error('[colaboradores.getHijos]', err);
       res.status(500).json({ error: err.message });
@@ -165,8 +243,8 @@ const colaboradoresController = {
    */
   agregarHijo: async (req, res) => {
     try {
-      const { id } = req.params;
       const { 
+        idHijo,
         numeroHijo, 
         numero_hijo, 
         nombre, 
@@ -180,7 +258,8 @@ const colaboradoresController = {
       const nom = (nombre || nombreCompleto || '').trim();
       const fn = fechaNacimiento || fecha_nacimiento || null;
 
-      await ColaboradorModel.agregarHijo(Number(id), { 
+      const resultado = await ColaboradorModel.agregarHijo(Number(id), { 
+        idHijo,
         numeroHijo: num, 
         nombre: nom, 
         fechaNacimiento: fn, 
@@ -188,7 +267,7 @@ const colaboradoresController = {
       });
 
       const hijos = await ColaboradorModel.obtenerHijos(Number(id));
-      return res.json({ success: true, message: 'Hijo registrado con éxito.', data: hijos });
+      return res.json({ success: true, message: 'Hijo registrado con éxito.', data: hijos, resultado });
     } catch (err) {
       console.error('[colaboradores.agregarHijo]', err);
       res.status(500).json({ error: err.message });
@@ -203,7 +282,7 @@ const colaboradoresController = {
       const { id, idHijo } = req.params;
       await ColaboradorModel.eliminarHijo(Number(id), Number(idHijo));
       const hijos = await ColaboradorModel.obtenerHijos(Number(id));
-      return res.json({ success: true, message: 'Hijo eliminado con éxito.', data: hijos });
+      return res.json({ success: true, message: 'Hijo/dependiente eliminado con éxito.', data: hijos });
     } catch (err) {
       console.error('[colaboradores.eliminarHijo]', err);
       res.status(500).json({ error: err.message });
@@ -373,6 +452,17 @@ const colaboradoresController = {
         if (equipo.length === 0 && (req.user.rolApp === 'LIDER' || req.user.rolApp === 'ADMIN_DO')) {
           equipo = mockStore.colaboradores.slice(0, 8);
         }
+        equipo.sort((a, b) => {
+          const apA = (a.apellidoPaterno || '').toUpperCase();
+          const apB = (b.apellidoPaterno || '').toUpperCase();
+          if (apA !== apB) return apA.localeCompare(apB, 'es', { sensitivity: 'base' });
+          const amA = (a.apellidoMaterno || '').toUpperCase();
+          const amB = (b.apellidoMaterno || '').toUpperCase();
+          if (amA !== amB) return amA.localeCompare(amB, 'es', { sensitivity: 'base' });
+          const nomA = (a.nombre || '').toUpperCase();
+          const nomB = (b.nombre || '').toUpperCase();
+          return nomA.localeCompare(nomB, 'es', { sensitivity: 'base' });
+        });
         return res.json({ success: true, total: equipo.length, data: equipo });
       } else {
         const pool = await getLocalPool();
@@ -380,14 +470,23 @@ const colaboradoresController = {
           .input('IdLider', idLider)
           .query(`
             SELECT 
-              c.IdColaborador AS id, c.CodigoEmpleado, c.NombreCompleto,
+              c.IdColaborador AS id, c.CodigoEmpleado,
+              CASE 
+                WHEN c.ApellidoPaterno IS NOT NULL AND RTRIM(LTRIM(c.ApellidoPaterno)) <> ''
+                  THEN RTRIM(LTRIM(c.ApellidoPaterno)) + 
+                       CASE WHEN c.ApellidoMaterno IS NOT NULL AND RTRIM(LTRIM(c.ApellidoMaterno)) <> '' 
+                            THEN ' ' + RTRIM(LTRIM(c.ApellidoMaterno)) ELSE '' END + 
+                       ', ' + RTRIM(LTRIM(ISNULL(c.Nombre, '')))
+                ELSE c.NombreCompleto
+              END AS NombreCompleto,
               p.Nombre AS Puesto, d.Nombre AS Departamento, e.AliasEmpresa AS Empresa,
               c.FechaAlta, c.Email
             FROM dbo.Colaboradores c
             LEFT JOIN dbo.Puestos p ON p.IdPuesto = c.IdPuesto
             LEFT JOIN dbo.Departamentos d ON d.IdDepartamento = c.IdDepartamento
             LEFT JOIN dbo.EmpresasNomipaq e ON e.IdEmpresa = c.IdEmpresa
-            WHERE c.IdJefeDirecto = @IdLider AND c.Activo = 1;
+            WHERE c.IdJefeDirecto = @IdLider AND c.Activo = 1
+            ORDER BY c.ApellidoPaterno ASC, c.ApellidoMaterno ASC, c.Nombre ASC;
           `);
         return res.json({ success: true, total: result.recordset.length, data: result.recordset });
       }

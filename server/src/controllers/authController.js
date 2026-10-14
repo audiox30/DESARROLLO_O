@@ -83,11 +83,27 @@ const authController = {
 
       if (isUsingMock()) {
         const u = username.toLowerCase().trim();
-        let user = mockStore.colaboradores.find(c => 
-          (c.codigoEmpleado && c.codigoEmpleado.toLowerCase() === u) ||
-          (c.email && c.email.toLowerCase() === u) ||
-          (c.nombreCompleto && c.nombreCompleto.toLowerCase().includes(u))
-        ) || mockStore.colaboradores[0];
+        let user = null;
+
+        if (u === 'sistemas' || u === 'sis-001' || u === 'admin') {
+          user = mockStore.colaboradores.find(c => c.id === 2022 || c.rolApp === 'SISTEMAS');
+        } else if (u === 'admin.do' || u === '0906' || u === 'cont-906') {
+          user = mockStore.colaboradores.find(c => c.id === 383 || c.codigoEmpleado === 'CONT-906');
+        } else if (u === 'lider.ulises' || u === '850' || u === 'lat-155') {
+          user = mockStore.colaboradores.find(c => c.id === 46 || c.codigoEmpleado === 'LAT-155');
+        } else if (u === 'colab.gonzalo' || u === '1077' || u === 'lat-1077') {
+          user = mockStore.colaboradores.find(c => c.id === 594 || c.codigoEmpleado === 'LAT-1077');
+        } else if (u === 'colab.rocio' || u === '0102' || u === 'cont-102') {
+          user = mockStore.colaboradores.find(c => c.id === 2 || c.codigoEmpleado === 'CONT-102');
+        }
+
+        if (!user) {
+          user = mockStore.colaboradores.find(c => 
+            (c.codigoEmpleado && c.codigoEmpleado.toLowerCase() === u) ||
+            (c.email && c.email.toLowerCase() === u) ||
+            (c.nombreCompleto && c.nombreCompleto.toLowerCase().includes(u))
+          ) || mockStore.colaboradores[0];
+        }
 
         const token = generateToken(user);
         return res.json({
@@ -97,9 +113,10 @@ const authController = {
           user: {
             idUsuario: user.id,
             idColaborador: user.id,
-            username: user.codigoEmpleado,
+            username: user.codigoEmpleado || user.username || u,
             nombreCompleto: user.nombreCompleto,
-            rol: user.rolApp,
+            rol: user.rolApp || user.rol || 'COLABORADOR',
+            rolApp: user.rolApp || user.rol || 'COLABORADOR',
             idEmpresa: user.idEmpresa || 1,
             empresa: user.empresa,
             email: user.email,
@@ -251,8 +268,20 @@ const authController = {
       const idColab = req.user.id_colaborador || req.user.id;
 
       if (isUsingMock()) {
-        const user = mockStore.colaboradores.find(c => c.id === Number(idColab)) || mockStore.colaboradores[0];
-        return res.json({ success: true, user });
+        let user = mockStore.colaboradores.find(c => c.id === Number(idColab));
+        if (!user && (req.user.rol === 'SISTEMAS' || req.user.rol === 'SUPERADMIN')) {
+          user = mockStore.colaboradores.find(c => c.id === 2022 || c.rolApp === 'SISTEMAS');
+        }
+        if (!user) user = mockStore.colaboradores[0];
+
+        return res.json({ 
+          success: true, 
+          user: {
+            ...user,
+            rol: user.rolApp || user.rol || req.user.rol || 'COLABORADOR',
+            rolApp: user.rolApp || user.rol || req.user.rol || 'COLABORADOR'
+          }
+        });
       }
 
       const pool = await getLocalPool();

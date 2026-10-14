@@ -3,15 +3,42 @@ import {
   Users, Search, RefreshCw, FileText, Calendar, Clock, 
   CheckCircle2, XCircle, AlertCircle, Phone, Mail, Building2, 
   MapPin, Eye, ChevronRight, X, Sparkles, Shield, UserCheck, 
-  FileSpreadsheet, ArrowUpRight
+  FileSpreadsheet, ArrowUpRight, Baby, Heart, Briefcase, User, ArrowUpDown
 } from 'lucide-react';
 import { api } from '../api/client';
+import { 
+  formatearNombreColaborador, 
+  compararPorApellidos, 
+  obtenerInicialesColaborador 
+} from '../utils/formatters';
+
+function calcularEdad(fechaNacimiento) {
+  if (!fechaNacimiento) return 'No especificada';
+  try {
+    const nacimiento = new Date(fechaNacimiento);
+    if (isNaN(nacimiento.getTime())) return 'No especificada';
+    const hoy = new Date();
+    let edad = hoy.getFullYear() - nacimiento.getFullYear();
+    const m = hoy.getMonth() - nacimiento.getMonth();
+    if (m < 0 || (m === 0 && hoy.getDate() < nacimiento.getDate())) {
+      edad--;
+    }
+    if (edad <= 0) {
+      const meses = Math.max(0, (hoy.getFullYear() - nacimiento.getFullYear()) * 12 + hoy.getMonth() - nacimiento.getMonth());
+      return meses === 1 ? '1 mes' : `${meses} meses`;
+    }
+    return `${edad} ${edad === 1 ? 'año' : 'años'}`;
+  } catch (e) {
+    return 'No especificada';
+  }
+}
 
 export default function LiderMiEquipoPage({ currentUser }) {
   const [equipo, setEquipo] = useState([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [errorMsg, setErrorMsg] = useState('');
+  const [sortDirection, setSortDirection] = useState('asc'); // defaultSort A - Z por Apellidos
 
   // Modales
   const [modalKardexColab, setModalKardexColab] = useState(null);
@@ -21,6 +48,11 @@ export default function LiderMiEquipoPage({ currentUser }) {
   const [modalSolicitudesColab, setModalSolicitudesColab] = useState(null);
   const [solicitudesData, setSolicitudesData] = useState([]);
   const [loadingSolicitudes, setLoadingSolicitudes] = useState(false);
+
+  // Modal Ficha / Dependientes
+  const [modalFichaColab, setModalFichaColab] = useState(null);
+  const [fichaData, setFichaData] = useState(null);
+  const [loadingFicha, setLoadingFicha] = useState(false);
 
   useEffect(() => {
     cargarEquipo();
@@ -78,16 +110,36 @@ export default function LiderMiEquipoPage({ currentUser }) {
     }
   }
 
-  // Filtrado reactivo en memoria por Nombre, Código o Puesto
-  const colaboradoresFiltrados = equipo.filter(c => {
-    if (!searchTerm.trim()) return true;
-    const term = searchTerm.toLowerCase();
-    const nombre = (c.nombreCompleto || '').toLowerCase();
-    const codigo = (c.codigoEmpleado || '').toLowerCase();
-    const puesto = (c.puesto || '').toLowerCase();
-    const sucursal = (c.sucursal || '').toLowerCase();
-    return nombre.includes(term) || codigo.includes(term) || puesto.includes(term) || sucursal.includes(term);
-  });
+  async function abrirModalFicha(colab) {
+    setModalFichaColab(colab);
+    setLoadingFicha(true);
+    setFichaData(null);
+    try {
+      const colabId = colab.idColaborador || colab.IdColaborador || colab.id;
+      const res = await api.getColaborador(colabId);
+      if (res.success) {
+        setFichaData(res.data);
+      }
+    } catch (err) {
+      console.error('Error cargando ficha del colaborador:', err);
+      alert('Error cargando expediente: ' + (err.message || 'No disponible'));
+    } finally {
+      setLoadingFicha(false);
+    }
+  }
+
+  // Filtrado reactivo en memoria por Nombre, Código o Puesto con Ordenamiento Alfabético Obligatorio A - Z por Apellidos
+  const colaboradoresFiltrados = equipo
+    .filter(c => {
+      if (!searchTerm.trim()) return true;
+      const term = searchTerm.toLowerCase();
+      const nombre = formatearNombreColaborador(c).toLowerCase();
+      const codigo = (c.codigoEmpleado || '').toLowerCase();
+      const puesto = (c.puesto || '').toLowerCase();
+      const sucursal = (c.sucursal || '').toLowerCase();
+      return nombre.includes(term) || codigo.includes(term) || puesto.includes(term) || sucursal.includes(term);
+    })
+    .sort((a, b) => compararPorApellidos(a, b, sortDirection));
 
   // Métricas del equipo
   const totalIntegrantes = equipo.length;
@@ -229,7 +281,20 @@ export default function LiderMiEquipoPage({ currentUser }) {
               <thead>
                 <tr className="bg-slate-50/80 border-b border-slate-200 text-slate-500 font-bold uppercase text-[10px] tracking-wider">
                   <th className="py-3.5 px-4">Código</th>
-                  <th className="py-3.5 px-4">Colaborador</th>
+                  <th className="py-3.5 px-4 min-w-[170px]">
+                    <button
+                      type="button"
+                      onClick={() => setSortDirection(d => d === 'asc' ? 'desc' : 'asc')}
+                      className="flex items-center gap-1.5 font-bold text-slate-600 hover:text-amber-800 cursor-pointer uppercase text-[10px] tracking-wider transition"
+                      title="Ordenamiento Alfabético Obligatorio A - Z por Apellidos"
+                    >
+                      <span>Colaborador</span>
+                      <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded bg-amber-100 text-amber-900 text-[9px] font-black border border-amber-300">
+                        <ArrowUpDown className="w-2.5 h-2.5" />
+                        {sortDirection === 'asc' ? 'A - Z' : 'Z - A'}
+                      </span>
+                    </button>
+                  </th>
                   <th className="py-3.5 px-4">Puesto</th>
                   <th className="py-3.5 px-4">Sucursal</th>
                   <th className="py-3.5 px-4">Fecha Ingreso</th>
@@ -241,9 +306,7 @@ export default function LiderMiEquipoPage({ currentUser }) {
               </thead>
               <tbody className="divide-y divide-slate-100">
                 {colaboradoresFiltrados.map((c) => {
-                  const initials = c.nombreCompleto
-                    ? c.nombreCompleto.split(' ').slice(0, 2).map(n => n[0]).join('')
-                    : 'EM';
+                  const initials = obtenerInicialesColaborador(c);
 
                   return (
                     <tr key={c.idColaborador} className="hover:bg-amber-50/30 transition-colors">
@@ -260,7 +323,7 @@ export default function LiderMiEquipoPage({ currentUser }) {
                           </div>
                           <div>
                             <span className="font-extrabold text-slate-900 block leading-tight">
-                              {c.nombreCompleto}
+                              {formatearNombreColaborador(c)}
                             </span>
                             <span className="text-[10px] text-slate-400 font-mono">
                               ID: #{c.idColaborador}
@@ -343,6 +406,16 @@ export default function LiderMiEquipoPage({ currentUser }) {
                       {/* Acciones */}
                       <td className="py-3 px-4 text-right">
                         <div className="flex items-center justify-end gap-1.5">
+                          {/* Botón Ver Ficha / Expediente */}
+                          <button
+                            onClick={() => abrirModalFicha(c)}
+                            title="Ver Ficha Técnica, Contacto y Dependientes Familiares"
+                            className="flex items-center gap-1 px-2.5 py-1.5 bg-slate-100 hover:bg-indigo-50 text-slate-700 hover:text-indigo-700 rounded-lg text-[11px] font-bold transition cursor-pointer"
+                          >
+                            <Eye className="w-3.5 h-3.5" />
+                            <span>Ficha</span>
+                          </button>
+
                           {/* Botón Ver Kárdex */}
                           <button
                             onClick={() => abrirModalKardex(c)}
@@ -391,7 +464,7 @@ export default function LiderMiEquipoPage({ currentUser }) {
                     Kárdex Oficial de Vacaciones LFT
                   </h3>
                   <p className="text-xs text-slate-500 font-medium">
-                    {modalKardexColab.nombreCompleto} • Nómina: {modalKardexColab.codigoEmpleado}
+                    {formatearNombreColaborador(modalKardexColab)} • Nómina: {modalKardexColab.codigoEmpleado}
                   </p>
                 </div>
               </div>
@@ -531,7 +604,7 @@ export default function LiderMiEquipoPage({ currentUser }) {
                     Historial de Solicitudes de Vacaciones
                   </h3>
                   <p className="text-xs text-slate-500 font-medium">
-                    {modalSolicitudesColab.nombreCompleto} • Nómina: {modalSolicitudesColab.codigoEmpleado}
+                    {formatearNombreColaborador(modalSolicitudesColab)} • Nómina: {modalSolicitudesColab.codigoEmpleado}
                   </p>
                 </div>
               </div>
@@ -624,6 +697,140 @@ export default function LiderMiEquipoPage({ currentUser }) {
               </button>
             </div>
 
+          </div>
+        </div>
+      )}
+
+      {/* MODAL 3: FICHA DEL COLABORADOR / EQUIPO (CONTACTO Y DEPENDIENTES) */}
+      {modalFichaColab && (
+        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 overflow-y-auto">
+          <div className="bg-white rounded-3xl max-w-2xl w-full p-6 shadow-2xl border border-slate-100 my-8">
+            <div className="flex items-start justify-between pb-3 border-b border-slate-100">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-2xl bg-amber-100 text-amber-800 flex items-center justify-center font-black text-sm">
+                  {obtenerInicialesColaborador(modalFichaColab)}
+                </div>
+                <div>
+                  <span className="text-[10px] font-bold px-2 py-0.5 bg-amber-100 text-amber-800 rounded-full border border-amber-200 uppercase">
+                    Ficha de Integrante de Equipo
+                  </span>
+                  <h3 className="text-base font-black text-slate-900 mt-1">
+                    {formatearNombreColaborador(modalFichaColab)}
+                  </h3>
+                  <p className="text-xs text-slate-500">
+                    Nómina: <span className="font-mono font-bold text-slate-700">{modalFichaColab.codigoEmpleado}</span> • {modalFichaColab.puesto}
+                  </p>
+                </div>
+              </div>
+              <button onClick={() => setModalFichaColab(null)} className="text-slate-400 hover:text-slate-600 p-1">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {loadingFicha ? (
+              <div className="py-12 text-center text-slate-400">
+                <RefreshCw className="w-6 h-6 animate-spin mx-auto mb-2 text-amber-600" />
+                <p className="text-xs font-semibold">Cargando expediente y dependientes...</p>
+              </div>
+            ) : (
+              <div className="mt-4 space-y-4 max-h-[70vh] overflow-y-auto pr-1">
+                {/* Datos de Contacto y Emergencia */}
+                <div className="bg-slate-50 border border-slate-200/80 rounded-2xl p-4">
+                  <h4 className="text-xs font-bold text-slate-800 uppercase tracking-wider mb-2.5 flex items-center gap-1.5">
+                    <Heart className="w-4 h-4 text-rose-600" />
+                    <span>Contacto Directo & Emergencia</span>
+                  </h4>
+                  <div className="grid grid-cols-2 gap-3 text-xs">
+                    <div>
+                      <span className="text-[11px] text-slate-400 block">Teléfono / Celular</span>
+                      <span className="font-mono font-bold text-slate-800">{fichaData?.Telefono || modalFichaColab.telefono || '—'}</span>
+                    </div>
+                    <div>
+                      <span className="text-[11px] text-slate-400 block">Correo Institucional</span>
+                      <span className="text-slate-700 truncate block">{fichaData?.Email || modalFichaColab.email || '—'}</span>
+                    </div>
+                    <div>
+                      <span className="text-[11px] text-slate-400 block">Contacto de Emergencia</span>
+                      <span className="font-semibold text-slate-800">{fichaData?.AvisarEmergencia || 'Sin registrar'}</span>
+                    </div>
+                    <div>
+                      <span className="text-[11px] text-slate-400 block">Teléfono Emergencia</span>
+                      <span className="font-mono font-bold text-rose-700">{fichaData?.TelefonoEmergencia || '—'}</span>
+                    </div>
+                    <div>
+                      <span className="text-[11px] text-slate-400 block">Tipo de Sangre</span>
+                      <span className="font-bold text-rose-900 bg-rose-50 px-2 py-0.5 rounded border border-rose-200 inline-block">{fichaData?.TipoSangre || 'No registrado'}</span>
+                    </div>
+                    <div>
+                      <span className="text-[11px] text-slate-400 block">Alergias</span>
+                      <span className="text-slate-700">{fichaData?.AlergiasPadecimientos || 'Ninguna'}</span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Hijos / Dependientes */}
+                <div className="bg-white border-2 border-indigo-100 rounded-2xl p-4 shadow-xs">
+                  <div className="flex items-center justify-between mb-3">
+                    <div className="flex items-center gap-2">
+                      <Baby className="w-4 h-4 text-pink-600" />
+                      <h4 className="text-xs font-black text-slate-800 uppercase tracking-wide">
+                        Hijos & Dependientes Familiares
+                      </h4>
+                    </div>
+                    <span className="text-xs font-bold px-2.5 py-0.5 bg-pink-50 text-pink-700 rounded-full border border-pink-200">
+                      {(fichaData?.hijos || []).length} {((fichaData?.hijos || []).length === 1) ? 'hijo registrado' : 'hijos registrados'}
+                    </span>
+                  </div>
+
+                  {(!fichaData?.hijos || fichaData.hijos.length === 0) ? (
+                    <div className="p-4 text-center bg-slate-50 border border-dashed border-slate-200 rounded-xl text-xs text-slate-400">
+                      <Baby className="w-6 h-6 text-slate-300 mx-auto mb-1" />
+                      Este colaborador no cuenta con hijos o dependientes registrados en su expediente.
+                    </div>
+                  ) : (
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                      {fichaData.hijos.map((h, i) => {
+                        const fn = h.FechaNacimiento || h.fechaNacimiento;
+                        const sx = (h.Sexo || h.sexo || '').toUpperCase();
+                        const num = h.NumeroHijo || h.numeroHijo || (i + 1);
+                        return (
+                          <div key={h.IdHijo || h.idHijo || i} className="p-3 bg-slate-50 border border-slate-200/80 rounded-xl flex items-center justify-between">
+                            <div>
+                              <div className="flex items-center gap-1.5">
+                                <span className="text-xs font-bold text-slate-800">Hijo #{num}</span>
+                                {sx === 'M' ? (
+                                  <span className="text-[10px] font-bold px-1.5 py-0.2 bg-blue-100 text-blue-800 rounded">Niño</span>
+                                ) : sx === 'F' ? (
+                                  <span className="text-[10px] font-bold px-1.5 py-0.2 bg-pink-100 text-pink-800 rounded">Niña</span>
+                                ) : (
+                                  <span className="text-[10px] font-bold px-1.5 py-0.2 bg-slate-100 text-slate-600 rounded">Indef.</span>
+                                )}
+                              </div>
+                              <p className="text-[11px] text-slate-500 mt-0.5">
+                                Nacimiento: <span className="font-mono text-slate-700">{fn ? new Date(fn).toLocaleDateString('es-MX', { year: 'numeric', month: 'short', day: 'numeric', timeZone: 'UTC' }) : 'No especificada'}</span>
+                              </p>
+                              <p className="text-[11px] font-bold text-slate-700">
+                                Edad: <span className="text-indigo-600">{calcularEdad(fn)}</span>
+                              </p>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+
+            <div className="pt-3 border-t border-slate-100 flex items-center justify-end mt-4">
+              <button
+                type="button"
+                onClick={() => setModalFichaColab(null)}
+                className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl text-xs transition cursor-pointer"
+              >
+                Cerrar Ficha
+              </button>
+            </div>
           </div>
         </div>
       )}

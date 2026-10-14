@@ -2,9 +2,11 @@ import React, { useState, useEffect } from 'react';
 import { 
   FileSpreadsheet, Users, Calendar, Clock, AlertTriangle, 
   Download, Filter, RefreshCw, Search, ChevronRight, 
-  BarChart3, CheckCircle2, Building2, CalendarDays, Eye, Sparkles
+  BarChart3, CheckCircle2, Building2, CalendarDays, Eye, Sparkles,
+  ArrowUp, ArrowDown, ArrowUpDown
 } from 'lucide-react';
 import { api } from '../api/client';
+import { formatearNombreColaborador, compararPorApellidos } from '../utils/formatters';
 
 export default function ReportesAnaliticaPage({ currentUser }) {
   const [activeTab, setActiveTab] = useState('padron'); // 'padron', 'saldos', 'calendario'
@@ -26,6 +28,22 @@ export default function ReportesAnaliticaPage({ currentUser }) {
   const [traslapes, setTraslapes] = useState([]);
   const [loading, setLoading] = useState(false);
   const [downloading, setDownloading] = useState(false);
+
+  // Ordenamiento interactivo de tablas (por defecto A-Z por apellidos)
+  const [sortDirectionPadron, setSortDirectionPadron] = useState('asc');
+  const [sortDirectionSaldos, setSortDirectionSaldos] = useState('asc');
+
+  function handleSortPadron() {
+    const nextDir = sortDirectionPadron === 'asc' ? 'desc' : 'asc';
+    setSortDirectionPadron(nextDir);
+    setPadronData(prev => [...prev].sort((a, b) => compararPorApellidos(a.NombreCompleto, b.NombreCompleto, nextDir)));
+  }
+
+  function handleSortSaldos() {
+    const nextDir = sortDirectionSaldos === 'asc' ? 'desc' : 'asc';
+    setSortDirectionSaldos(nextDir);
+    setSaldosData(prev => [...prev].sort((a, b) => compararPorApellidos(a.NombreCompleto, b.NombreCompleto, nextDir)));
+  }
 
   // Sub-vista de Calendario: 'lista' o 'mensual'
   const [vistaCalendario, setVistaCalendario] = useState('lista');
@@ -91,11 +109,17 @@ export default function ReportesAnaliticaPage({ currentUser }) {
         if (fechaInicio) params.append('fechaInicio', fechaInicio);
         if (fechaFin) params.append('fechaFin', fechaFin);
         const res = await api.getReportePadron(params.toString());
-        if (res.success) setPadronData(res.data);
+        if (res.success) {
+          const sorted = [...(res.data || [])].sort((a, b) => compararPorApellidos(a.NombreCompleto, b.NombreCompleto, 'asc'));
+          setPadronData(sorted);
+          setSortDirectionPadron('asc');
+        }
       } else if (activeTab === 'saldos') {
         const res = await api.getReporteSaldos(params.toString());
         if (res.success) {
-          setSaldosData(res.data);
+          const sorted = [...(res.data || [])].sort((a, b) => compararPorApellidos(a.NombreCompleto, b.NombreCompleto, 'asc'));
+          setSaldosData(sorted);
+          setSortDirectionSaldos('asc');
           setSaldosResumen(res.resumenPorEmpresa || []);
         }
       } else if (activeTab === 'calendario') {
@@ -103,7 +127,7 @@ export default function ReportesAnaliticaPage({ currentUser }) {
         if (anio) params.append('anio', anio);
         const res = await api.getReporteCalendarioAusencias(params.toString());
         if (res.success) {
-          setCalendarioData(res.data);
+          setCalendarioData(res.data || []);
           setTraslapes(res.traslapes || []);
         }
       }
@@ -321,7 +345,25 @@ export default function ReportesAnaliticaPage({ currentUser }) {
               <thead className="bg-slate-100 text-slate-700 font-bold uppercase text-[10px] tracking-wider border-b border-slate-200">
                 <tr>
                   <th className="py-3 px-4">Código</th>
-                  <th className="py-3 px-4">Nombre Completo</th>
+                  <th className="py-3 px-4">
+                    <button
+                      type="button"
+                      onClick={handleSortPadron}
+                      className="inline-flex items-center gap-1.5 font-bold uppercase tracking-wider text-slate-700 hover:text-slate-900 transition cursor-pointer"
+                      title="Ordenar por apellidos (A - Z / Z - A)"
+                    >
+                      <span>Nombre Completo</span>
+                      {sortDirectionPadron === 'asc' ? (
+                        <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[9px] font-black bg-blue-100 text-blue-800 border border-blue-200">
+                          A - Z <ArrowUp className="w-2.5 h-2.5 ml-0.5" />
+                        </span>
+                      ) : (
+                        <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[9px] font-black bg-amber-100 text-amber-800 border border-amber-200">
+                          Z - A <ArrowDown className="w-2.5 h-2.5 ml-0.5" />
+                        </span>
+                      )}
+                    </button>
+                  </th>
                   <th className="py-3 px-4">Razón Social</th>
                   <th className="py-3 px-4">Sucursal</th>
                   <th className="py-3 px-4">Departamento</th>
@@ -350,7 +392,7 @@ export default function ReportesAnaliticaPage({ currentUser }) {
                   padronData.slice(0, 100).map(r => (
                     <tr key={r.IdColaborador} className="hover:bg-slate-50/80 transition">
                       <td className="py-3 px-4 font-mono font-bold text-slate-800">{r.CodigoEmpleado}</td>
-                      <td className="py-3 px-4 font-bold text-slate-900">{r.NombreCompleto}</td>
+                      <td className="py-3 px-4 font-bold text-slate-900">{formatearNombreColaborador(r.NombreCompleto)}</td>
                       <td className="py-3 px-4 font-semibold text-slate-800">{r.Empresa}</td>
                       <td className="py-3 px-4 text-slate-600">{r.Sucursal}</td>
                       <td className="py-3 px-4 text-slate-600">{r.Departamento}</td>
@@ -359,7 +401,7 @@ export default function ReportesAnaliticaPage({ currentUser }) {
                       <td className="py-3 px-4 text-center font-bold text-blue-700 bg-blue-50/50">
                         {r.AntiguedadAnios} años
                       </td>
-                      <td className="py-3 px-4 text-amber-900 font-medium">{r.JefeDirecto}</td>
+                      <td className="py-3 px-4 text-amber-900 font-medium">{formatearNombreColaborador(r.JefeDirecto)}</td>
                       <td className="py-3 px-4 text-center">
                         {r.TotalHijos > 0 ? (
                           <span className="inline-flex items-center px-2 py-0.5 rounded-full font-bold text-[10px] bg-purple-100 text-purple-800">
@@ -430,7 +472,25 @@ export default function ReportesAnaliticaPage({ currentUser }) {
                 <thead className="bg-slate-100 text-slate-700 font-bold uppercase text-[10px] tracking-wider border-b border-slate-200">
                   <tr>
                     <th className="py-3 px-4">Código</th>
-                    <th className="py-3 px-4">Colaborador</th>
+                    <th className="py-3 px-4">
+                      <button
+                        type="button"
+                        onClick={handleSortSaldos}
+                        className="inline-flex items-center gap-1.5 font-bold uppercase tracking-wider text-slate-700 hover:text-slate-900 transition cursor-pointer"
+                        title="Ordenar por apellidos (A - Z / Z - A)"
+                      >
+                        <span>Colaborador</span>
+                        {sortDirectionSaldos === 'asc' ? (
+                          <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[9px] font-black bg-emerald-100 text-emerald-800 border border-emerald-200">
+                            A - Z <ArrowUp className="w-2.5 h-2.5 ml-0.5" />
+                          </span>
+                        ) : (
+                          <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[9px] font-black bg-amber-100 text-amber-800 border border-amber-200">
+                            Z - A <ArrowDown className="w-2.5 h-2.5 ml-0.5" />
+                          </span>
+                        )}
+                      </button>
+                    </th>
                     <th className="py-3 px-4">Empresa</th>
                     <th className="py-3 px-4">Período Vigente</th>
                     <th className="py-3 px-4 text-center">Días Ley LFT</th>
@@ -457,7 +517,7 @@ export default function ReportesAnaliticaPage({ currentUser }) {
                     saldosData.slice(0, 100).map(s => (
                       <tr key={s.IdColaborador} className="hover:bg-slate-50/80 transition">
                         <td className="py-3 px-4 font-mono font-bold text-slate-800">{s.CodigoEmpleado}</td>
-                        <td className="py-3 px-4 font-bold text-slate-900">{s.NombreCompleto}</td>
+                        <td className="py-3 px-4 font-bold text-slate-900">{formatearNombreColaborador(s.NombreCompleto)}</td>
                         <td className="py-3 px-4 font-semibold text-slate-800">{s.Empresa}</td>
                         <td className="py-3 px-4 font-mono text-slate-600">{s.PeriodoVigente}</td>
                         <td className="py-3 px-4 text-center font-bold text-slate-800">{s.DiasLeyLFT}</td>
@@ -508,10 +568,10 @@ export default function ReportesAnaliticaPage({ currentUser }) {
                       <span className="text-[10px] text-slate-500">{t.empresa}</span>
                     </div>
                     <div className="text-[11px] text-slate-700">
-                      • <strong>{t.colaborador1}</strong>: {t.fechas1}
+                      • <strong>{formatearNombreColaborador(t.colaborador1)}</strong>: {t.fechas1}
                     </div>
                     <div className="text-[11px] text-slate-700">
-                      • <strong>{t.colaborador2}</strong>: {t.fechas2}
+                      • <strong>{formatearNombreColaborador(t.colaborador2)}</strong>: {t.fechas2}
                     </div>
                   </div>
                 ))}
@@ -561,7 +621,7 @@ export default function ReportesAnaliticaPage({ currentUser }) {
                     calendarioData.map(a => (
                       <tr key={a.IdSolicitud} className="hover:bg-slate-50/80 transition">
                         <td className="py-3 px-4 font-mono font-bold text-blue-700">{a.Folio}</td>
-                        <td className="py-3 px-4 font-bold text-slate-900">{a.NombreCompleto}</td>
+                        <td className="py-3 px-4 font-bold text-slate-900">{formatearNombreColaborador(a.NombreCompleto)}</td>
                         <td className="py-3 px-4">
                           <span className="font-semibold text-slate-800 block">{a.Empresa}</span>
                           <span className="text-[11px] text-slate-400">{a.Sucursal || 'Matriz'}</span>
@@ -576,7 +636,7 @@ export default function ReportesAnaliticaPage({ currentUser }) {
                         <td className="py-3 px-4 text-center font-black text-blue-700 bg-blue-50/50">
                           {a.TotalDiasLaborables} días
                         </td>
-                        <td className="py-3 px-4 text-amber-900 font-medium">{a.JefeDirectoNombre || '—'}</td>
+                        <td className="py-3 px-4 text-amber-900 font-medium">{formatearNombreColaborador(a.JefeDirectoNombre || '—')}</td>
                         <td className="py-3 px-4 text-center">
                           <span className={`px-2 py-0.5 rounded-full font-bold text-[10px] ${
                             a.Estado === 'APROBADA' ? 'bg-emerald-100 text-emerald-800' :
