@@ -1,5 +1,5 @@
 import React from 'react';
-import { Calendar, Clock, CheckCircle2, Award, Info } from 'lucide-react';
+import { Calendar, Clock, CheckCircle2, Award } from 'lucide-react';
 
 export default function StatCards({ resumen, colaborador, onAbrirDesglose }) {
   if (!resumen) return null;
@@ -103,22 +103,6 @@ export default function StatCards({ resumen, colaborador, onAbrirDesglose }) {
             🔍 Clic para ver integración y vigencias (18 meses)
           </span>
         </div>
-      </div>
-
-      {/* Fórmula de coherencia visual */}
-      <div className="col-span-2 lg:col-span-4 bg-slate-50 border border-slate-200/80 rounded-2xl px-4 py-2.5 flex flex-wrap items-center justify-between gap-2 text-xs text-slate-600">
-        <div className="flex items-center gap-2 font-medium">
-          <Info className="w-4 h-4 text-blue-600 shrink-0" />
-          <span>Fórmula de Saldo Activo:</span>
-          <span className="font-mono text-slate-800 font-semibold">
-            [{diasLey} por ley LFT] - [{diasDisfrutados} disfrutados] - [{diasEnTramite} en trámite] = <strong className="text-emerald-700 font-bold">{saldoDisponible} días disponibles</strong>
-          </span>
-        </div>
-        {resumen.totalHistoricoAcumulado !== undefined && resumen.totalHistoricoAcumulado !== diasLey && (
-          <span className="text-[11px] text-slate-400 font-medium">
-            * Total histórico acumulado de carrera: {resumen.totalHistoricoAcumulado} días
-          </span>
-        )}
       </div>
     </div>
   );

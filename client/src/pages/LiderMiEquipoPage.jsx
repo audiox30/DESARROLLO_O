@@ -516,6 +516,7 @@ export default function LiderMiEquipoPage({ currentUser }) {
                 <KardexVacaciones 
                   periodos={kardexData.periodos} 
                   colaborador={kardexData.colaborador || modalKardexColab} 
+                  resumen={kardexData.resumen}
                 />
               )}
             </div>

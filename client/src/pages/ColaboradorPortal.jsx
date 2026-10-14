@@ -430,6 +430,7 @@ export default function ColaboradorPortal({ currentUser }) {
             <KardexVacaciones 
               periodos={saldoData?.periodos} 
               colaborador={saldoData?.colaborador} 
+              resumen={saldoData?.resumen}
             />
           ) : (
             /* SubTab 3: Mi Expediente & Familia */
