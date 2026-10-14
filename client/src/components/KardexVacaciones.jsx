@@ -1,5 +1,5 @@
 import React from 'react';
-import { Calendar, CheckCircle2, Clock, AlertTriangle, FileText, XCircle, Info } from 'lucide-react';
+import { Calendar, CheckCircle2, Clock, AlertTriangle, FileText, XCircle } from 'lucide-react';
 
 function formatFechaUI(fecha) {
   if (!fecha) return '—';
@@ -22,55 +22,35 @@ function formatFechaUI(fecha) {
 export default function KardexVacaciones({ periodos = [], colaborador, resumen }) {
   if (!periodos || periodos.length === 0) {
     return (
-      <div className="space-y-3">
-        <div className="bg-slate-50 border border-slate-200 rounded-lg p-3 text-xs text-slate-600 flex flex-wrap items-center justify-between gap-3">
-          <div className="flex items-center gap-2 flex-1 min-w-[280px]">
-            <Info className="w-4 h-4 text-blue-600 shrink-0" />
-            <span className="leading-relaxed">
-              La integración del saldo activo por período responde a la fórmula canónica: <code className="bg-white px-1.5 py-0.5 rounded border border-slate-200/80 font-mono text-slate-800 font-semibold">[Días LFT] - [Gozados] - [En Trámite] = Saldo Disp.</code> bajo el criterio de vigencia de 18 meses (Art. 81 y 516 LFT).
-            </span>
-          </div>
-        </div>
-        <div className="bg-white rounded-2xl border border-slate-200/80 p-8 text-center">
-          <FileText className="w-10 h-10 text-slate-300 mx-auto mb-2" />
-          <p className="text-xs text-slate-500 font-semibold">No se encontraron períodos acumulados para este colaborador.</p>
-          <p className="text-[11px] text-slate-400 mt-1">Los períodos de vacaciones se generan conforme a los aniversarios cumplidos según LFT.</p>
-        </div>
+      <div className="bg-white rounded-2xl border border-slate-200/80 p-8 text-center">
+        <FileText className="w-10 h-10 text-slate-300 mx-auto mb-2" />
+        <p className="text-xs text-slate-500 font-semibold">No se encontraron períodos acumulados para este colaborador.</p>
+        <p className="text-[11px] text-slate-400 mt-1">Los períodos de vacaciones se generan conforme a los aniversarios cumplidos según LFT.</p>
       </div>
     );
   }
 
   const hoyStr = new Date().toISOString().split('T')[0];
 
-  return (
-    <div className="space-y-3">
-      {/* Barra de desglose analítico y fórmula canónica de saldo activo */}
-      <div className="bg-slate-50 border border-slate-200 rounded-lg p-3 text-xs text-slate-600 flex flex-wrap items-center justify-between gap-3">
-        <div className="flex items-center gap-2 flex-1 min-w-[280px]">
-          <Info className="w-4 h-4 text-blue-600 shrink-0" />
-          <span className="leading-relaxed">
-            La integración del saldo activo por período responde a la fórmula canónica: <code className="bg-white px-1.5 py-0.5 rounded border border-slate-200/80 font-mono text-slate-800 font-semibold">[Días LFT] - [Gozados] - [En Trámite] = Saldo Disp.</code> bajo el criterio de vigencia de 18 meses (Art. 81 y 516 LFT).
-          </span>
-        </div>
-        {resumen && resumen.saldoDisponible !== undefined && (
-          <div className="font-mono text-[11px] text-slate-700 bg-white px-2.5 py-1 rounded-md border border-slate-200 shrink-0 font-semibold shadow-2xs">
-            [{resumen.diasLey ?? (resumen.diasCorrespondientes ?? 0)} LFT] - [{resumen.diasDisfrutados ?? (resumen.diasGozados ?? 0)} gozados] - [{resumen.diasEnTramite ?? 0} trámite] = <strong className="text-emerald-700 font-bold">{resumen.saldoDisponible} días disp.</strong>
-          </div>
-        )}
-      </div>
+  // Cálculo de valores dinámicos para la fórmula al pie del Kárdex
+  const diasLey = resumen?.diasLey ?? (resumen?.diasLeyVigentes ?? (resumen?.diasCorrespondientes ?? periodos.filter(p => p.estadoVigencia === 'VIGENTE' || (!p.estadoVigencia && (!p.fechaFinVigencia || hoyStr <= p.fechaFinVigencia))).reduce((acc, p) => acc + (p.diasCorrespondientes || 0), 0)));
+  const diasGozados = resumen?.diasDisfrutados ?? (resumen?.diasGozados ?? periodos.filter(p => p.estadoVigencia === 'VIGENTE' || (!p.estadoVigencia && (!p.fechaFinVigencia || hoyStr <= p.fechaFinVigencia))).reduce((acc, p) => acc + (p.diasGozados || 0), 0));
+  const diasEnTramite = resumen?.diasEnTramite ?? periodos.reduce((acc, p) => acc + (p.diasEnTramite || 0), 0);
+  const saldoDisp = resumen?.saldoDisponible ?? (resumen?.diasDisponibles ?? Math.max(0, diasLey - diasGozados - diasEnTramite));
 
-      <div className="bg-white rounded-2xl border border-slate-200/80 shadow-xs overflow-hidden">
-        <div className="px-5 py-4 border-b border-slate-100 flex flex-col sm:flex-row sm:items-center justify-between gap-2 bg-slate-50/50">
-          <div className="flex items-center gap-2">
-            <FileText className="w-4 h-4 text-blue-600" />
-            <h3 className="text-xs font-bold text-slate-900 uppercase tracking-wider">
-              Kárdex de Vacaciones por Período Laboral (Vigencia 18 Meses LFT)
-            </h3>
-          </div>
-          <span className="text-[11px] text-slate-500 font-mono">
-            Alta: <strong>{formatFechaUI(colaborador?.fechaAlta)}</strong> • {colaborador?.antiguedadTexto || `${colaborador?.antiguedadAnios || 0} años de servicio`}
-          </span>
+  return (
+    <div className="bg-white rounded-2xl border border-slate-200/80 shadow-xs overflow-hidden">
+      <div className="px-5 py-4 border-b border-slate-100 flex flex-col sm:flex-row sm:items-center justify-between gap-2 bg-slate-50/50">
+        <div className="flex items-center gap-2">
+          <FileText className="w-4 h-4 text-blue-600" />
+          <h3 className="text-xs font-bold text-slate-900 uppercase tracking-wider">
+            Kárdex de Vacaciones por Período Laboral (Vigencia 18 Meses LFT)
+          </h3>
         </div>
+        <span className="text-[11px] text-slate-500 font-mono">
+          Alta: <strong>{formatFechaUI(colaborador?.fechaAlta)}</strong> • {colaborador?.antiguedadTexto || `${colaborador?.antiguedadAnios || 0} años de servicio`}
+        </span>
+      </div>
 
       <div className="overflow-x-auto">
         <table className="w-full text-left text-xs">
@@ -187,11 +167,18 @@ export default function KardexVacaciones({ periodos = [], colaborador, resumen }
         </table>
       </div>
 
-      <div className="px-5 py-3 bg-slate-50 border-t border-slate-100 text-[11px] text-slate-500 flex flex-col sm:flex-row sm:items-center justify-between gap-1">
-        <span>* Regla LFT Art. 81 y 516: Los saldos tienen 18 meses de vigencia. Los períodos caducados ya no suman al Saldo Disponible.</span>
-        <span className="font-semibold text-slate-700">Descuento automático por PEPS</span>
+      <div className="px-5 py-3 bg-slate-50 border-t border-slate-100 flex flex-col md:flex-row md:items-center justify-between gap-2 text-[11px] text-slate-400 font-light">
+        <span className="text-slate-500">
+          * Regla LFT Art. 81 y 516: Los saldos tienen 18 meses de vigencia. Los períodos caducados ya no suman al Saldo Disponible.
+        </span>
+        <div className="flex items-center gap-2 text-[11px] text-slate-400 font-light shrink-0">
+          <span className="font-mono text-slate-400">
+            Fórmula aplicada: <span className="text-slate-500 font-normal">[{diasLey} LFT] - [{diasGozados} gozados] - [{diasEnTramite} trámite] = <strong className="text-emerald-700 font-semibold">{saldoDisp} días disp.</strong></span>
+          </span>
+          <span className="text-slate-300">•</span>
+          <span className="text-slate-500 font-medium">Descuento PEPS</span>
+        </div>
       </div>
     </div>
-  </div>
   );
 }
