@@ -438,6 +438,86 @@ const solicitudesController = {
   },
 
   /**
+   * Validación y Conclusión Definitiva por Desarrollo Organizacional
+   * POST /api/admin/solicitudes/:id/resolver-do
+   */
+  resolverDO: async (req, res) => {
+    try {
+      const { id } = req.params;
+      const { accion, comentarios, motivoRechazo } = req.body;
+      const idAdmin = req.user.id_colaborador || req.user.id;
+      const accionNorm = (accion || '').toUpperCase().trim();
+
+      if (!['APROBAR', 'RECHAZAR'].includes(accionNorm)) {
+        return res.status(400).json({ error: "La acción debe ser 'APROBAR' o 'RECHAZAR'." });
+      }
+
+      const razon = motivoRechazo || comentarios;
+      if (accionNorm === 'RECHAZAR' && (!razon || !razon.trim())) {
+        return res.status(400).json({ error: 'El motivo de rechazo es obligatorio para rechazar la solicitud.' });
+      }
+
+      const motivoFinal = razon || (accionNorm === 'APROBAR'
+        ? 'Validada y aprobada por Desarrollo Organizacional.'
+        : 'Rechazada por Desarrollo Organizacional.');
+
+      if (isUsingMock()) {
+        let sol = null;
+        if (accionNorm === 'APROBAR') {
+          sol = mockStore.aprobarSolicitud(id, idAdmin, motivoFinal, 'WEB_DO');
+        } else {
+          sol = mockStore.rechazarSolicitud(id, idAdmin, motivoFinal, 'WEB_DO');
+        }
+
+        // Notificación asíncrona por correo (Sandbox / Soporte en auditoría)
+        setImmediate(() => {
+          emailService.notificarConclusionDO(id, accionNorm, motivoFinal).catch(err => {
+            console.error('[EMAIL NOTIFICACION ERROR]', err);
+          });
+        });
+
+        return res.json({
+          success: true,
+          message: accionNorm === 'APROBAR'
+            ? 'Solicitud validada y concluida exitosamente por Desarrollo Organizacional.'
+            : 'Solicitud rechazada debidamente por Desarrollo Organizacional.',
+          solicitud: sol
+        });
+      }
+
+      const pool = await getPool();
+      const spAccion = accionNorm === 'APROBAR' ? 'APROBADA' : 'RECHAZADA';
+
+      const request = pool.request();
+      request.input('IdSolicitud', Number(id));
+      request.input('IdAprobador', Number(idAdmin));
+      request.input('Accion', spAccion);
+      request.input('Comentarios', motivoFinal);
+      request.input('MetodoAutorizacion', 'WEB_DO');
+      request.input('DireccionIP', req.ip || null);
+
+      await request.execute('dbo.sp_ProcesarAprobacionSolicitud');
+
+      // Notificación asíncrona por correo electrónico (Sandbox / Soporte en auditoría)
+      setImmediate(() => {
+        emailService.notificarConclusionDO(id, accionNorm, motivoFinal).catch(err => {
+          console.error('[EMAIL NOTIFICACION ERROR]', err);
+        });
+      });
+
+      return res.json({
+        success: true,
+        message: accionNorm === 'APROBAR'
+          ? 'Solicitud validada y concluida exitosamente por Desarrollo Organizacional.'
+          : 'Solicitud rechazada debidamente por Desarrollo Organizacional.'
+      });
+    } catch (err) {
+      console.error('[solicitudes.resolverDO]', err);
+      res.status(400).json({ error: err.message });
+    }
+  },
+
+  /**
    * Endpoint Oficial Formato FDO-84 (Rev. A - 26/01/2024)
    * GET /api/solicitudes/:id/pdf
    */

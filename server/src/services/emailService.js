@@ -9,10 +9,10 @@ const mockStore = require('../data/mockStore');
 
 // Función creadora de transportador Nodemailer adaptada para Relay local (sin TLS forzado)
 const crearTransportadorSmtp = (configBd = null) => {
-  // Tomar valores de BD o de variables de entorno (.env)
-  const host = configBd?.host || process.env.SMTP_HOST || '192.168.20.29';
-  const port = parseInt(configBd?.port || process.env.SMTP_PORT || '25', 10);
-  const isSecure = configBd?.secure === true || configBd?.secure === 'true' || port === 465;
+  // Tomar valores de variables de entorno (.env) o de BD
+  const host = process.env.SMTP_HOST || configBd?.host || '192.168.20.16';
+  const port = parseInt(process.env.SMTP_PORT || configBd?.port || '25', 10);
+  const isSecure = process.env.SMTP_SECURE === 'true' || configBd?.secure === true || configBd?.secure === 'true' || port === 465;
 
   return nodemailer.createTransport({
     host: host,
@@ -33,7 +33,7 @@ const crearTransportadorSmtp = (configBd = null) => {
         user: configBd.user,
         pass: configBd.pass
       }
-    } : (!configBd && process.env.SMTP_USER && process.env.SMTP_PASS ? {
+    } : (process.env.SMTP_USER && process.env.SMTP_PASS ? {
       auth: {
         user: process.env.SMTP_USER,
         pass: process.env.SMTP_PASS
@@ -58,12 +58,13 @@ async function obtenerConfiguracionEmail() {
         const map = {};
         res.recordset.forEach(r => { map[r.Clave] = r.Valor; });
         cachedConfig = {
-          host: map['SMTP_HOST'] || process.env.SMTP_HOST || '192.168.20.29',
-          port: parseInt(map['SMTP_PORT'] || process.env.SMTP_PORT || '25', 10),
-          user: map['SMTP_USER'] || process.env.SMTP_USER || '',
-          pass: map['SMTP_PASS'] || process.env.SMTP_PASS || '',
-          secure: map['SMTP_SECURE'] === 'true',
+          host: process.env.SMTP_HOST || map['SMTP_HOST'] || '192.168.20.16',
+          port: parseInt(process.env.SMTP_PORT || map['SMTP_PORT'] || '25', 10),
+          user: process.env.SMTP_USER !== undefined && process.env.SMTP_USER !== '' ? process.env.SMTP_USER : (map['SMTP_USER'] || ''),
+          pass: process.env.SMTP_PASS !== undefined && process.env.SMTP_PASS !== '' ? process.env.SMTP_PASS : (map['SMTP_PASS'] || ''),
+          secure: process.env.SMTP_SECURE === 'true' || map['SMTP_SECURE'] === 'true',
           fromName: map['SMTP_FROM_NAME'] || 'Control de Vacaciones Grupo JAMA',
+          from: process.env.SMTP_FROM || `${map['SMTP_FROM_NAME'] || 'Control de Vacaciones Grupo JAMA'} <${map['SMTP_USER'] || 'comprobante.fiscal@grupojama.com'}>`,
           enabled: map['SMTP_NOTIF_ENABLED'] !== 'false'
         };
         lastCacheTime = now;
@@ -75,12 +76,13 @@ async function obtenerConfiguracionEmail() {
   }
 
   cachedConfig = {
-    host: process.env.SMTP_HOST || '192.168.20.29',
+    host: process.env.SMTP_HOST || '192.168.20.16',
     port: parseInt(process.env.SMTP_PORT || '25', 10),
     user: process.env.SMTP_USER || '',
     pass: process.env.SMTP_PASS || '',
     secure: process.env.SMTP_SECURE === 'true',
     fromName: process.env.SMTP_FROM_NAME || 'Control de Vacaciones Grupo JAMA',
+    from: process.env.SMTP_FROM || 'Control de Vacaciones Grupo JAMA <comprobante.fiscal@grupojama.com>',
     enabled: true
   };
   lastCacheTime = now;
@@ -208,12 +210,23 @@ function generarPlantillaHtml({ titulo, badgeTexto, badgeColor, badgeBg, badgeBo
 
 /**
  * Función genérica de despacho de correo con salvaguardas y logs desacoplados
+ * Incluye soporte nativo para Modo de Auditoría / Sandboxing (Redirección a soporte@grupojama.com)
  */
 async function enviarEmail({ to, subject, html }) {
-  if (!to || typeof to !== 'string' || !to.includes('@')) {
+  const modoAuditoria = process.env.MODO_PRUEBAS_CORREO === 'true' || Boolean(process.env.CORREO_AUDITORIA);
+  const correoAuditoria = (process.env.CORREO_AUDITORIA || 'soporte@grupojama.com').trim();
+
+  let destinatarioOriginal = (to && typeof to === 'string') ? to.trim() : '';
+  if (!destinatarioOriginal && modoAuditoria) {
+    destinatarioOriginal = 'colaborador.previsto@grupojama.com';
+  }
+
+  if (!destinatarioOriginal || !destinatarioOriginal.includes('@')) {
     console.warn(`[NOTIFICACIONES EMAIL] Omitido: Destinatario con correo inválido o no registrado ('${to}').`);
     return { skipped: true, reason: 'EMAIL_NO_VALIDO' };
   }
+
+  const destinatarioFinal = modoAuditoria ? correoAuditoria : destinatarioOriginal;
 
   const config = await obtenerConfiguracionEmail();
   if (!config || !config.enabled) {
@@ -222,27 +235,53 @@ async function enviarEmail({ to, subject, html }) {
   }
 
   const transporter = await getTransporter();
-  const fromUser = config.user || 'notificaciones@grupojama.com.mx';
-  const from = `${config.fromName} <${fromUser}>`;
+  const rawFrom = config.from || process.env.SMTP_FROM || 'Control de Vacaciones Grupo JAMA <comprobante.fiscal@grupojama.com>';
+  const from = rawFrom.replace(/^["']|["']$/g, '');
 
   if (!transporter) {
     console.warn(`[NOTIFICACIONES EMAIL] SMTP no configurado (SMTP_HOST vacío). Simulación de envío:`);
-    console.warn(` -> Para: ${to}`);
+    console.warn(` -> Para: ${destinatarioFinal} ${modoAuditoria ? `(Destinatario original previsto: ${destinatarioOriginal})` : ''}`);
     console.warn(` -> Asunto: ${subject}`);
-    return { simulated: true, to, subject };
+    return { simulated: true, to: destinatarioFinal, destinatarioOriginal, subject };
+  }
+
+  // Inyección del Banner Superior de Auditoría si el modo sandbox está activo
+  let htmlFinal = html || '';
+  if (modoAuditoria) {
+    const bannerHtml = `
+              <!-- BANNER MODO AUDITORIA / SANDBOXING -->
+              <div style="background-color:#fffbeb; border:1px solid #fde68a; border-left:4px solid #d97706; padding:12px 16px; margin:0 0 20px 0; border-radius:10px; font-family:-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; font-size:12px; color:#92400e; box-shadow:0 1px 2px rgba(0,0,0,0.04);">
+                <div style="font-weight:bold; font-size:11px; text-transform:uppercase; letter-spacing:0.5px; color:#b45309; margin-bottom:4px;">
+                  ⚠️ Modo Auditoría / Sandbox de Pruebas
+                </div>
+                <div>
+                  [Modo Auditoría - Destinatario original previsto: <code style="background-color:#fef3c7; padding:2px 6px; border-radius:4px; font-weight:bold; color:#78350f; font-size:12px; font-family:monospace;">${destinatarioOriginal}</code>]
+                </div>
+              </div>
+    `;
+
+    if (htmlFinal.includes('<!-- Badge de Estado -->')) {
+      htmlFinal = htmlFinal.replace('<!-- Badge de Estado -->', `${bannerHtml}\n              <!-- Badge de Estado -->`);
+    } else if (htmlFinal.includes('<body')) {
+      htmlFinal = htmlFinal.replace(/(<body[^>]*>)/i, `$1\n<div style="max-width:600px; margin:10px auto; padding:0 16px;">${bannerHtml}</div>`);
+    } else {
+      htmlFinal = `${bannerHtml}\n${htmlFinal}`;
+    }
+
+    console.log(`[NOTIFICACIONES EMAIL] [Modo Auditoría ACTIVO] Redirigiendo correo previsto para '${destinatarioOriginal}' -> '${destinatarioFinal}'`);
   }
 
   try {
     const info = await transporter.sendMail({
       from,
-      to,
+      to: destinatarioFinal,
       subject,
-      html
+      html: htmlFinal
     });
-    console.log(`[NOTIFICACIONES EMAIL] Enviado con éxito a: ${to} (ID: ${info.messageId}) - Asunto: ${subject}`);
-    return { success: true, messageId: info.messageId };
+    console.log(`[NOTIFICACIONES EMAIL] Enviado con éxito a: ${destinatarioFinal} ${modoAuditoria ? `(Original: ${destinatarioOriginal})` : ''} (ID: ${info.messageId}) - Asunto: ${subject}`);
+    return { success: true, messageId: info.messageId, destinatarioFinal, destinatarioOriginal, modoAuditoria };
   } catch (err) {
-    console.error(`[NOTIFICACIONES EMAIL] Error al enviar correo a ${to}:`, err.message);
+    console.error(`[NOTIFICACIONES EMAIL] Error al enviar correo a ${destinatarioFinal}:`, err.message);
     return { success: false, error: err.message };
   }
 }
@@ -251,6 +290,8 @@ async function enviarEmail({ to, subject, html }) {
  * Consulta de metadatos completos de una solicitud para notificaciones
  */
 async function obtenerDatosSolicitud(idSolicitud) {
+  const modoAuditoria = process.env.MODO_PRUEBAS_CORREO === 'true' || Boolean(process.env.CORREO_AUDITORIA);
+
   try {
     const pool = await getPool();
 
@@ -274,6 +315,15 @@ async function obtenerDatosSolicitud(idSolicitud) {
             : (colab.saldos || []).reduce((acc, curr) => acc + (curr.diasPendientes || 0), 0))
         : 0;
 
+      const colabEmail = colab ? (colab.emailCorporativo || colab.email) : '';
+      const emailColaboradorDestino = (colabEmail && colabEmail.trim()) ? colabEmail.trim() : (modoAuditoria ? 'colaborador.previsto@grupojama.com' : '');
+
+      const jefeEmail = jefe ? (jefe.emailCorporativo || jefe.email) : '';
+      const emailJefeDestino = (jefeEmail && jefeEmail.trim()) ? jefeEmail.trim() : (modoAuditoria ? 'lider.previsto@grupojama.com' : '');
+
+      const segundoEmail = segundoAprobador ? (segundoAprobador.emailCorporativo || segundoAprobador.email) : '';
+      const emailSegundoDestino = (segundoEmail && segundoEmail.trim()) ? segundoEmail.trim() : (modoAuditoria ? 'gerente.previsto@grupojama.com' : '');
+
       return {
         idSolicitud: s.idSolicitud,
         folio: s.folio,
@@ -285,24 +335,24 @@ async function obtenerDatosSolicitud(idSolicitud) {
         motivoRechazo: s.motivoRechazo || '',
         colaborador: {
           id: colab ? colab.idColaborador : s.idColaborador,
-          nombre: colab ? colab.nombreCompleto : s.colaboradorNombre,
+          nombre: colab ? colab.nombreCompleto : (s.colaboradorNombre || 'Colaborador Solicitante'),
           codigo: colab ? colab.codigoEmpleado : '',
-          email: colab ? (colab.emailCorporativo || colab.email) : '',
+          email: emailColaboradorDestino,
           emailPersonal: colab ? colab.email : '',
           emailCorporativo: colab ? colab.emailCorporativo : '',
           puesto: colab ? colab.puesto : (s.colaboradorPuesto || '—'),
           empresa: colab ? colab.empresa : (s.colaboradorEmpresa || 'Grupo JAMA'),
           sucursal: colab ? colab.sucursal : 'Matriz'
         },
-        jefe: jefe ? {
-          id: jefe.idColaborador,
-          nombre: jefe.nombreCompleto,
-          email: jefe.emailCorporativo || jefe.email
+        jefe: (jefe || modoAuditoria) ? {
+          id: jefe ? jefe.idColaborador : 999999,
+          nombre: jefe ? jefe.nombreCompleto : 'Líder Operativo Previsto',
+          email: emailJefeDestino
         } : null,
-        segundoAprobador: segundoAprobador ? {
-          id: segundoAprobador.idColaborador || segundoAprobador.id,
-          nombre: segundoAprobador.nombreCompleto,
-          email: segundoAprobador.emailCorporativo || segundoAprobador.email
+        segundoAprobador: (segundoAprobador || (modoAuditoria && s.estado === 'PENDIENTE_GERENTE')) ? {
+          id: segundoAprobador ? (segundoAprobador.idColaborador || segundoAprobador.id) : 999998,
+          nombre: segundoAprobador ? segundoAprobador.nombreCompleto : 'Gerencia General Prevista',
+          email: emailSegundoDestino
         } : null,
         saldoDisponible: Number(saldoDisponible)
       };
@@ -358,18 +408,18 @@ async function obtenerDatosSolicitud(idSolicitud) {
     const row = res.recordset[0];
     if (!row) return null;
 
-    // Destinatarios con preferencia a EmailCorporativo (Directorio Teams v1.9) y fallback a Email nómina
+    // Destinatarios con preferencia a EmailCorporativo y fallback a Email nómina o dirección simulada de auditoría
     const emailColaboradorDestino = (row.ColaboradorEmailCorporativo && row.ColaboradorEmailCorporativo.trim())
       ? row.ColaboradorEmailCorporativo.trim()
-      : row.ColaboradorEmail;
+      : (row.ColaboradorEmail && row.ColaboradorEmail.trim() ? row.ColaboradorEmail.trim() : (modoAuditoria ? 'colaborador.previsto@grupojama.com' : ''));
 
     const emailJefeDestino = (row.JefeEmailCorporativo && row.JefeEmailCorporativo.trim())
       ? row.JefeEmailCorporativo.trim()
-      : row.JefeEmail;
+      : (row.JefeEmail && row.JefeEmail.trim() ? row.JefeEmail.trim() : (modoAuditoria ? 'lider.previsto@grupojama.com' : ''));
 
     const emailSegundoDestino = (row.SegundoAprobadorEmailCorporativo && row.SegundoAprobadorEmailCorporativo.trim())
       ? row.SegundoAprobadorEmailCorporativo.trim()
-      : row.SegundoAprobadorEmail;
+      : (row.SegundoAprobadorEmail && row.SegundoAprobadorEmail.trim() ? row.SegundoAprobadorEmail.trim() : (modoAuditoria ? 'gerente.previsto@grupojama.com' : ''));
 
     return {
       idSolicitud: row.IdSolicitud,
@@ -392,14 +442,14 @@ async function obtenerDatosSolicitud(idSolicitud) {
         sucursal: row.ColaboradorSucursal || 'Matriz',
         departamento: row.ColaboradorDepartamento || 'General'
       },
-      jefe: row.IdJefeDirecto ? {
-        id: row.IdJefeDirecto,
-        nombre: row.JefeNombre,
+      jefe: (row.IdJefeDirecto || modoAuditoria) ? {
+        id: row.IdJefeDirecto || 999999,
+        nombre: row.JefeNombre || 'Líder Operativo Previsto',
         email: emailJefeDestino
       } : null,
-      segundoAprobador: row.IdAprobadorSegundo ? {
-        id: row.IdAprobadorSegundo,
-        nombre: row.SegundoAprobadorNombre,
+      segundoAprobador: (row.IdAprobadorSegundo || (modoAuditoria && row.Estado === 'PENDIENTE_GERENTE')) ? {
+        id: row.IdAprobadorSegundo || 999998,
+        nombre: row.SegundoAprobadorNombre || 'Gerencia General Prevista',
         email: emailSegundoDestino
       } : null,
       saldoDisponible: Number(row.SaldoDisponible)
@@ -421,19 +471,21 @@ const emailService = {
       if (!data) return;
 
       const { colaborador, jefe, folio, fechaInicio, fechaFin, totalDiasLaborables, saldoDisponible, motivoComentarios } = data;
+      const modoAuditoria = process.env.MODO_PRUEBAS_CORREO === 'true' || Boolean(process.env.CORREO_AUDITORIA);
+      const emailJefe = (jefe && jefe.email) ? jefe.email : (modoAuditoria ? 'lider.previsto@grupojama.com' : null);
 
-      if (!jefe || !jefe.email) {
+      if (!emailJefe) {
         console.warn(`[NOTIFICACIONES EMAIL] Evento A omitido: El colaborador '${colaborador.nombre}' no tiene jefe directo asignado o el jefe carece de correo.`);
         return;
       }
 
+      const nombreJefe = (jefe && jefe.nombre) ? jefe.nombre : 'Líder Operativo';
       const saldoRestanteEstimado = Math.max(0, saldoDisponible - totalDiasLaborables);
-
       const asunto = `[Vacaciones Grupo JAMA] Nueva solicitud pendiente de aprobación - ${colaborador.nombre}`;
 
       const cuerpoHtml = `
         <p style="margin:0 0 16px 0;">
-          Estimado(a) <strong>${jefe.nombre}</strong>,
+          Estimado(a) <strong>${nombreJefe}</strong>,
         </p>
         <p style="margin:0 0 16px 0;">
           Se ha recibido una nueva solicitud de vacaciones en tu equipo que requiere tu revisión y autorización:
@@ -503,7 +555,7 @@ const emailService = {
         ctaUrl: '/lider/aprobaciones'
       });
 
-      await enviarEmail({ to: jefe.email, subject: asunto, html });
+      await enviarEmail({ to: emailJefe, subject: asunto, html });
     } catch (err) {
       console.error('[NOTIFICACIONES EMAIL] Error en notificarNuevaSolicitud:', err.message);
     }
@@ -519,18 +571,21 @@ const emailService = {
       if (!data) return;
 
       const { colaborador, jefe, segundoAprobador, folio, fechaInicio, fechaFin, totalDiasLaborables, saldoDisponible, motivoComentarios } = data;
+      const modoAuditoria = process.env.MODO_PRUEBAS_CORREO === 'true' || Boolean(process.env.CORREO_AUDITORIA);
+      const emailSegundo = (segundoAprobador && segundoAprobador.email) ? segundoAprobador.email : (modoAuditoria ? 'gerente.previsto@grupojama.com' : null);
 
-      if (!segundoAprobador || !segundoAprobador.email) {
+      if (!emailSegundo) {
         console.warn(`[NOTIFICACIONES EMAIL] Evento Pendiente Gerente omitido: El colaborador '${colaborador.nombre}' no tiene segundo aprobador asignado o carece de correo.`);
         return;
       }
 
+      const nombreSegundo = (segundoAprobador && segundoAprobador.nombre) ? segundoAprobador.nombre : 'Gerencia General';
       const saldoRestanteEstimado = Math.max(0, saldoDisponible - totalDiasLaborables);
       const asunto = `[Vacaciones Grupo JAMA] Solicitud pendiente de autorización gerencial (Nivel 2) - ${colaborador.nombre}`;
 
       const cuerpoHtml = `
         <p style="margin:0 0 16px 0;">
-          Estimado(a) <strong>${segundoAprobador.nombre}</strong>,
+          Estimado(a) <strong>${nombreSegundo}</strong>,
         </p>
         <p style="margin:0 0 16px 0;">
           Te informamos que la solicitud de vacaciones con folio <strong style="color:#1d4ed8;">${folio}</strong> correspondiente al colaborador <strong>${colaborador.nombre}</strong> ha recibido el <strong>Visto Bueno de Nivel 1</strong> por su jefe directo (${jefe ? jefe.nombre : 'Líder Operativo'}) y ahora requiere tu <strong>autorización gerencial definitiva (Nivel 2)</strong>:
@@ -600,7 +655,7 @@ const emailService = {
         ctaUrl: '/lider/aprobaciones'
       });
 
-      await enviarEmail({ to: segundoAprobador.email, subject: asunto, html });
+      await enviarEmail({ to: emailSegundo, subject: asunto, html });
     } catch (err) {
       console.error('[NOTIFICACIONES EMAIL] Error en notificarSolicitudPendienteGerente:', err.message);
     }
@@ -616,8 +671,10 @@ const emailService = {
       if (!data) return;
 
       const { colaborador, jefe, folio, fechaInicio, fechaFin, totalDiasLaborables, saldoDisponible } = data;
+      const modoAuditoria = process.env.MODO_PRUEBAS_CORREO === 'true' || Boolean(process.env.CORREO_AUDITORIA);
+      const emailColab = (colaborador && colaborador.email) ? colaborador.email : (modoAuditoria ? 'colaborador.previsto@grupojama.com' : null);
 
-      if (!colaborador.email) {
+      if (!emailColab) {
         console.warn(`[NOTIFICACIONES EMAIL] Evento B omitido: El colaborador '${colaborador.nombre}' no tiene correo registrado.`);
         return;
       }
@@ -670,7 +727,7 @@ const emailService = {
         ctaUrl: '/portal'
       });
 
-      await enviarEmail({ to: colaborador.email, subject: asunto, html });
+      await enviarEmail({ to: emailColab, subject: asunto, html });
     } catch (err) {
       console.error('[NOTIFICACIONES EMAIL] Error en notificarSolicitudAprobada:', err.message);
     }
@@ -686,8 +743,10 @@ const emailService = {
       if (!data) return;
 
       const { colaborador, jefe, folio, fechaInicio, fechaFin, totalDiasLaborables, motivoRechazo } = data;
+      const modoAuditoria = process.env.MODO_PRUEBAS_CORREO === 'true' || Boolean(process.env.CORREO_AUDITORIA);
+      const emailColab = (colaborador && colaborador.email) ? colaborador.email : (modoAuditoria ? 'colaborador.previsto@grupojama.com' : null);
 
-      if (!colaborador.email) {
+      if (!emailColab) {
         console.warn(`[NOTIFICACIONES EMAIL] Evento C omitido: El colaborador '${colaborador.nombre}' no tiene correo registrado.`);
         return;
       }
@@ -729,7 +788,7 @@ const emailService = {
         ctaUrl: '/portal'
       });
 
-      await enviarEmail({ to: colaborador.email, subject: asunto, html });
+      await enviarEmail({ to: emailColab, subject: asunto, html });
     } catch (err) {
       console.error('[NOTIFICACIONES EMAIL] Error en notificarSolicitudRechazada:', err.message);
     }
@@ -745,17 +804,20 @@ const emailService = {
       if (!data) return;
 
       const { colaborador, jefe, folio, fechaInicio, fechaFin, totalDiasLaborables } = data;
+      const modoAuditoria = process.env.MODO_PRUEBAS_CORREO === 'true' || Boolean(process.env.CORREO_AUDITORIA);
+      const emailJefe = (jefe && jefe.email) ? jefe.email : (modoAuditoria ? 'lider.previsto@grupojama.com' : null);
 
-      if (!jefe || !jefe.email) {
+      if (!emailJefe) {
         console.warn(`[NOTIFICACIONES EMAIL] Evento D omitido: El colaborador '${colaborador.nombre}' no tiene jefe directo con correo registrado.`);
         return;
       }
 
+      const nombreJefe = (jefe && jefe.nombre) ? jefe.nombre : 'Líder Asignado';
       const asunto = `[Vacaciones Grupo JAMA] Solicitud cancelada por el colaborador - ${colaborador.nombre}`;
 
       const cuerpoHtml = `
         <p style="margin:0 0 16px 0;">
-          Estimado(a) <strong>${jefe.nombre}</strong>,
+          Estimado(a) <strong>${nombreJefe}</strong>,
         </p>
         <p style="margin:0 0 16px 0;">
           Te notificamos que el colaborador <strong>${colaborador.nombre}</strong> (Nómina: ${colaborador.codigo}) ha <strong>cancelado</strong> su solicitud de vacaciones previamente registrada:
@@ -797,9 +859,119 @@ const emailService = {
         ctaUrl: '/lider/aprobaciones'
       });
 
-      await enviarEmail({ to: jefe.email, subject: asunto, html });
+      await enviarEmail({ to: emailJefe, subject: asunto, html });
     } catch (err) {
       console.error('[NOTIFICACIONES EMAIL] Error en notificarSolicitudCancelada:', err.message);
+    }
+  },
+
+  /**
+   * Evento E: Conclusión y Validación por Desarrollo Organizacional (DO)
+   * Destinatario: Colaborador solicitante
+   */
+  notificarConclusionDO: async (idSolicitud, accion = 'APROBAR', motivoFinal = '') => {
+    try {
+      const data = await obtenerDatosSolicitud(idSolicitud);
+      if (!data) return;
+
+      const { colaborador, folio, fechaInicio, fechaFin, totalDiasLaborables, saldoDisponible } = data;
+      const modoAuditoria = process.env.MODO_PRUEBAS_CORREO === 'true' || Boolean(process.env.CORREO_AUDITORIA);
+      const emailColab = (colaborador && colaborador.email) ? colaborador.email : (modoAuditoria ? 'colaborador.previsto@grupojama.com' : null);
+
+      if (!emailColab) {
+        console.warn(`[NOTIFICACIONES EMAIL] Evento Conclusión DO omitido: El colaborador '${colaborador.nombre}' no tiene correo registrado.`);
+        return;
+      }
+
+      const esAprobada = (accion || '').toUpperCase().trim() === 'APROBAR' || (accion || '').toUpperCase().trim() === 'APROBADA';
+      const asunto = esAprobada
+        ? `[Vacaciones Grupo JAMA] Solicitud concluida y registrada por DO - ${colaborador.nombre}`
+        : `[Vacaciones Grupo JAMA] Solicitud no validada por Desarrollo Organizacional`;
+
+      let cuerpoHtml = '';
+      if (esAprobada) {
+        cuerpoHtml = `
+          <p style="margin:0 0 16px 0;">
+            Estimado(a) <strong>${colaborador.nombre}</strong>,
+          </p>
+          <p style="margin:0 0 16px 0;">
+            Te confirmamos que tu solicitud de vacaciones con folio <strong style="color:#1d4ed8;">${folio}</strong> ha sido <strong>revisada y concluida exitosamente por Desarrollo Organizacional</strong>. El período ha quedado formalmente registrado en el sistema de nómina y en el calendario institucional de ausencias.
+          </p>
+
+          <!-- Resumen del Período Autorizado por DO -->
+          <table width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color:#ecfdf5; border:1px solid #a7f3d0; border-radius:10px; margin:16px 0; overflow:hidden;">
+            <tr>
+              <td style="padding:10px 14px; border-bottom:1px solid #d1fae5; color:#065f46; font-size:12px; font-weight:600; width:35%;">Folio Oficial:</td>
+              <td style="padding:10px 14px; border-bottom:1px solid #d1fae5; color:#065f46; font-size:13px; font-weight:bold;">${folio}</td>
+            </tr>
+            <tr>
+              <td style="padding:10px 14px; border-bottom:1px solid #d1fae5; color:#065f46; font-size:12px; font-weight:600;">Período Autorizado:</td>
+              <td style="padding:10px 14px; border-bottom:1px solid #d1fae5; color:#065f46; font-size:13px; font-weight:bold;">
+                Desde ${formatFecha(fechaInicio)} hasta ${formatFecha(fechaFin)}
+              </td>
+            </tr>
+            <tr>
+              <td style="padding:10px 14px; border-bottom:1px solid #d1fae5; color:#065f46; font-size:12px; font-weight:600;">Días Disfrutados:</td>
+              <td style="padding:10px 14px; border-bottom:1px solid #d1fae5; color:#065f46; font-size:13px; font-weight:bold;">
+                ${totalDiasLaborables} días hábiles
+              </td>
+            </tr>
+            <tr>
+              <td style="padding:10px 14px; color:#065f46; font-size:12px; font-weight:600;">Saldo Disponible Actualizado:</td>
+              <td style="padding:10px 14px; color:#047857; font-size:14px; font-weight:900;">
+                ${saldoDisponible.toFixed(1)} días
+              </td>
+            </tr>
+          </table>
+
+          ${motivoFinal ? `
+            <div style="background-color:#f8fafc; border-left:4px solid #10b981; padding:12px 14px; border-radius:6px; margin:16px 0; font-size:13px; color:#334155;">
+              <strong>Observaciones de Desarrollo Organizacional:</strong> "${motivoFinal}"
+            </div>
+          ` : ''}
+
+          <p style="margin:16px 0 0 0;">
+            Puedes consultar los detalles y descargar tu formato oficial FDO-84 firmado digitalmente desde tu Portal de Colaborador.
+          </p>
+        `;
+      } else {
+        cuerpoHtml = `
+          <p style="margin:0 0 16px 0;">
+            Estimado(a) <strong>${colaborador.nombre}</strong>,
+          </p>
+          <p style="margin:0 0 16px 0;">
+            Te notificamos que la solicitud de vacaciones con folio <strong style="color:#0f172a;">${folio}</strong> para el período del <strong>${formatFecha(fechaInicio)}</strong> al <strong>${formatFecha(fechaFin)}</strong> (${totalDiasLaborables} días) <strong>no ha sido validada por el área de Desarrollo Organizacional</strong>.
+          </p>
+
+          <div style="background-color:#fef2f2; border:1px solid #fecaca; border-left:4px solid #ef4444; padding:14px; border-radius:8px; margin:20px 0;">
+            <span style="display:block; font-size:11px; font-weight:bold; color:#991b1b; text-transform:uppercase; margin-bottom:4px;">
+              Motivo de la resolución de DO:
+            </span>
+            <span style="font-size:13px; color:#7f1d1d; font-weight:600;">
+              "${motivoFinal || 'No cumple con las políticas y lineamientos institucionales de Grupo JAMA.'}"
+            </span>
+          </div>
+
+          <p style="margin:16px 0 0 0;">
+            Los días correspondientes han sido reintegrados a tu saldo disponible. Para cualquier aclaración, por favor contacta a Desarrollo Organizacional.
+          </p>
+        `;
+      }
+
+      const html = generarPlantillaHtml({
+        titulo: esAprobada ? 'Validación y Conclusión Definitiva por DO' : 'Solicitud No Validada por DO',
+        badgeTexto: esAprobada ? 'Concluida / Validada por DO' : 'No Validada por DO',
+        badgeColor: esAprobada ? '#065f46' : '#991b1b',
+        badgeBg: esAprobada ? '#ecfdf5' : '#fef2f2',
+        badgeBorder: esAprobada ? '#a7f3d0' : '#fecaca',
+        cuerpoHtml,
+        ctaTexto: 'Ver en Mi Portal',
+        ctaUrl: '/portal'
+      });
+
+      await enviarEmail({ to: emailColab, subject: asunto, html });
+    } catch (err) {
+      console.error('[NOTIFICACIONES EMAIL] Error en notificarConclusionDO:', err.message);
     }
   }
 };

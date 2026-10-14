@@ -164,11 +164,13 @@ export const api = {
     }
   },
 
-  // Aprobaciones
+  // Aprobaciones y Resolución DO
   aprobarSolicitud: (id, comentarios, metodo = 'WEB') => 
     request(`/aprobaciones/${id}/aprobar`, { method: 'POST', body: JSON.stringify({ comentarios, metodoAutorizacion: metodo }) }),
   rechazarSolicitud: (id, comentarios, metodo = 'WEB') => 
     request(`/aprobaciones/${id}/rechazar`, { method: 'POST', body: JSON.stringify({ comentarios, metodoAutorizacion: metodo }) }),
+  resolverSolicitudDO: (id, accion, comentarios) =>
+    request(`/admin/solicitudes/${id}/resolver-do`, { method: 'POST', body: JSON.stringify({ accion, comentarios }) }),
 
   // Días Inhábiles
   getDiasInhabiles: () => request('/dias-inhabiles'),

@@ -16,7 +16,10 @@ export default function ModalAprobacion({ solicitud, isOpen, onClose, onSuccess,
     try {
       setLoading(true);
       setError('');
-      const res = await api.aprobarSolicitud(solicitud.idSolicitud, comentarios, 'WEB');
+      const idSol = solicitud.idSolicitud || solicitud.IdSolicitud || solicitud.id;
+      const res = esAdminDO
+        ? await api.resolverSolicitudDO(idSol, 'APROBAR', comentarios || 'Validada por Desarrollo Organizacional.')
+        : await api.aprobarSolicitud(idSol, comentarios, 'WEB');
       if (res.success) {
         onSuccess(res.message);
         handleClose();
@@ -37,7 +40,10 @@ export default function ModalAprobacion({ solicitud, isOpen, onClose, onSuccess,
     try {
       setLoading(true);
       setError('');
-      const res = await api.rechazarSolicitud(solicitud.idSolicitud, motivoRechazo.trim(), 'WEB');
+      const idSol = solicitud.idSolicitud || solicitud.IdSolicitud || solicitud.id;
+      const res = esAdminDO
+        ? await api.resolverSolicitudDO(idSol, 'RECHAZAR', motivoRechazo.trim())
+        : await api.rechazarSolicitud(idSol, motivoRechazo.trim(), 'WEB');
       if (res.success) {
         onSuccess(res.message);
         handleClose();

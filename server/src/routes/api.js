@@ -105,6 +105,7 @@ router.get('/lider/colaborador/:id/solicitudes', authMiddleware, requireRole('LI
 // 4. MÓDULO DE SOLICITUDES DE VACACIONES (COLABORADOR / LÍDER / ADMIN_DO)
 // =========================================================================
 router.post('/solicitudes', authMiddleware, solicitudesController.create);
+router.post('/solicitudes/crear', authMiddleware, solicitudesController.create);
 router.get('/solicitudes/mis', authMiddleware, solicitudesController.getMisSolicitudes);
 router.get('/solicitudes/mis-solicitudes', authMiddleware, solicitudesController.getMisSolicitudes);
 router.get('/solicitudes/colaborador/:id', authMiddleware, checkHierarchyOrSelf, solicitudesController.getByColaborador);
@@ -112,6 +113,8 @@ router.get('/solicitudes/bandeja-lider', authMiddleware, requireRole('LIDER', 'A
 router.get('/solicitudes/bandeja-do', authMiddleware, requireRole('ADMIN_DO', 'SUPERADMIN', 'SISTEMAS'), solicitudesController.getBandejaDO);
 router.get('/solicitudes/globales', authMiddleware, requireRole('ADMIN_DO', 'SUPERADMIN', 'SISTEMAS'), solicitudesController.getBandejaDO);
 router.get('/admin/solicitudes', authMiddleware, requireRole('ADMIN_DO', 'SUPERADMIN', 'SISTEMAS'), solicitudesController.getBandejaDO);
+router.post('/admin/solicitudes/:id/resolver-do', authMiddleware, requireRole('ADMIN_DO', 'SUPERADMIN', 'SISTEMAS'), solicitudesController.resolverDO);
+router.post('/solicitudes/:id/resolver-do', authMiddleware, requireRole('ADMIN_DO', 'SUPERADMIN', 'SISTEMAS'), solicitudesController.resolverDO);
 router.get('/solicitudes/:id', authMiddleware, checkSolicitudAccess, solicitudesController.getById);
 router.get('/solicitudes/:id/pdf', authMiddleware, solicitudesController.descargarPdfFdo84);
 router.post('/solicitudes/:id/cancelar', authMiddleware, checkSolicitudAccess, solicitudesController.cancelar);
