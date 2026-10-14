@@ -1126,23 +1126,14 @@ export default function AdminColaboradoresPage() {
                   Nómina: {colabEditar.CodigoEmpleado} • Empresa: {colabEditar.Empresa || '—'}
                 </p>
               </div>
-              <div className="flex items-center gap-2">
-                <button
-                  type="button"
-                  onClick={() => abrirModalFicha(colabEditar)}
-                  title="Ver Expediente / Ficha Técnica Completa"
-                  className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-100 hover:bg-indigo-50 text-slate-700 hover:text-indigo-700 border border-slate-200 rounded-xl text-xs font-semibold transition cursor-pointer"
-                >
-                  <Eye className="w-3.5 h-3.5 text-indigo-600" />
-                  <span>Ver Expediente</span>
-                </button>
-                <button 
-                  onClick={() => setColabEditar(null)} 
-                  className="text-slate-400 hover:text-slate-600 p-1.5 rounded-xl hover:bg-slate-100 transition cursor-pointer"
-                >
-                  <X className="w-5 h-5" />
-                </button>
-              </div>
+              <button 
+                type="button"
+                onClick={() => setColabEditar(null)} 
+                title="Cerrar"
+                className="text-slate-400 hover:text-slate-600 p-1.5 rounded-xl hover:bg-slate-100 transition cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
             </div>
 
             {/* ACORDEÓN: DATOS MAESTROS DE NÓMINA (CONTPAQi NÓMINAS) - SOLO LECTURA */}
