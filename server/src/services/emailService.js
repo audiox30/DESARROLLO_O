@@ -1,6 +1,7 @@
 const nodemailer = require('nodemailer');
 const { getPool, isUsingMock } = require('../config/database');
 const mockStore = require('../data/mockStore');
+const { generarPdfFdo84 } = require('./pdfFdo84Service');
 
 /**
  * Servicio de Envío de Notificaciones por Correo Electrónico (SMTP)
@@ -270,11 +271,26 @@ async function registrarLogEnvio({
  * Incluye soporte nativo para Modo de Auditoría / Sandboxing (Redirección a soporte@grupojama.com)
  * y persistencia automática en dbo.LogCorreosEnviados.
  */
-async function enviarEmail({ to, subject, html, tipoEvento = 'GENERAL', folioSolicitud = null }) {
+/**
+ * Función genérica de despacho de correo con salvaguardas y logs desacoplados
+ * Incluye soporte nativo para Modo de Auditoría / Sandboxing (Redirección a soporte@grupojama.com),
+ * copias jerárquicas (CC), adjuntos PDF en memoria y persistencia automática en dbo.LogCorreosEnviados.
+ */
+async function enviarEmail({ 
+  to, 
+  cc = null, 
+  subject, 
+  html, 
+  attachments = [], 
+  tipoEvento = 'GENERAL', 
+  folioSolicitud = null 
+}) {
   const modoAuditoria = process.env.MODO_PRUEBAS_CORREO === 'true' || Boolean(process.env.CORREO_AUDITORIA);
   const correoAuditoria = (process.env.CORREO_AUDITORIA || 'soporte@grupojama.com').trim();
 
-  let destinatarioOriginal = (to && typeof to === 'string') ? to.trim() : '';
+  let destinatarioOriginal = (to && typeof to === 'string') ? to.trim() : (Array.isArray(to) ? to.join(', ') : '');
+  let ccOriginal = (cc && typeof cc === 'string') ? cc.trim() : (Array.isArray(cc) ? cc.join(', ') : '');
+
   if (!destinatarioOriginal && modoAuditoria) {
     destinatarioOriginal = 'colaborador.previsto@grupojama.com';
   }
@@ -293,14 +309,19 @@ async function enviarEmail({ to, subject, html, tipoEvento = 'GENERAL', folioSol
     return { skipped: true, reason: 'EMAIL_NO_VALIDO' };
   }
 
+  // Si el modo auditoría / sandbox está activo, redirigir todos los destinatarios (To y CC) a soporte
   const destinatarioFinal = modoAuditoria ? correoAuditoria : destinatarioOriginal;
+  const ccFinal = modoAuditoria ? null : (ccOriginal || null);
+
+  const logDestinatarioOriginal = `${destinatarioOriginal}${ccOriginal ? ` [CC: ${ccOriginal}]` : ''}`;
+  const logDestinatarioEfectivo = `${destinatarioFinal}${ccFinal ? ` [CC: ${ccFinal}]` : ''}`;
 
   const config = await obtenerConfiguracionEmail();
   if (!config || !config.enabled) {
     console.log(`[NOTIFICACIONES EMAIL] Notificaciones deshabilitadas en configuración del sistema.`);
     await registrarLogEnvio({
-      destinatarioOriginal,
-      destinatarioEfectivo: destinatarioFinal,
+      destinatarioOriginal: logDestinatarioOriginal,
+      destinatarioEfectivo: logDestinatarioEfectivo,
       asunto: subject,
       tipoEvento,
       folioSolicitud,
@@ -316,19 +337,22 @@ async function enviarEmail({ to, subject, html, tipoEvento = 'GENERAL', folioSol
 
   if (!transporter) {
     console.warn(`[NOTIFICACIONES EMAIL] SMTP no configurado (SMTP_HOST vacío). Simulación de envío:`);
-    console.warn(` -> Para: ${destinatarioFinal} ${modoAuditoria ? `(Destinatario original previsto: ${destinatarioOriginal})` : ''}`);
+    console.warn(` -> Para: ${destinatarioFinal} ${modoAuditoria ? `(Destinatario original previsto: ${logDestinatarioOriginal})` : ''}`);
     console.warn(` -> Asunto: ${subject}`);
+    if (attachments && attachments.length > 0) {
+      console.warn(` -> Adjuntos (${attachments.length}): ${attachments.map(a => a.filename).join(', ')}`);
+    }
     const simMessageId = `<SIMULADO_${Date.now()}@grupojama.com>`;
     await registrarLogEnvio({
-      destinatarioOriginal,
-      destinatarioEfectivo: destinatarioFinal,
+      destinatarioOriginal: logDestinatarioOriginal,
+      destinatarioEfectivo: logDestinatarioEfectivo,
       asunto: subject,
       tipoEvento,
       folioSolicitud,
       estatusEnvio: 'EXITO',
       messageId: simMessageId
     });
-    return { simulated: true, to: destinatarioFinal, destinatarioOriginal, subject, messageId: simMessageId };
+    return { simulated: true, to: destinatarioFinal, destinatarioOriginal: logDestinatarioOriginal, subject, messageId: simMessageId };
   }
 
   // Inyección del Banner Superior de Auditoría si el modo sandbox está activo
@@ -338,10 +362,10 @@ async function enviarEmail({ to, subject, html, tipoEvento = 'GENERAL', folioSol
               <!-- BANNER MODO AUDITORIA / SANDBOXING -->
               <div style="background-color:#fffbeb; border:1px solid #fde68a; border-left:4px solid #d97706; padding:12px 16px; margin:0 0 20px 0; border-radius:10px; font-family:-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; font-size:12px; color:#92400e; box-shadow:0 1px 2px rgba(0,0,0,0.04);">
                 <div style="font-weight:bold; font-size:11px; text-transform:uppercase; letter-spacing:0.5px; color:#b45309; margin-bottom:4px;">
-                  ⚠️ Modo Auditoría / Sandbox de Pruebas
+                  ⚠️ Modo Auditoría / Sandbox de Pruebas Activo
                 </div>
                 <div>
-                  [Modo Auditoría - Destinatario original previsto: <code style="background-color:#fef3c7; padding:2px 6px; border-radius:4px; font-weight:bold; color:#78350f; font-size:12px; font-family:monospace;">${destinatarioOriginal}</code>]
+                  [Modo Auditoría - Destinatario original previsto: <code style="background-color:#fef3c7; padding:2px 6px; border-radius:4px; font-weight:bold; color:#78350f; font-size:12px; font-family:monospace;">${destinatarioOriginal}</code>${ccOriginal ? ` (Copia CC a: <code style="background-color:#fef3c7; padding:2px 6px; border-radius:4px; font-weight:bold; color:#78350f; font-size:12px; font-family:monospace;">${ccOriginal}</code>)` : ''}]
                 </div>
               </div>
     `;
@@ -354,32 +378,36 @@ async function enviarEmail({ to, subject, html, tipoEvento = 'GENERAL', folioSol
       htmlFinal = `${bannerHtml}\n${htmlFinal}`;
     }
 
-    console.log(`[NOTIFICACIONES EMAIL] [Modo Auditoría ACTIVO] Redirigiendo correo previsto para '${destinatarioOriginal}' -> '${destinatarioFinal}'`);
+    console.log(`[NOTIFICACIONES EMAIL] [Modo Auditoría ACTIVO] Redirigiendo correo previsto para '${logDestinatarioOriginal}' -> '${destinatarioFinal}'`);
   }
 
   try {
-    const info = await transporter.sendMail({
+    const mailOptions = {
       from,
       to: destinatarioFinal,
+      ...(ccFinal ? { cc: ccFinal } : {}),
       subject,
-      html: htmlFinal
-    });
-    console.log(`[NOTIFICACIONES EMAIL] Enviado con éxito a: ${destinatarioFinal} ${modoAuditoria ? `(Original: ${destinatarioOriginal})` : ''} (ID: ${info.messageId}) - Asunto: ${subject}`);
+      html: htmlFinal,
+      ...(attachments && attachments.length > 0 ? { attachments } : {})
+    };
+
+    const info = await transporter.sendMail(mailOptions);
+    console.log(`[NOTIFICACIONES EMAIL] Enviado con éxito a: ${destinatarioFinal} ${modoAuditoria ? `(Original: ${logDestinatarioOriginal})` : ''} (ID: ${info.messageId}) - Asunto: ${subject}`);
     await registrarLogEnvio({
-      destinatarioOriginal,
-      destinatarioEfectivo: destinatarioFinal,
+      destinatarioOriginal: logDestinatarioOriginal,
+      destinatarioEfectivo: logDestinatarioEfectivo,
       asunto: subject,
       tipoEvento,
       folioSolicitud,
       estatusEnvio: 'EXITO',
       messageId: info.messageId
     });
-    return { success: true, messageId: info.messageId, destinatarioFinal, destinatarioOriginal, modoAuditoria };
+    return { success: true, messageId: info.messageId, destinatarioFinal, destinatarioOriginal: logDestinatarioOriginal, modoAuditoria };
   } catch (err) {
     console.error(`[NOTIFICACIONES EMAIL] Error al enviar correo a ${destinatarioFinal}:`, err.message);
     await registrarLogEnvio({
-      destinatarioOriginal,
-      destinatarioEfectivo: destinatarioFinal,
+      destinatarioOriginal: logDestinatarioOriginal,
+      destinatarioEfectivo: logDestinatarioEfectivo,
       asunto: subject,
       tipoEvento,
       folioSolicitud,
@@ -423,10 +451,10 @@ async function obtenerDatosSolicitud(idSolicitud) {
       const emailColaboradorDestino = (colabEmail && colabEmail.trim()) ? colabEmail.trim() : (modoAuditoria ? 'colaborador.previsto@grupojama.com' : '');
 
       const jefeEmail = jefe ? (jefe.emailCorporativo || jefe.email) : '';
-      const emailJefeDestino = (jefeEmail && jefeEmail.trim()) ? jefeEmail.trim() : (modoAuditoria ? 'lider.previsto@grupojama.com' : '');
+      const emailJefeDestino = (jefeEmail && jefeEmail.trim()) ? jefeEmail.trim() : '';
 
       const segundoEmail = segundoAprobador ? (segundoAprobador.emailCorporativo || segundoAprobador.email) : '';
-      const emailSegundoDestino = (segundoEmail && segundoEmail.trim()) ? segundoEmail.trim() : (modoAuditoria ? 'gerente.previsto@grupojama.com' : '');
+      const emailSegundoDestino = (segundoEmail && segundoEmail.trim()) ? segundoEmail.trim() : '';
 
       return {
         idSolicitud: s.idSolicitud,
@@ -446,16 +474,19 @@ async function obtenerDatosSolicitud(idSolicitud) {
           emailCorporativo: colab ? colab.emailCorporativo : '',
           puesto: colab ? colab.puesto : (s.colaboradorPuesto || '—'),
           empresa: colab ? colab.empresa : (s.colaboradorEmpresa || 'Grupo JAMA'),
-          sucursal: colab ? colab.sucursal : 'Matriz'
+          sucursal: colab ? colab.sucursal : 'Matriz',
+          departamento: colab ? colab.departamento : 'General'
         },
-        jefe: (jefe || modoAuditoria) ? {
-          id: jefe ? jefe.idColaborador : 999999,
-          nombre: jefe ? jefe.nombreCompleto : 'Líder Operativo Previsto',
+        idJefeDirecto: idJefe || null,
+        idAprobadorSegundo: idSegundo || null,
+        jefe: jefe ? {
+          id: jefe.idColaborador || jefe.id,
+          nombre: jefe.nombreCompleto || 'Líder Operativo',
           email: emailJefeDestino
         } : null,
-        segundoAprobador: (segundoAprobador || (modoAuditoria && s.estado === 'PENDIENTE_GERENTE')) ? {
-          id: segundoAprobador ? (segundoAprobador.idColaborador || segundoAprobador.id) : 999998,
-          nombre: segundoAprobador ? segundoAprobador.nombreCompleto : 'Gerencia General Prevista',
+        segundoAprobador: segundoAprobador ? {
+          id: segundoAprobador.idColaborador || segundoAprobador.id,
+          nombre: segundoAprobador.nombreCompleto || 'Gerencia General',
           email: emailSegundoDestino
         } : null,
         saldoDisponible: Number(saldoDisponible)
@@ -491,12 +522,14 @@ async function obtenerDatosSolicitud(idSolicitud) {
               WHERE IdColaborador = c.IdColaborador AND EsCerrado = 0
           ), 0.0) AS SaldoDisponible,
           -- Jefe Directo
-          j.IdColaborador AS IdJefeDirecto,
+          c.IdJefeDirecto,
+          j.IdColaborador AS IdJefeEncontrado,
           j.NombreCompleto AS JefeNombre,
           j.Email AS JefeEmail,
           j.EmailCorporativo AS JefeEmailCorporativo,
           -- Segundo Aprobador (Gerente)
-          j2.IdColaborador AS IdAprobadorSegundo,
+          ISNULL(s.IdAprobadorSegundo, c.IdAprobadorSegundo) AS IdAprobadorSegundo,
+          j2.IdColaborador AS IdSegundoEncontrado,
           j2.NombreCompleto AS SegundoAprobadorNombre,
           j2.Email AS SegundoAprobadorEmail,
           j2.EmailCorporativo AS SegundoAprobadorEmailCorporativo
@@ -517,13 +550,13 @@ async function obtenerDatosSolicitud(idSolicitud) {
       ? row.ColaboradorEmailCorporativo.trim()
       : (row.ColaboradorEmail && row.ColaboradorEmail.trim() ? row.ColaboradorEmail.trim() : (modoAuditoria ? 'colaborador.previsto@grupojama.com' : ''));
 
-    const emailJefeDestino = (row.JefeEmailCorporativo && row.JefeEmailCorporativo.trim())
+    const emailJefeReal = (row.JefeEmailCorporativo && row.JefeEmailCorporativo.trim())
       ? row.JefeEmailCorporativo.trim()
-      : (row.JefeEmail && row.JefeEmail.trim() ? row.JefeEmail.trim() : (modoAuditoria ? 'lider.previsto@grupojama.com' : ''));
+      : (row.JefeEmail && row.JefeEmail.trim() ? row.JefeEmail.trim() : '');
 
-    const emailSegundoDestino = (row.SegundoAprobadorEmailCorporativo && row.SegundoAprobadorEmailCorporativo.trim())
+    const emailSegundoReal = (row.SegundoAprobadorEmailCorporativo && row.SegundoAprobadorEmailCorporativo.trim())
       ? row.SegundoAprobadorEmailCorporativo.trim()
-      : (row.SegundoAprobadorEmail && row.SegundoAprobadorEmail.trim() ? row.SegundoAprobadorEmail.trim() : (modoAuditoria ? 'gerente.previsto@grupojama.com' : ''));
+      : (row.SegundoAprobadorEmail && row.SegundoAprobadorEmail.trim() ? row.SegundoAprobadorEmail.trim() : '');
 
     return {
       idSolicitud: row.IdSolicitud,
@@ -546,15 +579,17 @@ async function obtenerDatosSolicitud(idSolicitud) {
         sucursal: row.ColaboradorSucursal || 'Matriz',
         departamento: row.ColaboradorDepartamento || 'General'
       },
-      jefe: (row.IdJefeDirecto || modoAuditoria) ? {
-        id: row.IdJefeDirecto || 999999,
-        nombre: row.JefeNombre || 'Líder Operativo Previsto',
-        email: emailJefeDestino
+      idJefeDirecto: row.IdJefeDirecto || null,
+      idAprobadorSegundo: row.IdAprobadorSegundo || null,
+      jefe: (row.IdJefeDirecto && row.IdJefeEncontrado) ? {
+        id: row.IdJefeEncontrado,
+        nombre: row.JefeNombre || 'Líder Operativo',
+        email: emailJefeReal
       } : null,
-      segundoAprobador: (row.IdAprobadorSegundo || (modoAuditoria && row.Estado === 'PENDIENTE_GERENTE')) ? {
-        id: row.IdAprobadorSegundo || 999998,
-        nombre: row.SegundoAprobadorNombre || 'Gerencia General Prevista',
-        email: emailSegundoDestino
+      segundoAprobador: (row.IdAprobadorSegundo && row.IdSegundoEncontrado) ? {
+        id: row.IdSegundoEncontrado,
+        nombre: row.SegundoAprobadorNombre || 'Gerencia General',
+        email: emailSegundoReal
       } : null,
       saldoDisponible: Number(row.SaldoDisponible)
     };
@@ -567,32 +602,117 @@ async function obtenerDatosSolicitud(idSolicitud) {
 const emailService = {
   /**
    * Evento A: Nueva Solicitud Creada por Colaborador
-   * Destinatario: Jefe Directo (Líder asignado)
+   * Generación de PDF oficial FDO-84 en memoria y despacho jerárquico:
+   *  - Para (to): Jefe Directo (Nivel 1)
+   *  - Copia (cc): Segundo Aprobador (Gerente / Nivel 2) si está configurado
+   *  - Fallback / Resguardo: Si no tiene jefe/aprobador o correo no es válido,
+   *    canalizar a CORREO_AUDITORIA (soporte@grupojama.com) con aviso explicativo.
    */
   notificarNuevaSolicitud: async (idSolicitud) => {
     try {
       const data = await obtenerDatosSolicitud(idSolicitud);
       if (!data) return;
 
-      const { colaborador, jefe, folio, fechaInicio, fechaFin, totalDiasLaborables, saldoDisponible, motivoComentarios } = data;
-      const modoAuditoria = process.env.MODO_PRUEBAS_CORREO === 'true' || Boolean(process.env.CORREO_AUDITORIA);
-      const emailJefe = (jefe && jefe.email) ? jefe.email : (modoAuditoria ? 'lider.previsto@grupojama.com' : null);
+      const { 
+        colaborador, 
+        jefe, 
+        segundoAprobador, 
+        folio, 
+        fechaInicio, 
+        fechaFin, 
+        totalDiasLaborables, 
+        saldoDisponible, 
+        motivoComentarios,
+        idJefeDirecto
+      } = data;
 
-      if (!emailJefe) {
-        console.warn(`[NOTIFICACIONES EMAIL] Evento A omitido: El colaborador '${colaborador.nombre}' no tiene jefe directo asignado o el jefe carece de correo.`);
-        return;
+      const modoAuditoria = process.env.MODO_PRUEBAS_CORREO === 'true' || Boolean(process.env.CORREO_AUDITORIA);
+      const correoAuditoria = (process.env.CORREO_AUDITORIA || 'soporte@grupojama.com').trim();
+
+      // Validación de correo del Jefe Directo y Segundo Aprobador
+      const emailJefeValido = Boolean(jefe && jefe.email && jefe.email.includes('@'));
+      const emailSegundoValido = Boolean(segundoAprobador && segundoAprobador.email && segundoAprobador.email.includes('@'));
+
+      // Regla de Resguardo / Fallback Institucional
+      const esResguardo = !idJefeDirecto || !jefe || !emailJefeValido;
+
+      let emailDestinatarioPrincipal = null;
+      let emailDestinatarioCopia = null;
+      let motivoResguardo = null;
+
+      if (!esResguardo) {
+        // Flujo Jerárquico Normal
+        emailDestinatarioPrincipal = jefe.email.trim();
+        emailDestinatarioCopia = emailSegundoValido ? segundoAprobador.email.trim() : null;
+      } else {
+        // Fallback de Seguridad Institucional: canalizar a CORREO_AUDITORIA
+        emailDestinatarioPrincipal = correoAuditoria;
+        emailDestinatarioCopia = emailSegundoValido ? segundoAprobador.email.trim() : null;
+
+        if (!idJefeDirecto) {
+          motivoResguardo = 'El colaborador no cuenta con Jefe Directo configurado en el catálogo institucional (IdJefeDirecto es nulo).';
+        } else if (!jefe) {
+          motivoResguardo = `El colaborador tiene configurado IdJefeDirecto (${idJefeDirecto}), pero el registro del jefe no existe en el sistema.`;
+        } else {
+          motivoResguardo = `El Jefe Directo configurado (${jefe.nombre}) no cuenta con una dirección de correo válida (registrado: "${jefe.email || 'vacío'}").`;
+        }
+        console.warn(`[NOTIFICACIONES EMAIL] [REGLA RESGUARDO] Solicitud ${folio} (${colaborador.nombre}) canalizada a ${correoAuditoria}. Motivo: ${motivoResguardo}`);
       }
 
-      const nombreJefe = (jefe && jefe.nombre) ? jefe.nombre : 'Líder Operativo';
+      // 1. GENERACIÓN DEL PDF ADJUNTO (FDO-84) EN MEMORIA
+      let attachments = [];
+      try {
+        console.log(`[NOTIFICACIONES EMAIL] Generando PDF oficial FDO-84 en memoria para solicitud ${folio} (ID: ${idSolicitud})...`);
+        const pdfBuffer = await generarPdfFdo84(idSolicitud);
+        if (pdfBuffer && Buffer.isBuffer(pdfBuffer) && pdfBuffer.length > 0) {
+          const folioLimpio = String(folio || idSolicitud).trim().replace(/[^a-zA-Z0-9_-]/g, '_');
+          attachments.push({
+            filename: `FDO-84_Solicitud_${folioLimpio}.pdf`,
+            content: pdfBuffer,
+            contentType: 'application/pdf'
+          });
+          console.log(`[NOTIFICACIONES EMAIL] PDF FDO-84 adjuntado con éxito (${pdfBuffer.length} bytes): FDO-84_Solicitud_${folioLimpio}.pdf`);
+        } else {
+          console.warn(`[NOTIFICACIONES EMAIL] Buffer de PDF FDO-84 vacío o no válido para solicitud ${idSolicitud}.`);
+        }
+      } catch (pdfErr) {
+        console.error(`[NOTIFICACIONES EMAIL] Error no bloqueante al generar PDF FDO-84 para solicitud ${idSolicitud}:`, pdfErr.message);
+      }
+
+      // Preparación de contenidos del Correo
+      const nombreDestinatario = esResguardo 
+        ? 'Equipo de Desarrollo Organizacional / Soporte' 
+        : (jefe.nombre || 'Líder Operativo');
+
       const saldoRestanteEstimado = Math.max(0, saldoDisponible - totalDiasLaborables);
-      const asunto = `[Vacaciones Grupo JAMA] Nueva solicitud pendiente de aprobación - ${colaborador.nombre}`;
+      const asunto = esResguardo
+        ? `[Vacaciones Grupo JAMA] [AVISO DE RESGUARDO] Nueva solicitud pendiente - ${colaborador.nombre}`
+        : `[Vacaciones Grupo JAMA] Nueva solicitud pendiente de aprobación - ${colaborador.nombre}`;
 
       const cuerpoHtml = `
+        ${esResguardo ? `
+          <!-- ALERTA DE RESGUARDO INSTITUCIONAL -->
+          <div style="background-color:#fff1f2; border:1px solid #fecdd3; border-left:4px solid #e11d48; padding:14px 18px; margin:0 0 20px 0; border-radius:8px; color:#9f1239; font-family:-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;">
+            <div style="font-weight:bold; font-size:12px; margin-bottom:4px; text-transform:uppercase; letter-spacing:0.5px;">
+              🚨 AVISO DE RESGUARDO INSTITUCIONAL (SIN JEFATURA ASIGNADA)
+            </div>
+            <div style="font-size:13px; line-height:1.5;">
+              El colaborador <strong>${colaborador.nombre}</strong> (Nómina: ${colaborador.codigo || '—'}) ha generado una solicitud de vacaciones, pero el sistema detectó que <strong>no cuenta con una jefatura directa válida</strong>.
+              <br><br>
+              <strong>Detalle de validación:</strong> ${motivoResguardo}
+              <br><br>
+              Por política institucional de resguardo y seguridad, esta notificación y su formato oficial FDO-84 adjunto se canalizan automáticamente a <code>${correoAuditoria}</code> para su revisión manual, asignación de aprobador o gestión por Desarrollo Organizacional.
+            </div>
+          </div>
+        ` : ''}
+
         <p style="margin:0 0 16px 0;">
-          Estimado(a) <strong>${nombreJefe}</strong>,
+          Estimado(a) <strong>${nombreDestinatario}</strong>,
         </p>
         <p style="margin:0 0 16px 0;">
-          Se ha recibido una nueva solicitud de vacaciones en tu equipo que requiere tu revisión y autorización:
+          ${esResguardo 
+            ? `Se ha recibido una nueva solicitud de vacaciones en la plataforma que requiere atención institucional:` 
+            : `Se ha recibido una nueva solicitud de vacaciones en tu equipo que requiere tu revisión y autorización:`}
         </p>
 
         <!-- Tabla de Datos del Colaborador y Período -->
@@ -603,11 +723,11 @@ const emailService = {
           </tr>
           <tr>
             <td style="padding:10px 14px; border-bottom:1px solid #e2e8f0; color:#64748b; font-size:12px; font-weight:600;">No. Nómina:</td>
-            <td style="padding:10px 14px; border-bottom:1px solid #e2e8f0; color:#0f172a; font-size:13px; font-mono font-bold;">${colaborador.codigo}</td>
+            <td style="padding:10px 14px; border-bottom:1px solid #e2e8f0; color:#0f172a; font-size:13px; font-mono font-bold;">${colaborador.codigo || '—'}</td>
           </tr>
           <tr>
             <td style="padding:10px 14px; border-bottom:1px solid #e2e8f0; color:#64748b; font-size:12px; font-weight:600;">Puesto / Depto:</td>
-            <td style="padding:10px 14px; border-bottom:1px solid #e2e8f0; color:#0f172a; font-size:12px;">${colaborador.puesto}</td>
+            <td style="padding:10px 14px; border-bottom:1px solid #e2e8f0; color:#0f172a; font-size:12px;">${colaborador.puesto} (${colaborador.departamento})</td>
           </tr>
           <tr>
             <td style="padding:10px 14px; border-bottom:1px solid #e2e8f0; color:#64748b; font-size:12px; font-weight:600;">Empresa / Sucursal:</td>
@@ -630,11 +750,17 @@ const emailService = {
             </td>
           </tr>
           <tr>
-            <td style="padding:10px 14px; color:#64748b; font-size:12px; font-weight:600;">Saldo Restante Estimado:</td>
-            <td style="padding:10px 14px; color:#059669; font-size:13px; font-weight:bold;">
+            <td style="padding:10px 14px; border-bottom:1px solid #e2e8f0; color:#64748b; font-size:12px; font-weight:600;">Saldo Restante Estimado:</td>
+            <td style="padding:10px 14px; border-bottom:1px solid #e2e8f0; color:#059669; font-size:13px; font-weight:bold;">
               ${saldoRestanteEstimado.toFixed(1)} días disponibles
             </td>
           </tr>
+          ${emailDestinatarioCopia ? `
+            <tr>
+              <td style="padding:10px 14px; color:#64748b; font-size:12px; font-weight:600;">Copia (CC Nivel 2):</td>
+              <td style="padding:10px 14px; color:#475569; font-size:12px;">${segundoAprobador ? segundoAprobador.nombre : 'Gerencia'} (${emailDestinatarioCopia})</td>
+            </tr>
+          ` : ''}
         </table>
 
         ${motivoComentarios ? `
@@ -643,23 +769,37 @@ const emailService = {
           </div>
         ` : ''}
 
+        <p style="margin:16px 0; font-size:12px; color:#475569; background-color:#f8fafc; border:1px dashed #cbd5e1; padding:10px 14px; border-radius:8px;">
+          📎 <strong>Formato Oficial Adjunto:</strong> Se incluye el archivo PDF oficial <code>FDO-84_Solicitud_${String(folio || idSolicitud).trim().replace(/[^a-zA-Z0-9_-]/g, '_')}.pdf</code> con sellos digitales en estatus <em>PENDIENTE DE AUTORIZACIÓN</em>.
+        </p>
+
         <p style="margin:16px 0 0 0;">
-          Por favor ingresa a la plataforma para autorizar o declinar esta solicitud según las necesidades operativas del área.
+          ${esResguardo 
+            ? 'Por favor ingresa a la plataforma para dar seguimiento administrativo o regularizar la jefatura de este colaborador.' 
+            : 'Por favor ingresa a la plataforma para autorizar o declinar esta solicitud según las necesidades operativas del área.'}
         </p>
       `;
 
       const html = generarPlantillaHtml({
-        titulo: 'Nueva Solicitud Pendiente de Aprobación',
-        badgeTexto: 'Pendiente de Aprobación',
-        badgeColor: '#1e40af',
-        badgeBg: '#eff6ff',
-        badgeBorder: '#bfdbfe',
+        titulo: esResguardo ? 'Aviso de Resguardo: Solicitud Sin Jefatura Asignada' : 'Nueva Solicitud Pendiente de Aprobación',
+        badgeTexto: esResguardo ? 'Resguardo Institucional' : 'Pendiente de Aprobación',
+        badgeColor: esResguardo ? '#991b1b' : '#1e40af',
+        badgeBg: esResguardo ? '#fff1f2' : '#eff6ff',
+        badgeBorder: esResguardo ? '#fecdd3' : '#bfdbfe',
         cuerpoHtml,
-        ctaTexto: 'Revisar en Bandeja del Líder',
-        ctaUrl: '/lider/aprobaciones'
+        ctaTexto: esResguardo ? 'Revisar Solicitud en la Plataforma' : 'Revisar en Bandeja del Líder',
+        ctaUrl: esResguardo ? '/portal' : '/lider/aprobaciones'
       });
 
-      await enviarEmail({ to: emailJefe, subject: asunto, html, tipoEvento: 'NUEVA_SOLICITUD', folioSolicitud: folio });
+      await enviarEmail({
+        to: emailDestinatarioPrincipal,
+        cc: emailDestinatarioCopia,
+        subject: asunto,
+        html,
+        attachments,
+        tipoEvento: 'NUEVA_SOLICITUD',
+        folioSolicitud: folio
+      });
     } catch (err) {
       console.error('[NOTIFICACIONES EMAIL] Error en notificarNuevaSolicitud:', err.message);
     }
