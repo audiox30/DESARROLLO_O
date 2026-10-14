@@ -1567,27 +1567,6 @@ export default function AdminColaboradoresPage({ currentUser }) {
                     </div>
                   </div>
 
-                  {/* Correo Nómina / Personal (Solo Lectura) */}
-                  <div className="sm:col-span-2">
-                    <label className="block text-xs font-bold text-slate-500 mb-1 flex items-center justify-between">
-                      <span className="flex items-center gap-1.5">
-                        <Lock className="w-3.5 h-3.5 text-slate-400" />
-                        Correo Nómina / Personal
-                      </span>
-                      <span className="text-[10px] text-slate-400 font-semibold bg-slate-100 px-1.5 py-0.5 rounded">
-                        Solo Lectura (CONTPAQi) 🔒
-                      </span>
-                    </label>
-                    <input
-                      type="text"
-                      disabled
-                      value={colabEditar.Email || 'Sin correo registrado en nómina'}
-                      className="w-full px-3 py-2 bg-slate-100 border border-slate-200 text-slate-500 rounded-xl text-xs cursor-not-allowed select-all"
-                    />
-                    <p className="text-[10px] text-slate-400 mt-1">
-                      Cuenta alternativa de respaldo sincronizada desde CONTPAQi Nóminas.
-                    </p>
-                  </div>
 
                   {/* Contacto de Emergencia: Nombre */}
                   <div>
