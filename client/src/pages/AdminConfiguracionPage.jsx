@@ -71,9 +71,9 @@ export default function AdminConfiguracionPage({ currentUser, onNavigateTab }) {
     CONTPAQI_SYNC_AUTO: 'true',
     CONTPAQI_SYNC_HORA: '02:00',
     // EMAIL
-    SMTP_HOST: '192.168.20.29',
+    SMTP_HOST: '192.168.20.16',
     SMTP_PORT: '25',
-    SMTP_USER: 'notificaciones@grupojama.com.mx',
+    SMTP_USER: 'comprobante.fiscal@grupojama.com',
     SMTP_PASS: '',
     SMTP_SECURE: 'false',
     SMTP_FROM_NAME: 'Control de Vacaciones Grupo JAMA',

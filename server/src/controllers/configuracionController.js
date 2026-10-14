@@ -164,13 +164,14 @@ const configuracionController = {
       }
 
       // Parámetros por defecto
-      host = host || process.env.SMTP_HOST || '192.168.20.29';
+      host = host || process.env.SMTP_HOST || '192.168.20.16';
       port = parseInt(port || process.env.SMTP_PORT || '25', 10);
       user = user !== undefined ? user : (process.env.SMTP_USER || '');
       pass = pass !== undefined ? pass : (process.env.SMTP_PASS || '');
       const isSecure = secure === true || secure === 'true' || port === 465;
-      const remitente = `${fromName || 'Grupo JAMA Notificaciones'} <${user || 'notificaciones@grupojama.com.mx'}>`;
-      const targetEmail = destinatario || req.user?.email || req.user?.Email || 'sistemas@grupojama.com.mx';
+      const rawFrom = process.env.SMTP_FROM || `${fromName || 'Control de Vacaciones Grupo JAMA'} <${user || 'comprobante.fiscal@grupojama.com'}>`;
+      const remitente = rawFrom.replace(/^["']|["']$/g, '');
+      const targetEmail = destinatario || req.user?.email || req.user?.Email || 'soporte@grupojama.com';
 
       if (!host) {
         return res.status(400).json({

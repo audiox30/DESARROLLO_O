@@ -1083,5 +1083,6 @@ const emailService = {
 emailService.crearTransportadorSmtp = crearTransportadorSmtp;
 emailService.obtenerConfiguracionEmail = obtenerConfiguracionEmail;
 emailService.registrarLogEnvio = registrarLogEnvio;
+emailService.enviarEmail = enviarEmail;
 
 module.exports = emailService;
