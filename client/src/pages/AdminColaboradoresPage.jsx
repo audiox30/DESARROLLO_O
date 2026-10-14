@@ -1301,21 +1301,50 @@ export default function AdminColaboradoresPage({ currentUser }) {
                         Grupo C: Datos Personales
                       </h4>
                     </div>
-                    <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
-                      <CampoSoloLectura 
-                        label="Fecha de Nacimiento" 
-                        valor={formatearFecha(colabEditar.FechaNacimiento)} 
-                        icono={Calendar} 
-                      />
-                      <CampoSoloLectura 
-                        label="Género" 
-                        valor={colabEditar.Genero || (colabEditar.Sexo === 'F' ? 'Mujer' : 'Hombre')} 
-                        icono={Lock} 
-                      />
-                      <CampoSoloLectura label="Estado Civil" valor={colabEditar.EstadoCivil} icono={User} />
-                      <CampoSoloLectura label="Nacionalidad" valor={colabEditar.Nacionalidad} icono={User} />
-                      <CampoSoloLectura label="Correo Nómina / Personal" valor={colabEditar.Email} icono={Mail} placeholderVacio="Sin correo registrado en nómina" />
-                      <CampoSoloLectura label="Correo Corporativo (Directorio)" valor={colabEditar.EmailCorporativo} icono={Mail} placeholderVacio="Sin correo corporativo asignado" />
+                    <div className="space-y-3">
+                      {/* Fila 1 (3 columnas): Fecha de Nacimiento, Género, Estado Civil */}
+                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                        <CampoSoloLectura 
+                          label="Fecha de Nacimiento" 
+                          valor={formatearFecha(colabEditar.FechaNacimiento)} 
+                          icono={Calendar} 
+                        />
+                        <CampoSoloLectura 
+                          label="Género" 
+                          valor={colabEditar.Genero || (colabEditar.Sexo === 'F' ? 'Mujer' : 'Hombre')} 
+                          icono={Lock} 
+                        />
+                        <CampoSoloLectura 
+                          label="Estado Civil" 
+                          valor={colabEditar.EstadoCivil} 
+                          icono={User} 
+                        />
+                      </div>
+
+                      {/* Fila 2 (2 columnas): CURP, Nacionalidad */}
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                        <CampoSoloLectura 
+                          label="CURP" 
+                          valor={colabEditar.CURP} 
+                          icono={ShieldCheck} 
+                          monospace 
+                        />
+                        <CampoSoloLectura 
+                          label="Nacionalidad" 
+                          valor={colabEditar.Nacionalidad} 
+                          icono={User} 
+                        />
+                      </div>
+
+                      {/* Fila 3 (Ancho completo): Correo Nómina / Personal */}
+                      <div>
+                        <CampoSoloLectura 
+                          label="Correo Nómina / Personal" 
+                          valor={colabEditar.Email} 
+                          icono={Mail} 
+                          placeholderVacio="Sin correo registrado en nómina" 
+                        />
+                      </div>
                     </div>
                   </div>
 
