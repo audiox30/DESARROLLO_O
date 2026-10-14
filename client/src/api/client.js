@@ -111,6 +111,7 @@ export const api = {
   // Colaboradores & Saldos
   getColaboradores: (params = '') => request(`/colaboradores${params ? '?' + params : ''}`),
   getMiSaldo: () => request('/colaboradores/saldo'),
+  getDesgloseSaldo: (id) => request(`/colaboradores/${id}/desglose-saldo`),
   getEquipoLider: () => request('/colaboradores/equipo'),
   getColaborador: (id) => request(`/colaboradores/${id}`),
   updateColaborador: (id, data) => request(`/colaboradores/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
@@ -243,6 +244,13 @@ export const api = {
   getReporteSaldos: (params = '') => request(`/reportes/saldos${params ? '?' + params : ''}`),
   descargarReporteSaldosExcel: (params = '') => 
     api.descargarExcel(`/reportes/saldos?format=xlsx${params ? '&' + params : ''}`, `SALDOS_VACACIONES_JAMA_${new Date().toISOString().split('T')[0]}.xlsx`),
+
+  // Ajuste y Carga de Saldos Iniciales (ADMIN_DO / SISTEMAS)
+  ajustarSaldoIndividual: (data) => request('/admin/saldos/ajuste-individual', { method: 'POST', body: JSON.stringify(data) }),
+  descargarPlantillaSaldosExcel: () => api.descargarExcel('/admin/saldos/plantilla-excel', 'Plantilla_Saldos_Iniciales_Grupo_JAMA.xlsx'),
+  cargarSaldosMasivos: (registros) => request('/admin/saldos/carga-masiva', { method: 'POST', body: JSON.stringify({ registros }) }),
+  getBitacoraAjustesSaldo: (idColaborador) => request(`/admin/saldos/bitacora/${idColaborador}`),
+  getDesgloseSaldo: (idColaborador) => request(`/colaboradores/${idColaborador}/desglose-saldo`),
 
   getReporteCalendarioAusencias: (params = '') => request(`/reportes/calendario-ausencias${params ? '?' + params : ''}`),
   descargarReporteCalendarioAusenciasExcel: (params = '') => 

@@ -4,26 +4,48 @@ const { calcularDetalleDias } = require('../services/diasHabilesService');
 const emailService = require('../services/emailService');
 const { generarPdfFdo84 } = require('../services/pdfFdo84Service');
 
+function safeDateISO(val, len) {
+  if (!val) return '';
+  if (Array.isArray(val)) {
+    for (const item of val) {
+      if (typeof item === 'string' && /^\d{4}-\d{2}-\d{2}/.test(item)) {
+        return len ? item.substring(0, len) : item;
+      }
+    }
+    val = val[0];
+  }
+  if (typeof val === 'string') return len ? val.substring(0, len) : val;
+  try {
+    const d = new Date(val);
+    if (isNaN(d.getTime())) return '';
+    const iso = d.toISOString();
+    return len ? iso.substring(0, len) : iso;
+  } catch (e) {
+    return '';
+  }
+}
+
 function formatearSolicitud(s) {
   if (!s) return s;
   const id = Number(s.IdSolicitud ?? s.idSolicitud ?? s.id);
   const folio = s.Folio ?? s.folio ?? (id ? `VAC-${id}` : '');
   
-  const fechaInicioStr = s.FechaInicio 
-    ? (typeof s.FechaInicio === 'string' ? s.FechaInicio.substring(0, 10) : new Date(s.FechaInicio).toISOString().substring(0, 10))
-    : (s.fechaInicio || '');
-  const fechaFinStr = s.FechaFin 
-    ? (typeof s.FechaFin === 'string' ? s.FechaFin.substring(0, 10) : new Date(s.FechaFin).toISOString().substring(0, 10))
-    : (s.fechaFin || '');
-  const fechaCreacionStr = s.FechaCreacion 
-    ? (typeof s.FechaCreacion === 'string' ? s.FechaCreacion : new Date(s.FechaCreacion).toISOString())
-    : (s.fechaCreacion || new Date().toISOString());
+  const fechaInicioStr = safeDateISO(s.FechaInicio || s.fechaInicio || s.fecha_inicio, 10);
+  const fechaFinStr = safeDateISO(s.FechaFin || s.fechaFin || s.fecha_fin, 10);
+  const fechaCreacionStr = safeDateISO(s.FechaCreacion || s.fechaCreacion || s.fecha_creacion, 10) || new Date().toISOString().substring(0, 10);
 
   const totalDias = Number(s.TotalDiasLaborables ?? s.totalDiasLaborables ?? s.diasHabiles ?? s.total_dias ?? 0);
   const estado = s.Estado ?? s.estado ?? 'PENDIENTE_LIDER';
   const motivoComentarios = s.MotivoComentarios ?? s.motivoComentarios ?? '';
   const motivoRechazo = s.MotivoRechazo ?? s.motivoRechazo ?? null;
   const fechaResolucion = s.FechaResolucion ?? s.fechaResolucion ?? null;
+
+  const colabNombre = s.Colaborador || s.ColaboradorNombre || s.NombreCompleto || s.colaboradorNombre || '';
+  const codEmpleado = s.CodigoEmpleado || s.codigoEmpleado || '';
+  const empresaVal = s.Empresa || s.empresa || s.colaboradorEmpresa || '';
+  const sucursalVal = s.Sucursal || s.sucursal || s.colaboradorSucursal || '';
+  const puestoVal = s.Puesto || s.puesto || s.colaboradorPuesto || '';
+  const deptoVal = s.Departamento || s.departamento || s.colaboradorDepartamento || '';
 
   return {
     ...s,
@@ -42,8 +64,16 @@ function formatearSolicitud(s) {
     motivoComentarios,
     motivoRechazo,
     fechaResolucion,
-    colaboradorNombre: s.ColaboradorNombre || s.NombreCompleto || s.colaboradorNombre || '',
-    codigoEmpleado: s.CodigoEmpleado || s.codigoEmpleado || '',
+    colaboradorNombre: colabNombre,
+    codigoEmpleado: codEmpleado,
+    colaboradorEmpresa: empresaVal,
+    colaboradorSucursal: sucursalVal,
+    colaboradorPuesto: puestoVal,
+    colaboradorDepartamento: deptoVal,
+    empresa: empresaVal,
+    sucursal: sucursalVal,
+    puesto: puestoVal,
+    departamento: deptoVal,
     // PascalCase para compatibilidad
     IdSolicitud: id,
     Folio: folio,
@@ -54,7 +84,15 @@ function formatearSolicitud(s) {
     Estado: estado,
     MotivoComentarios: motivoComentarios,
     MotivoRechazo: motivoRechazo,
-    FechaResolucion: fechaResolucion
+    FechaResolucion: fechaResolucion,
+    Colaborador: colabNombre,
+    ColaboradorNombre: colabNombre,
+    NombreCompleto: colabNombre,
+    CodigoEmpleado: codEmpleado,
+    Empresa: empresaVal,
+    Sucursal: sucursalVal,
+    Puesto: puestoVal,
+    Departamento: deptoVal
   };
 }
 
@@ -215,11 +253,15 @@ const solicitudesController = {
         const result = await pool.request()
           .input('IdLider', idLider)
           .query(`
-            SELECT s.*, 
-                   CONVERT(VARCHAR(10), s.FechaInicio, 23) AS FechaInicio,
-                   CONVERT(VARCHAR(10), s.FechaFin, 23) AS FechaFin,
+            SELECT 
+                   s.IdSolicitud, s.Folio, s.IdColaborador,
+                   CONVERT(VARCHAR(10), s.FechaInicio, 120) AS FechaInicio,
+                   CONVERT(VARCHAR(10), s.FechaFin, 120) AS FechaFin,
                    CONVERT(VARCHAR(19), s.FechaCreacion, 120) AS FechaCreacion,
-                   c.NombreCompleto, c.CodigoEmpleado, p.Nombre AS Puesto, d.Nombre AS Departamento,
+                   s.TotalDiasLaborables, s.MotivoComentarios, s.Estado,
+                   s.MotivoRechazo, s.FechaResolucion,
+                   c.NombreCompleto, c.CodigoEmpleado, c.Empresa, c.Sucursal,
+                   p.Nombre AS Puesto, d.Nombre AS Departamento,
                    CASE WHEN s.Estado = 'PENDIENTE_GERENTE' THEN 2 ELSE 1 END AS NivelAprobacionRequerido
             FROM dbo.SolicitudesVacaciones s
             JOIN dbo.Colaboradores c ON c.IdColaborador = s.IdColaborador
@@ -261,17 +303,29 @@ const solicitudesController = {
       } else {
         const pool = await getPool();
         const result = await pool.request().query(`
-          SELECT s.*, 
-                 CONVERT(VARCHAR(10), s.FechaInicio, 23) AS FechaInicio,
-                 CONVERT(VARCHAR(10), s.FechaFin, 23) AS FechaFin,
-                 CONVERT(VARCHAR(19), s.FechaCreacion, 120) AS FechaCreacion,
-                 c.NombreCompleto, c.CodigoEmpleado, c.Empresa, c.Sucursal,
-                 p.Nombre AS Puesto, d.Nombre AS Departamento
+          SELECT 
+              s.IdSolicitud,
+              s.Folio,
+              CONVERT(VARCHAR(10), s.FechaInicio, 120) AS FechaInicio,
+              CONVERT(VARCHAR(10), s.FechaFin, 120) AS FechaFin,
+              s.TotalDiasLaborables,
+              s.Estado,
+              CONVERT(VARCHAR(10), s.FechaCreacion, 120) AS FechaCreacion,
+              s.MotivoComentarios,
+              s.MotivoRechazo,
+              s.FechaResolucion,
+              c.IdColaborador,
+              c.CodigoEmpleado,
+              c.NombreCompleto AS Colaborador,
+              c.Empresa,
+              c.Sucursal,
+              p.Nombre AS Puesto,
+              d.Nombre AS Departamento
           FROM dbo.SolicitudesVacaciones s
-          JOIN dbo.Colaboradores c ON c.IdColaborador = s.IdColaborador
+          INNER JOIN dbo.Colaboradores c ON c.IdColaborador = s.IdColaborador
           LEFT JOIN dbo.Puestos p ON p.IdPuesto = c.IdPuesto
           LEFT JOIN dbo.Departamentos d ON d.IdDepartamento = c.IdDepartamento
-          ORDER BY s.FechaCreacion DESC
+          ORDER BY s.FechaCreacion DESC;
         `);
         const data = result.recordset.map(formatearSolicitud);
         return res.json({ success: true, total: data.length, data });

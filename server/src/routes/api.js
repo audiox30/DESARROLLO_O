@@ -80,6 +80,9 @@ router.get('/empresas', authMiddleware, async (req, res) => {
 // =========================================================================
 router.get('/colaboradores', authMiddleware, colaboradoresController.getAll);
 router.get('/colaboradores/saldo', authMiddleware, colaboradoresController.getMiSaldo);
+router.get('/portal/mi-saldo', authMiddleware, colaboradoresController.getMiSaldo);
+router.get('/portal/resumen', authMiddleware, colaboradoresController.getMiSaldo);
+router.get('/colaboradores/:id/desglose-saldo', authMiddleware, checkHierarchyOrSelf, colaboradoresController.getDesgloseSaldo);
 router.get('/colaboradores/equipo', authMiddleware, requireRole('LIDER', 'ADMIN_DO'), colaboradoresController.getEquipoLider);
 router.get('/colaboradores/:id', authMiddleware, checkHierarchyOrSelf, colaboradoresController.getById);
 router.put('/colaboradores/:id', authMiddleware, checkHierarchyOrSelf, colaboradoresController.update);
@@ -106,6 +109,8 @@ router.get('/solicitudes/mis-solicitudes', authMiddleware, solicitudesController
 router.get('/solicitudes/colaborador/:id', authMiddleware, checkHierarchyOrSelf, solicitudesController.getByColaborador);
 router.get('/solicitudes/bandeja-lider', authMiddleware, requireRole('LIDER', 'ADMIN_DO'), liderController.getSolicitudesPendientes);
 router.get('/solicitudes/bandeja-do', authMiddleware, requireRole('ADMIN_DO', 'SUPERADMIN', 'SISTEMAS'), solicitudesController.getBandejaDO);
+router.get('/solicitudes/globales', authMiddleware, requireRole('ADMIN_DO', 'SUPERADMIN', 'SISTEMAS'), solicitudesController.getBandejaDO);
+router.get('/admin/solicitudes', authMiddleware, requireRole('ADMIN_DO', 'SUPERADMIN', 'SISTEMAS'), solicitudesController.getBandejaDO);
 router.get('/solicitudes/:id', authMiddleware, checkSolicitudAccess, solicitudesController.getById);
 router.get('/solicitudes/:id/pdf', authMiddleware, solicitudesController.descargarPdfFdo84);
 router.post('/solicitudes/:id/cancelar', authMiddleware, checkSolicitudAccess, solicitudesController.cancelar);
@@ -122,6 +127,14 @@ router.post('/aprobaciones/simular-teams', authMiddleware, aprobacionesControlle
 // =========================================================================
 router.get('/saldos/kardex-global', authMiddleware, requireRole('ADMIN_DO', 'SUPERADMIN', 'SISTEMAS'), saldosController.getKardexGlobal);
 router.get('/saldos/colaborador/:id', authMiddleware, checkHierarchyOrSelf, saldosController.getKardexColaborador);
+router.post('/admin/saldos/ajuste-individual', authMiddleware, requireRole('ADMIN_DO', 'SUPERADMIN', 'SISTEMAS'), saldosController.ajusteIndividual);
+router.post('/saldos/ajuste-individual', authMiddleware, requireRole('ADMIN_DO', 'SUPERADMIN', 'SISTEMAS'), saldosController.ajusteIndividual);
+router.get('/admin/saldos/plantilla-excel', authMiddleware, requireRole('ADMIN_DO', 'SUPERADMIN', 'SISTEMAS'), saldosController.descargarPlantillaExcel);
+router.get('/saldos/plantilla-excel', authMiddleware, requireRole('ADMIN_DO', 'SUPERADMIN', 'SISTEMAS'), saldosController.descargarPlantillaExcel);
+router.post('/admin/saldos/carga-masiva', authMiddleware, requireRole('ADMIN_DO', 'SUPERADMIN', 'SISTEMAS'), saldosController.cargaMasiva);
+router.post('/saldos/carga-masiva', authMiddleware, requireRole('ADMIN_DO', 'SUPERADMIN', 'SISTEMAS'), saldosController.cargaMasiva);
+router.get('/admin/saldos/bitacora/:id', authMiddleware, requireRole('ADMIN_DO', 'SUPERADMIN', 'SISTEMAS'), saldosController.getBitacoraColaborador);
+router.get('/saldos/bitacora/:id', authMiddleware, requireRole('ADMIN_DO', 'SUPERADMIN', 'SISTEMAS'), saldosController.getBitacoraColaborador);
 
 // =========================================================================
 // 7. MÓDULO DE DÍAS INHÁBILES Y CALENDARIO OFICIAL

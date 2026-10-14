@@ -4,9 +4,12 @@ import {
   Users, Search, Filter, RefreshCw, KeyRound, Edit3, 
   ShieldCheck, AlertCircle, CheckCircle2, X, Phone, Heart, 
   Clock, Shield, ArrowUpDown, Copy, Check, Baby, Eye, Trash2, Plus, Calendar,
-  ChevronDown, ChevronUp, Lock, Building2, User, CreditCard, Briefcase, Mail, MapPin
+  ChevronDown, ChevronUp, Lock, Building2, User, CreditCard, Briefcase, Mail, MapPin,
+  Sliders, Upload
 } from 'lucide-react';
 import { api } from '../api/client';
+import ModalCargaMasivaSaldos from '../components/ModalCargaMasivaSaldos';
+import SeccionAjusteSaldo from '../components/SeccionAjusteSaldo';
 import { 
   formatearNombreColaborador, 
   formatearEtiquetaSelector, 
@@ -302,7 +305,10 @@ function calcularEdad(fechaNacimiento) {
     return 'No especificada';
   }
 }
-export default function AdminColaboradoresPage() {
+export default function AdminColaboradoresPage({ currentUser }) {
+  const userActual = currentUser || JSON.parse(localStorage.getItem('jama_vacaciones_user') || '{}');
+  const esAdminDO = userActual?.rolApp === 'ADMIN_DO' || userActual?.rolApp === 'SUPERADMIN' || userActual?.rolApp === 'SISTEMAS' || userActual?.rol === 'ADMIN_DO' || userActual?.rol === 'SUPERADMIN' || userActual?.rol === 'SISTEMAS' || userActual?.username === 'sistemas';
+
   const [colaboradores, setColaboradores] = useState([]);
   const [todosLosJefes, setTodosLosJefes] = useState([]);
   const [total, setTotal] = useState(0);
@@ -324,6 +330,8 @@ export default function AdminColaboradoresPage() {
   const [guardandoEditar, setGuardandoEditar] = useState(false);
   const [errorEditar, setErrorEditar] = useState('');
   const [acordeonNominaAbierto, setAcordeonNominaAbierto] = useState(true);
+  const [pestanaModal, setPestanaModal] = useState('general'); // 'general' | 'ajuste_saldo'
+  const [mostrarModalCargaMasiva, setMostrarModalCargaMasiva] = useState(false);
 
   // Modal Ficha Completa
   const [colabFicha, setColabFicha] = useState(null);
@@ -503,6 +511,7 @@ export default function AdminColaboradoresPage() {
     setColabEditar(c);
     setIsReadOnly(Boolean(readOnly));
     setAcordeonNominaAbierto(true);
+    setPestanaModal('general');
     setFormEditar({
       idJefeDirecto: c.IdJefeDirecto || '',
       idAprobadorSegundo: c.IdAprobadorSegundo || '',
@@ -795,20 +804,34 @@ export default function AdminColaboradoresPage() {
           </p>
         </div>
 
-        <button
-          type="button"
-          onClick={handleSincronizarContpaqi}
-          disabled={sincronizando}
-          title="Ejecuta la sincronización de altas, bajas y datos maestros desde las bases de datos de CONTPAQi Nóminas hacia la app."
-          className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-bold transition shadow-xs shrink-0 select-none ${
-            sincronizando
-              ? 'bg-blue-50 text-blue-700 border border-blue-200 cursor-not-allowed opacity-90'
-              : 'bg-white hover:bg-slate-50 text-slate-700 hover:text-blue-700 border border-slate-200 hover:border-blue-300 cursor-pointer'
-          }`}
-        >
-          <RefreshCw className={`w-3.5 h-3.5 ${sincronizando ? 'animate-spin text-blue-600' : 'text-slate-500'}`} />
-          <span>{sincronizando ? 'Sincronizando...' : 'Sincronizar desde CONTPAQi® Nóminas'}</span>
-        </button>
+        <div className="flex items-center gap-2.5 flex-wrap shrink-0">
+          {esAdminDO && (
+            <button
+              type="button"
+              onClick={() => setMostrarModalCargaMasiva(true)}
+              title="Carga masiva de saldos iniciales reales de vacaciones mediante archivo Excel (.xlsx)"
+              className="flex items-center gap-2 px-3.5 py-2.5 rounded-xl text-xs font-bold transition shadow-xs select-none bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-300 hover:border-emerald-400 cursor-pointer active:scale-[0.98]"
+            >
+              <Upload className="w-3.5 h-3.5 text-emerald-700" />
+              <span>📤 Cargar Saldos Iniciales (Excel)</span>
+            </button>
+          )}
+
+          <button
+            type="button"
+            onClick={handleSincronizarContpaqi}
+            disabled={sincronizando}
+            title="Ejecuta la sincronización de altas, bajas y datos maestros desde las bases de datos de CONTPAQi Nóminas hacia la app."
+            className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-bold transition shadow-xs select-none ${
+              sincronizando
+                ? 'bg-blue-50 text-blue-700 border border-blue-200 cursor-not-allowed opacity-90'
+                : 'bg-white hover:bg-slate-50 text-slate-700 hover:text-blue-700 border border-slate-200 hover:border-blue-300 cursor-pointer'
+            }`}
+          >
+            <RefreshCw className={`w-3.5 h-3.5 ${sincronizando ? 'animate-spin text-blue-600' : 'text-slate-500'}`} />
+            <span>{sincronizando ? 'Sincronizando...' : 'Sincronizar desde CONTPAQi® Nóminas'}</span>
+          </button>
+        </div>
       </div>
 
       {/* Barra de Filtros en Cascada */}
@@ -1136,8 +1159,51 @@ export default function AdminColaboradoresPage() {
               </button>
             </div>
 
-            {/* ACORDEÓN: DATOS MAESTROS DE NÓMINA (CONTPAQi NÓMINAS) - SOLO LECTURA */}
-            <div className="mt-4 border border-slate-200 rounded-2xl overflow-hidden bg-slate-50/50 shadow-2xs">
+            {/* Pestañas de Navegación del Modal */}
+            <div className="flex items-center gap-2 border-b border-slate-200 mt-4 pb-2 text-xs">
+              <button
+                type="button"
+                onClick={() => setPestanaModal('general')}
+                className={`px-3.5 py-1.5 rounded-xl font-bold transition flex items-center gap-1.5 cursor-pointer ${
+                  pestanaModal === 'general'
+                    ? 'bg-blue-600 text-white shadow-2xs'
+                    : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                }`}
+              >
+                <User className="w-3.5 h-3.5" />
+                <span>Datos Generales y Nómina</span>
+              </button>
+
+              {esAdminDO && (
+                <button
+                  type="button"
+                  onClick={() => setPestanaModal('ajuste_saldo')}
+                  className={`px-3.5 py-1.5 rounded-xl font-bold transition flex items-center gap-1.5 cursor-pointer ${
+                    pestanaModal === 'ajuste_saldo'
+                      ? 'bg-purple-700 text-white shadow-2xs'
+                      : 'bg-purple-50 text-purple-800 hover:bg-purple-100 border border-purple-200'
+                  }`}
+                >
+                  <Sliders className="w-3.5 h-3.5" />
+                  <span>⚙️ Ajuste de Saldo de Vacaciones / Saldo Inicial</span>
+                </button>
+              )}
+            </div>
+
+            {pestanaModal === 'ajuste_saldo' ? (
+              <div className="mt-4">
+                <SeccionAjusteSaldo 
+                  colaborador={colabEditar} 
+                  onSuccess={() => {
+                    cargarColaboradores();
+                    setToast('Saldo inicial actualizado exitosamente.');
+                  }} 
+                />
+              </div>
+            ) : (
+              <div>
+                {/* ACORDEÓN: DATOS MAESTROS DE NÓMINA (CONTPAQi NÓMINAS) - SOLO LECTURA */}
+                <div className="mt-4 border border-slate-200 rounded-2xl overflow-hidden bg-slate-50/50 shadow-2xs">
               <button
                 type="button"
                 onClick={() => setAcordeonNominaAbierto(!acordeonNominaAbierto)}
@@ -1615,8 +1681,10 @@ export default function AdminColaboradoresPage() {
               </form>
             </div>
           </div>
-        </div>
-      )}
+        )}
+      </div>
+    </div>
+  )}
 
 
 
@@ -2261,6 +2329,16 @@ export default function AdminColaboradoresPage() {
         </div>,
         document.body
       )}
+
+      {/* Modal de Carga Masiva de Saldos Iniciales (Excel) */}
+      <ModalCargaMasivaSaldos
+        isOpen={mostrarModalCargaMasiva}
+        onClose={() => setMostrarModalCargaMasiva(false)}
+        onSuccess={() => {
+          cargarColaboradores();
+          setToast('Carga masiva de saldos aplicada exitosamente.');
+        }}
+      />
 
     </div>
   );

@@ -1,12 +1,21 @@
 import React from 'react';
 import { Calendar, Clock, CheckCircle2, Award, Info } from 'lucide-react';
 
-export default function StatCards({ resumen, colaborador }) {
+export default function StatCards({ resumen, colaborador, onAbrirDesglose }) {
   if (!resumen) return null;
+
+  // 1. Días por Ley LFT (Correspondientes al ciclo o períodos vigentes dentro de 18 meses)
+  const diasLey = resumen.diasLeyVigentes ?? (resumen.diasCorrespondientes !== undefined ? resumen.diasCorrespondientes : 0);
+  // 2. Días Disfrutados
+  const diasDisfrutados = resumen.diasDisfrutados ?? resumen.diasGozados ?? 0;
+  // 3. En Trámite
+  const diasEnTramite = resumen.diasEnTramite ?? 0;
+  // 4. Saldo Disponible
+  const saldoDisponible = resumen.saldoDisponible ?? resumen.diasDisponibles ?? 0;
 
   return (
     <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-      {/* 1. Días por Ley LFT */}
+      {/* 1. Días por Ley LFT (Vigentes) */}
       <div className="bg-white rounded-2xl p-4 sm:p-5 border border-slate-200/80 shadow-xs relative overflow-hidden">
         <div className="flex items-center justify-between">
           <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Días por Ley LFT</span>
@@ -16,7 +25,7 @@ export default function StatCards({ resumen, colaborador }) {
         </div>
         <div className="mt-2.5 flex items-baseline gap-1">
           <span className="text-3xl font-extrabold text-slate-900 tracking-tight">
-            {resumen.diasCorrespondientes}
+            {diasLey}
           </span>
           <span className="text-xs text-slate-500 font-medium">días</span>
         </div>
@@ -26,7 +35,7 @@ export default function StatCards({ resumen, colaborador }) {
         <div className="absolute -bottom-6 -right-6 w-16 h-16 bg-blue-500/5 rounded-full blur-xl pointer-events-none" />
       </div>
 
-      {/* 2. Días Gozados */}
+      {/* 2. Días Disfrutados */}
       <div className="bg-white rounded-2xl p-4 sm:p-5 border border-slate-200/80 shadow-xs relative overflow-hidden">
         <div className="flex items-center justify-between">
           <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Días Disfrutados</span>
@@ -36,12 +45,12 @@ export default function StatCards({ resumen, colaborador }) {
         </div>
         <div className="mt-2.5 flex items-baseline gap-1">
           <span className="text-3xl font-extrabold text-slate-700 tracking-tight">
-            {resumen.diasGozados}
+            {diasDisfrutados}
           </span>
           <span className="text-xs text-slate-500 font-medium">días</span>
         </div>
         <p className="mt-1 text-[11px] text-slate-500 truncate">
-          Aplicados y registrados en nómina
+          Aplicados en períodos vigentes
         </p>
       </div>
 
@@ -55,7 +64,7 @@ export default function StatCards({ resumen, colaborador }) {
         </div>
         <div className="mt-2.5 flex items-baseline gap-1">
           <span className="text-3xl font-extrabold text-amber-600 tracking-tight">
-            {resumen.diasEnTramite}
+            {diasEnTramite}
           </span>
           <span className="text-xs text-amber-700/80 font-medium">días</span>
         </div>
@@ -64,23 +73,52 @@ export default function StatCards({ resumen, colaborador }) {
         </p>
       </div>
 
-      {/* 4. Días Disponibles */}
-      <div className="bg-gradient-to-br from-emerald-600 to-teal-700 rounded-2xl p-4 sm:p-5 text-white shadow-xs relative overflow-hidden">
+      {/* 4. Días Disponibles (Interactivo con motor de vigencia 18 meses) */}
+      <div 
+        onClick={onAbrirDesglose}
+        role={onAbrirDesglose ? "button" : undefined}
+        tabIndex={onAbrirDesglose ? 0 : undefined}
+        onKeyDown={(e) => { if (onAbrirDesglose && (e.key === 'Enter' || e.key === ' ')) onAbrirDesglose(); }}
+        className={`bg-gradient-to-br from-emerald-600 to-teal-700 rounded-2xl p-4 sm:p-5 text-white shadow-xs relative overflow-hidden group ${
+          onAbrirDesglose 
+            ? 'cursor-pointer hover:scale-[1.01] hover:shadow-lg transition-all select-none ring-2 ring-emerald-400/30 hover:ring-emerald-300' 
+            : ''
+        }`}
+        title="Clic para ver desglose e integración de vigencias (18 meses LFT)"
+      >
         <div className="flex items-center justify-between">
           <span className="text-xs font-semibold text-emerald-100 uppercase tracking-wider">Saldo Disponible</span>
-          <div className="w-8 h-8 rounded-xl bg-white/20 text-white flex items-center justify-center backdrop-blur-xs">
+          <div className="w-8 h-8 rounded-xl bg-white/20 text-white flex items-center justify-center backdrop-blur-xs group-hover:bg-white/30 transition">
             <Calendar className="w-4 h-4" />
           </div>
         </div>
         <div className="mt-2.5 flex items-baseline gap-1">
           <span className="text-3xl font-black tracking-tight">
-            {resumen.diasDisponibles}
+            {saldoDisponible}
           </span>
           <span className="text-xs text-emerald-100 font-medium">días hábiles</span>
         </div>
-        <p className="mt-1 text-[11px] text-emerald-100/90 truncate">
-          Listos para programar en este ciclo
-        </p>
+        <div className="mt-2 pt-2 border-t border-white/20 flex items-center justify-between text-[11px] text-emerald-100">
+          <span className="font-semibold flex items-center gap-1 group-hover:text-white transition">
+            🔍 Clic para ver integración y vigencias (18 meses)
+          </span>
+        </div>
+      </div>
+
+      {/* Fórmula de coherencia visual */}
+      <div className="col-span-2 lg:col-span-4 bg-slate-50 border border-slate-200/80 rounded-2xl px-4 py-2.5 flex flex-wrap items-center justify-between gap-2 text-xs text-slate-600">
+        <div className="flex items-center gap-2 font-medium">
+          <Info className="w-4 h-4 text-blue-600 shrink-0" />
+          <span>Fórmula de Saldo Activo:</span>
+          <span className="font-mono text-slate-800 font-semibold">
+            [{diasLey} por ley LFT] - [{diasDisfrutados} disfrutados] - [{diasEnTramite} en trámite] = <strong className="text-emerald-700 font-bold">{saldoDisponible} días disponibles</strong>
+          </span>
+        </div>
+        {resumen.totalHistoricoAcumulado !== undefined && resumen.totalHistoricoAcumulado !== diasLey && (
+          <span className="text-[11px] text-slate-400 font-medium">
+            * Total histórico acumulado de carrera: {resumen.totalHistoricoAcumulado} días
+          </span>
+        )}
       </div>
     </div>
   );

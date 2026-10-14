@@ -1,6 +1,11 @@
 const mockStore = require('../data/mockStore');
 const { getLocalPool, isUsingMock } = require('../config/database');
-const { generarPeriodosVacaciones } = require('../services/lftVacacionesService');
+const { 
+  generarPeriodosVacaciones, 
+  calcularDetalleAntiguedad, 
+  calcularDiasLFT,
+  estructurarDesgloseSaldo 
+} = require('../services/lftVacacionesService');
 const ColaboradorModel = require('../models/colaboradorModel');
 
 const colaboradoresController = {
@@ -333,111 +338,219 @@ const colaboradoresController = {
   },
 
   /**
-   * Portal del Colaborador: Resumen de saldos y períodos
+   * Portal del Colaborador: Resumen de saldos, vigencia 18 meses LFT y períodos
    */
   getMiSaldo: async (req, res) => {
     try {
       const idColaborador = req.user.id;
-
-      if (isUsingMock()) {
-        const colab = mockStore.colaboradores.find(c => c.id === Number(idColaborador)) || mockStore.colaboradores[0];
-        
-        const enTramite = mockStore.solicitudes
-          .filter(s => s.idColaborador === colab.id && ['PENDIENTE_LIDER', 'PENDIENTE_DO'].includes(s.estado))
-          .reduce((sum, s) => sum + s.totalDiasLaborables, 0);
-
-        const periodos = colab.saldos || generarPeriodosVacaciones(colab.fechaAlta, colab.diasGozados);
-
-        return res.json({
-          success: true,
-          colaborador: {
-            id: colab.id,
-            nombreCompleto: colab.nombreCompleto,
-            codigoEmpleado: colab.codigoEmpleado,
-            puesto: colab.puesto,
-            departamento: colab.departamento,
-            empresa: colab.empresa,
-            fechaAlta: colab.fechaAlta,
-            antiguedadAnios: colab.antiguedadAnios,
-            diasDescanso: colab.diasDescanso || 'DOMINGO'
-          },
-          resumen: {
-            diasCorrespondientes: colab.diasCorrespondientes,
-            diasGozados: colab.diasGozados,
-            diasEnTramite: enTramite,
-            diasDisponibles: Math.max(0, colab.diasDisponibles - enTramite)
-          },
-          periodos
-        });
-      } else {
-        const pool = await getLocalPool();
-        const colabRes = await pool.request()
-          .input('Id', idColaborador)
-          .query(`
-            SELECT 
-              c.IdColaborador AS id, c.CodigoEmpleado, c.NombreCompleto, c.FechaAlta, c.DiasDescanso,
-              p.Nombre AS Puesto, d.Nombre AS Departamento, e.AliasEmpresa AS Empresa,
-              DATEDIFF(YEAR, c.FechaAlta, GETDATE()) AS AntiguedadAnios
-            FROM dbo.Colaboradores c
-            LEFT JOIN dbo.Puestos p ON p.IdPuesto = c.IdPuesto
-            LEFT JOIN dbo.Departamentos d ON d.IdDepartamento = c.IdDepartamento
-            LEFT JOIN dbo.EmpresasNomipaq e ON e.IdEmpresa = c.IdEmpresa
-            WHERE c.IdColaborador = @Id;
-          `);
-        
-        const saldosRes = await pool.request()
-          .input('Id', idColaborador)
-          .query(`
-            SELECT 
-              IdSaldo, IdColaborador, AnioPeriodo, AntiguedadCumplida,
-              DiasCorrespondientes, DiasGozados, DiasPendientes,
-              FechaExpiracionPeriodo, EsCerrado
-            FROM dbo.SaldosVacaciones 
-            WHERE IdColaborador = @Id 
-            ORDER BY AnioPeriodo DESC;
-          `);
-
-        const enTramiteRes = await pool.request()
-          .input('Id', idColaborador)
-          .query(`
-            SELECT ISNULL(SUM(TotalDiasLaborables), 0) AS DiasEnTramite
-            FROM dbo.SolicitudesVacaciones
-            WHERE IdColaborador = @Id AND Estado IN ('PENDIENTE_LIDER', 'PENDIENTE_DO');
-          `);
-
-        const diasEnTramite = enTramiteRes.recordset[0] ? enTramiteRes.recordset[0].DiasEnTramite : 0;
-        const saldos = saldosRes.recordset;
-        const totalCorrespondientes = saldos.reduce((sum, s) => sum + (s.DiasCorrespondientes || 0), 0);
-        const totalGozados = saldos.reduce((sum, s) => sum + (s.DiasGozados || 0), 0);
-        const totalPendientes = saldos.reduce((sum, s) => sum + (s.DiasPendientes || 0), 0);
-        const colab = colabRes.recordset[0] || {};
-        return res.json({
-          success: true,
-          colaborador: {
-            ...colab,
-            id: colab.id,
-            nombreCompleto: colab.NombreCompleto,
-            codigoEmpleado: colab.CodigoEmpleado,
-            puesto: colab.Puesto,
-            departamento: colab.Departamento,
-            empresa: colab.Empresa,
-            fechaAlta: colab.FechaAlta,
-            antiguedadAnios: colab.AntiguedadAnios,
-            diasDescanso: colab.DiasDescanso || 'DOMINGO'
-          },
-          resumen: {
-            diasCorrespondientes: totalCorrespondientes,
-            diasGozados: totalGozados,
-            diasEnTramite,
-            diasDisponibles: Math.max(0, totalPendientes - diasEnTramite)
-          },
-          periodos: saldos
-        });
-      }
+      const data = await colaboradoresController._obtenerDesgloseColaborador(idColaborador);
+      if (!data) return res.status(404).json({ error: 'Colaborador no encontrado.' });
+      return res.json(data);
     } catch (err) {
       console.error('[colaboradores.getMiSaldo]', err);
       res.status(500).json({ error: err.message });
     }
+  },
+
+  /**
+   * Endpoint de desglose individual de saldo y vigencias por ID (con RBAC / autocomprobación)
+   * GET /api/colaboradores/:id/desglose-saldo
+   */
+  getDesgloseSaldo: async (req, res) => {
+    try {
+      const { id } = req.params;
+      const data = await colaboradoresController._obtenerDesgloseColaborador(Number(id));
+      if (!data) return res.status(404).json({ error: 'Colaborador no encontrado.' });
+      return res.json(data);
+    } catch (err) {
+      console.error('[colaboradores.getDesgloseSaldo]', err);
+      res.status(500).json({ error: err.message });
+    }
+  },
+
+  /**
+   * Helper unificado de cálculo y consulta de desglose de saldo y vigencias (18 meses LFT)
+   */
+  _obtenerDesgloseColaborador: async (idColaborador) => {
+    let pool = null;
+    try {
+      pool = await getLocalPool();
+    } catch (e) {
+      console.warn('[colaboradores._obtenerDesgloseColaborador] No se pudo obtener el pool SQL:', e.message);
+    }
+
+    if (!pool || isUsingMock()) {
+      const colab = (mockStore.colaboradores || []).find(c => c.id === Number(idColaborador)) || (mockStore.colaboradores || [])[0];
+      if (!colab) return null;
+
+      const enTramite = (mockStore.solicitudes || [])
+        .filter(s => s.idColaborador === colab.id && ['PENDIENTE_LIDER', 'PENDIENTE_GERENTE', 'PENDIENTE_DO'].includes(s.estado))
+        .reduce((sum, s) => sum + (s.totalDiasLaborables || 0), 0);
+
+      const periodos = generarPeriodosVacaciones(colab.fechaAlta || colab.FechaAlta, colab.diasGozados || 0, enTramite);
+      const desglose = estructurarDesgloseSaldo(colab, periodos, enTramite);
+
+      const periodosActivosVigentes = periodos.filter(p => p.esVigente === true);
+      const diasLeyVigentes = periodosActivosVigentes.reduce((sum, p) => sum + (p.diasDerechoLFT || p.diasCorrespondientes || 0), 0);
+      const diasDisfrutadosVigentes = periodosActivosVigentes.reduce((sum, p) => sum + (p.diasGozados || p.diasDisfrutados || 0), 0);
+      const diasEnTramiteVigentes = periodosActivosVigentes.reduce((sum, p) => sum + (p.diasEnTramite || 0), 0);
+
+      const totalCorrespondientes = periodos.reduce((sum, p) => sum + (p.diasCorrespondientes || 0), 0);
+      const totalGozados = periodos.reduce((sum, p) => sum + (p.diasGozados || 0), 0);
+
+      return {
+        success: true,
+        colaborador: {
+          id: colab.id,
+          idColaborador: colab.id,
+          nombreCompleto: colab.nombreCompleto || colab.NombreCompleto,
+          codigoEmpleado: colab.codigoEmpleado || colab.CodigoEmpleado,
+          puesto: colab.puesto || colab.Puesto,
+          departamento: colab.departamento || colab.Departamento,
+          empresa: colab.empresa || colab.Empresa,
+          fechaAlta: colab.fechaAlta || colab.FechaAlta,
+          antiguedadAnios: desglose.colaborador.antiguedadAnios,
+          antiguedadMeses: desglose.colaborador.antiguedadMeses,
+          antiguedadTexto: desglose.colaborador.antiguedadTexto,
+          proximoAniversario: desglose.colaborador.proximoAniversario,
+          diasParaProximoAniversario: desglose.colaborador.diasParaProximoAniversario,
+          diasDescanso: colab.diasDescanso || colab.DiasDescanso || 'DOMINGO'
+        },
+        resumen: {
+          diasLeyVigentes: diasLeyVigentes,
+          diasCorrespondientes: diasLeyVigentes,
+          diasDisfrutados: diasDisfrutadosVigentes,
+          diasGozados: diasDisfrutadosVigentes,
+          diasEnTramite: diasEnTramiteVigentes,
+          saldoDisponible: desglose.saldoTotalDisponible,
+          diasDisponibles: desglose.saldoTotalDisponible,
+          totalHistoricoAcumulado: totalCorrespondientes,
+          totalHistoricoGozados: totalGozados
+        },
+        saldoTotalDisponible: desglose.saldoTotalDisponible,
+        periodosVigentes: desglose.periodosVigentes,
+        historialPeriodos: desglose.historialPeriodos,
+        periodoEnCurso: desglose.periodoEnCurso,
+        periodos: desglose.periodos
+      };
+    }
+
+    // 1. Ejecutar sincronización de períodos y días en trámite en dbo.SaldosVacaciones
+    try {
+      await pool.request()
+        .input('IdColaborador', Number(idColaborador))
+        .execute('dbo.sp_CalcularSaldosVacaciones');
+    } catch (errSync) {
+      console.warn('[colaboradoresController] Advertencia en sp_CalcularSaldosVacaciones:', errSync.message);
+    }
+
+    // 2. Consultar datos del colaborador
+    const colabRes = await pool.request()
+      .input('Id', Number(idColaborador))
+      .query(`
+        SELECT 
+          c.IdColaborador AS id, c.IdColaborador, c.CodigoEmpleado, c.NombreCompleto, 
+          CONVERT(VARCHAR(10), c.FechaAlta, 120) AS FechaAlta, c.DiasDescanso,
+          p.Nombre AS Puesto, d.Nombre AS Departamento, e.AliasEmpresa AS Empresa
+        FROM dbo.Colaboradores c
+        LEFT JOIN dbo.Puestos p ON p.IdPuesto = c.IdPuesto
+        LEFT JOIN dbo.Departamentos d ON d.IdDepartamento = c.IdDepartamento
+        LEFT JOIN dbo.EmpresasNomipaq e ON e.IdEmpresa = c.IdEmpresa
+        WHERE c.IdColaborador = @Id;
+      `);
+
+    const colab = colabRes.recordset[0];
+    if (!colab) return null;
+
+    // 3. Consultar total de días en trámite
+    const enTramiteRes = await pool.request()
+      .input('Id', Number(idColaborador))
+      .query(`
+        SELECT ISNULL(SUM(TotalDiasLaborables), 0) AS DiasEnTramite
+        FROM dbo.SolicitudesVacaciones
+        WHERE IdColaborador = @Id AND Estado IN ('PENDIENTE_LIDER', 'PENDIENTE_GERENTE', 'PENDIENTE_DO');
+      `);
+    const diasEnTramite = enTramiteRes.recordset[0] ? Number(enTramiteRes.recordset[0].DiasEnTramite) : 0;
+
+    // 4. Consultar períodos de dbo.SaldosVacaciones
+    const saldosRes = await pool.request()
+      .input('Id', Number(idColaborador))
+      .query(`
+        SELECT 
+          IdSaldo AS idSaldo,
+          AnioPeriodo AS anioPeriodo,
+          Periodo AS periodo,
+          AntiguedadCumplida AS antiguedadCumplida,
+          DiasCorrespondientes AS diasCorrespondientes,
+          DiasGozados AS diasGozados,
+          DiasPendientes AS diasPendientes,
+          DiasEnTramite AS diasEnTramite,
+          CONVERT(VARCHAR(10), FechaInicioVigencia, 120) AS fechaInicioVigencia,
+          CONVERT(VARCHAR(10), FechaFinVigencia, 120) AS fechaFinVigencia,
+          EsCerrado AS esCerrado,
+          EsAjusteManual AS esAjusteManual,
+          SaldoInicialManual AS saldoInicialManual,
+          MotivoAjuste AS motivoAjuste,
+          CONVERT(VARCHAR(19), FechaAjuste, 120) AS fechaAjuste
+        FROM dbo.SaldosVacaciones 
+        WHERE IdColaborador = @Id 
+        ORDER BY AntiguedadCumplida ASC;
+      `);
+
+    const saldosMap = new Map();
+    for (const s of saldosRes.recordset) {
+      if (s.antiguedadCumplida) saldosMap.set(s.antiguedadCumplida, s);
+      if (s.anioPeriodo) saldosMap.set(s.anioPeriodo, s);
+      if (s.periodo) saldosMap.set(String(s.periodo).trim(), s);
+    }
+
+    const hoy = new Date();
+    const periodos = generarPeriodosVacaciones(colab.FechaAlta, 0, diasEnTramite, hoy, saldosMap);
+    const desglose = estructurarDesgloseSaldo(colab, periodos, diasEnTramite, hoy);
+
+    const periodosActivosVigentes = periodos.filter(p => p.esVigente === true);
+    const diasLeyVigentes = periodosActivosVigentes.reduce((sum, p) => sum + (p.diasDerechoLFT || p.diasCorrespondientes || 0), 0);
+    const diasDisfrutadosVigentes = periodosActivosVigentes.reduce((sum, p) => sum + (p.diasGozados || p.diasDisfrutados || 0), 0);
+    const diasEnTramiteVigentes = periodosActivosVigentes.reduce((sum, p) => sum + (p.diasEnTramite || 0), 0);
+
+    const totalCorrespondientes = periodos.reduce((sum, p) => sum + (p.diasCorrespondientes || 0), 0);
+    const totalGozados = periodos.reduce((sum, p) => sum + (p.diasGozados || 0), 0);
+
+    return {
+      success: true,
+      colaborador: {
+        id: colab.id,
+        idColaborador: colab.id,
+        nombreCompleto: colab.NombreCompleto,
+        codigoEmpleado: colab.CodigoEmpleado,
+        puesto: colab.Puesto,
+        departamento: colab.Departamento,
+        empresa: colab.Empresa,
+        fechaAlta: colab.FechaAlta ? new Date(colab.FechaAlta).toISOString().split('T')[0] : '—',
+        antiguedadAnios: desglose.colaborador.antiguedadAnios,
+        antiguedadMeses: desglose.colaborador.antiguedadMeses,
+        antiguedadTexto: desglose.colaborador.antiguedadTexto,
+        proximoAniversario: desglose.colaborador.proximoAniversario,
+        diasParaProximoAniversario: desglose.colaborador.diasParaProximoAniversario,
+        diasDescanso: colab.DiasDescanso || 'DOMINGO'
+      },
+      resumen: {
+        diasLeyVigentes: diasLeyVigentes,
+        diasCorrespondientes: diasLeyVigentes,
+        diasDisfrutados: diasDisfrutadosVigentes,
+        diasGozados: diasDisfrutadosVigentes,
+        diasEnTramite: diasEnTramiteVigentes,
+        saldoDisponible: desglose.saldoTotalDisponible,
+        diasDisponibles: desglose.saldoTotalDisponible,
+        totalHistoricoAcumulado: totalCorrespondientes,
+        totalHistoricoGozados: totalGozados
+      },
+      saldoTotalDisponible: desglose.saldoTotalDisponible,
+      periodosVigentes: desglose.periodosVigentes,
+      historialPeriodos: desglose.historialPeriodos,
+      periodoEnCurso: desglose.periodoEnCurso,
+      periodos: desglose.periodos
+    };
   },
 
   /**

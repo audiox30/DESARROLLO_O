@@ -7,6 +7,8 @@ import { api } from '../api/client';
 import StatCards from '../components/StatCards';
 import KardexVacaciones from '../components/KardexVacaciones';
 import ModalNuevaSolicitud from '../components/ModalNuevaSolicitud';
+import ModalDesgloseSaldo from '../components/ModalDesgloseSaldo';
+import RefreshButton from '../components/RefreshButton';
 import { formatearNombreColaborador } from '../utils/formatters';
 
 function formatFechaUI(fecha) {
@@ -53,6 +55,7 @@ export default function ColaboradorPortal({ currentUser }) {
   const [solicitudes, setSolicitudes] = useState([]);
   const [loading, setLoading] = useState(true);
   const [modalAbierto, setModalAbierto] = useState(false);
+  const [modalDesgloseAbierto, setModalDesgloseAbierto] = useState(false);
   const [subTab, setSubTab] = useState('solicitudes'); // 'solicitudes', 'kardex', 'perfil'
   const [descargandoId, setDescargandoId] = useState(null);
   const [toastError, setToastError] = useState('');
@@ -223,13 +226,12 @@ export default function ColaboradorPortal({ currentUser }) {
         </div>
 
         <div className="flex items-center gap-2.5 w-full md:w-auto">
-          <button
+          <RefreshButton
             onClick={cargarDatos}
-            className="p-2.5 rounded-xl border border-slate-200 text-slate-600 hover:bg-slate-50 transition-colors"
-            title="Actualizar datos"
-          >
-            <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
-          </button>
+            isLoading={loading}
+            label="Actualizar Saldo y Solicitudes"
+            loadingLabel="Actualizando..."
+          />
 
           <button
             onClick={() => setModalAbierto(true)}
@@ -245,6 +247,7 @@ export default function ColaboradorPortal({ currentUser }) {
       <StatCards 
         resumen={saldoData?.resumen} 
         colaborador={saldoData?.colaborador} 
+        onAbrirDesglose={() => setModalDesgloseAbierto(true)}
       />
 
       {/* Subnavegación: Solicitudes vs Kárdex */}
@@ -645,6 +648,14 @@ export default function ColaboradorPortal({ currentUser }) {
         onSuccess={() => {
           cargarDatos();
         }}
+      />
+
+      {/* Modal Desglose Interactivo de Saldo y Vigencias (18 Meses LFT) */}
+      <ModalDesgloseSaldo
+        isOpen={modalDesgloseAbierto}
+        onClose={() => setModalDesgloseAbierto(false)}
+        saldoData={saldoData}
+        onNuevaSolicitud={() => setModalAbierto(true)}
       />
     </div>
   );

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { 
   ShieldCheck, RefreshCw, Database, Download, Calendar, 
   Users, CheckCircle2, Clock, XCircle, Search, Filter, 
@@ -6,6 +6,7 @@ import {
 } from 'lucide-react';
 import { api } from '../api/client';
 import ModalAprobacion from '../components/ModalAprobacion';
+import RefreshButton from '../components/RefreshButton';
 import { formatearNombreColaborador, compararPorApellidos } from '../utils/formatters';
 
 export default function AdminDOPanel({ currentUser }) {
@@ -57,7 +58,6 @@ export default function AdminDOPanel({ currentUser }) {
     try {
       setLoadingSol(true);
       const params = new URLSearchParams();
-      if (filtroEstado && filtroEstado !== 'TODAS') params.append('estado', filtroEstado);
       if (filtroEmpresa) params.append('empresa', filtroEmpresa);
       const res = await api.getBandejaDO(params.toString());
       if (res.success) {
@@ -70,6 +70,32 @@ export default function AdminDOPanel({ currentUser }) {
       setLoadingSol(false);
     }
   }
+
+  // Lógica de filtrado reactivo en frontend por Estado
+  const solicitudesFiltradas = useMemo(() => {
+    if (!solicitudes) return [];
+    if (filtroEstado === 'TODAS') return solicitudes;
+
+    return solicitudes.filter((item) => {
+      // Normalizar texto para evitar fallos por mayúsculas/minúsculas o guiones bajos
+      const estadoItem = (item.Estado || item.estado || '').toUpperCase();
+      
+      switch (filtroEstado) {
+        case 'VoBo DO Pendiente':
+          return estadoItem === 'PENDIENTE_DO' || estadoItem === 'VOBO DO PENDIENTE';
+        case 'Pendiente Líder':
+          return estadoItem === 'PENDIENTE_LIDER' || estadoItem === 'PENDIENTE LÍDER' || estadoItem === 'PENDIENTE LIDER';
+        case 'Pendiente Gerente':
+          return estadoItem === 'PENDIENTE_GERENTE' || estadoItem === 'PENDIENTE GERENTE';
+        case 'APROBADA':
+          return estadoItem === 'APROBADA' || estadoItem === 'AUTORIZADA';
+        case 'RECHAZADA':
+          return estadoItem === 'RECHAZADA';
+        default:
+          return true;
+      }
+    });
+  }, [solicitudes, filtroEstado]);
 
   // 2. Sync NOMIPAQ
   async function cargarSyncInfo() {
@@ -242,13 +268,19 @@ export default function AdminDOPanel({ currentUser }) {
         </div>
 
         <div className="flex items-center gap-2">
-          <button
-            onClick={() => { cargarSolicitudes(); cargarSyncInfo(); cargarDiasInhabiles(); cargarKardex(); }}
-            className="p-2.5 rounded-xl border border-slate-200 text-slate-600 hover:bg-slate-50 transition-colors flex items-center gap-2 text-xs font-semibold"
-          >
-            <RefreshCw className="w-4 h-4" />
-            <span>Actualizar</span>
-          </button>
+          <RefreshButton
+            onClick={async () => {
+              try {
+                setLoadingSol(true);
+                await Promise.all([cargarSolicitudes(), cargarSyncInfo(), cargarDiasInhabiles(), cargarKardex()]);
+              } finally {
+                setLoadingSol(false);
+              }
+            }}
+            isLoading={loadingSol}
+            label="Actualizar Solicitudes Globales"
+            loadingLabel="Actualizando..."
+          />
         </div>
       </div>
 
@@ -264,7 +296,7 @@ export default function AdminDOPanel({ currentUser }) {
             }`}
           >
             <Clock className="w-4 h-4" />
-            Bandeja Global & VoBo DO ({solicitudes.length})
+            Bandeja Global & VoBo DO ({filtroEstado === 'TODAS' ? solicitudes.length : `${solicitudesFiltradas.length} de ${solicitudes.length}`})
           </button>
 
           <button
@@ -307,26 +339,24 @@ export default function AdminDOPanel({ currentUser }) {
         {/* 1. TAB: BANDEJA GLOBAL & VOBO DO */}
         {tab === 'solicitudes' && (
           <div className="p-6 space-y-4">
-            {/* Filtros */}
+            {/* Filtros Rápidos por Estado */}
             <div className="flex flex-wrap items-center justify-between gap-3 pb-3 border-b border-slate-100">
               <div className="flex flex-wrap items-center gap-2">
                 <span className="text-xs font-bold text-slate-500 uppercase tracking-wider flex items-center gap-1">
                   <Filter className="w-3.5 h-3.5" /> Estado:
                 </span>
-                {['TODAS', 'PENDIENTE_DO', 'PENDIENTE_LIDER', 'PENDIENTE_GERENTE', 'APROBADA', 'RECHAZADA'].map((st) => (
+                {['TODAS', 'VoBo DO Pendiente', 'Pendiente Líder', 'Pendiente Gerente', 'APROBADA', 'RECHAZADA'].map((st) => (
                   <button
                     key={st}
-                    onClick={() => { setFiltroEstado(st); setTimeout(cargarSolicitudes, 50); }}
-                    className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all ${
+                    type="button"
+                    onClick={() => setFiltroEstado(st)}
+                    className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
                       filtroEstado === st
-                        ? 'bg-slate-900 text-white'
+                        ? 'bg-slate-900 text-white shadow-xs'
                         : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
                     }`}
                   >
-                    {st === 'PENDIENTE_DO' ? 'VoBo DO Pendiente' : 
-                     st === 'PENDIENTE_GERENTE' ? 'Pendiente Gerente' :
-                     st === 'PENDIENTE_LIDER' ? 'Pendiente Líder' :
-                     st.replace('_', ' ')}
+                    {st}
                   </button>
                 ))}
               </div>
@@ -347,67 +377,119 @@ export default function AdminDOPanel({ currentUser }) {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
-                  {solicitudes.map((s) => (
-                    <tr key={s.idSolicitud} className="hover:bg-slate-50/70 transition-colors">
-                      <td className="py-3.5 px-3 font-mono font-bold text-slate-900">{s.folio}</td>
-                      <td className="py-3.5 px-3 font-bold text-slate-800">
-                        {formatearNombreColaborador(s.colaboradorNombre)}
-                        <span className="block text-[10px] font-normal text-slate-400">{s.colaboradorPuesto}</span>
-                      </td>
-                      <td className="py-3.5 px-3 text-slate-600">
-                        <span className="font-semibold block">{s.colaboradorEmpresa || 'Grupo JAMA'}</span>
-                        <span className="text-[10px] text-slate-400">{s.colaboradorDepartamento}</span>
-                      </td>
-                      <td className="py-3.5 px-3 font-medium text-slate-800">
-                        {s.fechaInicio} al {s.fechaFin}
-                      </td>
-                      <td className="py-3.5 px-3 text-center">
-                        <span className="font-black text-blue-700 bg-blue-50 px-2 py-0.5 rounded">
-                          {s.totalDiasLaborables} d
-                        </span>
-                      </td>
-                      <td className="py-3.5 px-3">
-                        <span className={`inline-block px-2.5 py-1 rounded-full text-[10px] font-bold ${
-                          s.estado === 'PENDIENTE_DO' ? 'bg-blue-100 text-blue-800 border border-blue-200 animate-pulse' :
-                          s.estado === 'PENDIENTE_GERENTE' ? 'bg-indigo-100 text-indigo-800 border border-indigo-200' :
-                          s.estado === 'PENDIENTE_LIDER' ? 'bg-amber-100 text-amber-800 border border-amber-200' :
-                          s.estado === 'APROBADA' ? 'bg-emerald-100 text-emerald-800 border border-emerald-200' :
-                          'bg-rose-100 text-rose-800 border border-rose-200'
-                        }`}>
-                          {s.estado === 'PENDIENTE_DO' ? 'VoBo DO Pendiente' : 
-                           s.estado === 'PENDIENTE_GERENTE' ? 'Pendiente Gerente' :
-                           s.estado === 'PENDIENTE_LIDER' ? 'Pendiente Líder' : s.estado}
-                        </span>
-                      </td>
-                      <td className="py-3.5 px-3 text-right whitespace-nowrap">
-                        <div className="flex items-center justify-end gap-1.5">
-                          <button
-                            type="button"
-                            onClick={() => api.descargarPdfFdo84(s.idSolicitud || s.IdSolicitud || s.id, s.folio || s.Folio)}
-                            title="Ver y Descargar Formato Oficial FDO-84 (PDF)"
-                            className="flex items-center gap-1 px-2.5 py-1.5 rounded-xl border border-blue-200 bg-blue-50 hover:bg-blue-100 text-blue-700 font-bold text-xs shadow-2xs transition-all cursor-pointer"
-                          >
-                            <FileText className="w-3.5 h-3.5" />
-                            <span>FDO-84</span>
-                          </button>
-                          {['PENDIENTE_DO', 'PENDIENTE_LIDER', 'PENDIENTE_GERENTE'].includes(s.estado) ? (
+                  {solicitudesFiltradas.length === 0 ? (
+                    <tr>
+                      <td colSpan="7" className="py-12 text-center text-slate-400">
+                        <div className="flex flex-col items-center justify-center gap-2">
+                          <Filter className="w-8 h-8 text-slate-300" />
+                          <p className="text-sm font-semibold text-slate-600">
+                            No se encontraron solicitudes con el estado "{filtroEstado}".
+                          </p>
+                          {filtroEstado !== 'TODAS' && (
                             <button
                               type="button"
-                              onClick={() => {
-                                setSolicitudSeleccionada(s);
-                                setModalResolucion(true);
-                              }}
-                              className="px-3 py-1.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs shadow-2xs transition-all cursor-pointer"
+                              onClick={() => setFiltroEstado('TODAS')}
+                              className="text-xs text-blue-600 hover:text-blue-800 font-bold underline cursor-pointer"
                             >
-                              Resolver VoBo
+                              Ver todas ({solicitudes.length})
                             </button>
-                          ) : (
-                            <span className="text-slate-400 text-[11px] italic">Concluida</span>
                           )}
                         </div>
                       </td>
                     </tr>
-                  ))}
+                  ) : (
+                    solicitudesFiltradas.map((s) => (
+                      <tr key={s.idSolicitud || s.IdSolicitud} className="hover:bg-slate-50/70 transition-colors">
+                        <td className="py-3.5 px-3 font-mono font-bold text-slate-900">{s.folio}</td>
+                        <td className="py-3.5 px-3 font-bold text-slate-800">
+                          {formatearNombreColaborador(s.colaboradorNombre)}
+                          <span className="block text-[10px] font-normal text-slate-400">{s.colaboradorPuesto}</span>
+                        </td>
+                        <td className="py-3.5 px-3 text-slate-600">
+                          <span className="font-semibold block text-slate-900">
+                            {s.colaboradorEmpresa || s.Empresa || s.empresa || 'Grupo JAMA'}
+                          </span>
+                          <span className="text-[10px] text-slate-400 block">
+                            {(s.colaboradorSucursal || s.Sucursal || s.sucursal) ? `${s.colaboradorSucursal || s.Sucursal || s.sucursal} • ` : ''}
+                            {s.colaboradorDepartamento || s.Departamento || s.departamento || ''}
+                          </span>
+                        </td>
+                        <td className="py-3.5 px-3">
+                          {(() => {
+                            const item = s;
+                            const fInicio = item.FechaInicio || item.fechaInicio || item.fecha_inicio;
+                            const fFin = item.FechaFin || item.fechaFin || item.fecha_fin;
+
+                            if (!fInicio || !fFin) {
+                              return <span className="text-slate-400 italic text-xs">Sin fechas</span>;
+                            }
+
+                            const formatearFechaSimple = (val) => {
+                              try {
+                                const str = String(val).split('T')[0];
+                                const [y, m, d] = str.split('-');
+                                if (y && m && d) return `${d}/${m}/${y}`;
+                                return str;
+                              } catch {
+                                return String(val);
+                              }
+                            };
+
+                            return (
+                              <span className="font-medium text-slate-800 text-xs">
+                                {formatearFechaSimple(fInicio)} al {formatearFechaSimple(fFin)}
+                              </span>
+                            );
+                          })()}
+                        </td>
+                        <td className="py-3.5 px-3 text-center">
+                          <span className="font-black text-blue-700 bg-blue-50 px-2 py-0.5 rounded">
+                            {s.totalDiasLaborables} d
+                          </span>
+                        </td>
+                        <td className="py-3.5 px-3">
+                          <span className={`inline-block px-2.5 py-1 rounded-full text-[10px] font-bold ${
+                            s.estado === 'PENDIENTE_DO' ? 'bg-blue-100 text-blue-800 border border-blue-200 animate-pulse' :
+                            s.estado === 'PENDIENTE_GERENTE' ? 'bg-indigo-100 text-indigo-800 border border-indigo-200' :
+                            s.estado === 'PENDIENTE_LIDER' ? 'bg-amber-100 text-amber-800 border border-amber-200' :
+                            s.estado === 'APROBADA' ? 'bg-emerald-100 text-emerald-800 border border-emerald-200' :
+                            'bg-rose-100 text-rose-800 border border-rose-200'
+                          }`}>
+                            {s.estado === 'PENDIENTE_DO' ? 'VoBo DO Pendiente' : 
+                             s.estado === 'PENDIENTE_GERENTE' ? 'Pendiente Gerente' :
+                             s.estado === 'PENDIENTE_LIDER' ? 'Pendiente Líder' : s.estado}
+                          </span>
+                        </td>
+                        <td className="py-3.5 px-3 text-right whitespace-nowrap">
+                          <div className="flex items-center justify-end gap-1.5">
+                            <button
+                              type="button"
+                              onClick={() => api.descargarPdfFdo84(s.idSolicitud || s.IdSolicitud || s.id, s.folio || s.Folio)}
+                              title="Ver y Descargar Formato Oficial FDO-84 (PDF)"
+                              className="flex items-center gap-1 px-2.5 py-1.5 rounded-xl border border-blue-200 bg-blue-50 hover:bg-blue-100 text-blue-700 font-bold text-xs shadow-2xs transition-all cursor-pointer"
+                            >
+                              <FileText className="w-3.5 h-3.5" />
+                              <span>FDO-84</span>
+                            </button>
+                            {['PENDIENTE_DO', 'PENDIENTE_LIDER', 'PENDIENTE_GERENTE'].includes(s.estado) ? (
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setSolicitudSeleccionada(s);
+                                  setModalResolucion(true);
+                                }}
+                                className="px-3 py-1.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs shadow-2xs transition-all cursor-pointer"
+                              >
+                                Resolver VoBo
+                              </button>
+                            ) : (
+                              <span className="text-slate-400 text-[11px] italic">Concluida</span>
+                            )}
+                          </div>
+                        </td>
+                      </tr>
+                    ))
+                  )}
                 </tbody>
               </table>
             </div>

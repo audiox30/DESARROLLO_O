@@ -5,6 +5,7 @@ import {
 } from 'lucide-react';
 import { api } from '../api/client';
 import ModalAprobacion from '../components/ModalAprobacion';
+import RefreshButton from '../components/RefreshButton';
 import { formatearNombreColaborador, compararPorApellidos } from '../utils/formatters';
 
 export default function LiderPortal({ currentUser }) {
@@ -97,13 +98,12 @@ export default function LiderPortal({ currentUser }) {
           </p>
         </div>
 
-        <button
+        <RefreshButton
           onClick={cargarDatos}
-          className="p-2.5 rounded-xl border border-slate-200 text-slate-600 hover:bg-slate-50 transition-colors flex items-center gap-2 text-xs font-semibold"
-        >
-          <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
-          <span>Actualizar Bandeja</span>
-        </button>
+          isLoading={loading}
+          label="Actualizar Bandeja de Equipo"
+          loadingLabel="Actualizando..."
+        />
       </div>
 
       {/* Tarjetas de Resumen */}
@@ -205,8 +205,20 @@ export default function LiderPortal({ currentUser }) {
 
                     <div className="bg-white p-3 rounded-xl border border-slate-200/60 space-y-1.5 text-xs">
                       <div className="flex items-center justify-between">
-                        <span className="text-slate-500 font-medium">Período de Ausencia:</span>
-                        <span className="font-bold text-slate-800">{s.fechaInicio} al {s.fechaFin}</span>
+                        <span className="font-bold text-slate-800">
+                          {(() => {
+                            const fInicio = s.FechaInicio || s.fechaInicio || s.fecha_inicio;
+                            const fFin = s.FechaFin || s.fechaFin || s.fecha_fin;
+                            if (!fInicio || !fFin) return 'Sin fechas';
+                            const fmt = (v) => {
+                              try {
+                                const [y, m, d] = String(v).split('T')[0].split('-');
+                                return (y && m && d) ? `${d}/${m}/${y}` : String(v);
+                              } catch { return String(v); }
+                            };
+                            return `${fmt(fInicio)} al ${fmt(fFin)}`;
+                          })()}
+                        </span>
                       </div>
                       <div className="flex items-center justify-between">
                         <span className="text-slate-500 font-medium">Días Hábiles Solicitados:</span>

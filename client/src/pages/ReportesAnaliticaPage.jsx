@@ -6,6 +6,7 @@ import {
   ArrowUp, ArrowDown, ArrowUpDown
 } from 'lucide-react';
 import { api } from '../api/client';
+import RefreshButton from '../components/RefreshButton';
 import { formatearNombreColaborador, compararPorApellidos } from '../utils/formatters';
 
 export default function ReportesAnaliticaPage({ currentUser }) {
@@ -319,13 +320,13 @@ export default function ReportesAnaliticaPage({ currentUser }) {
           </div>
         )}
 
-        <button
+        <RefreshButton
           onClick={cargarReporte}
-          className="p-1.5 text-slate-600 hover:text-slate-900 hover:bg-slate-100 rounded-lg transition ml-auto"
-          title="Recargar"
-        >
-          <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
-        </button>
+          isLoading={loading}
+          label="Actualizar Reporte"
+          loadingLabel="Actualizando..."
+          className="ml-auto"
+        />
       </div>
 
       {/* REPORTE 1: PADRÓN DE COLABORADORES */}

@@ -6,6 +6,8 @@ import {
   FileSpreadsheet, ArrowUpRight, Baby, Heart, Briefcase, User, ArrowUpDown
 } from 'lucide-react';
 import { api } from '../api/client';
+import KardexVacaciones from '../components/KardexVacaciones';
+import RefreshButton from '../components/RefreshButton';
 import { 
   formatearNombreColaborador, 
   compararPorApellidos, 
@@ -167,14 +169,12 @@ export default function LiderMiEquipoPage({ currentUser }) {
           </p>
         </div>
 
-        <button
+        <RefreshButton
           onClick={cargarEquipo}
-          disabled={loading}
-          className="flex items-center gap-2 px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-bold transition cursor-pointer shrink-0 disabled:opacity-50"
-        >
-          <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`} />
-          <span>Actualizar Plantilla</span>
-        </button>
+          isLoading={loading}
+          label="Actualizar Plantilla de Equipo"
+          loadingLabel="Actualizando..."
+        />
       </div>
 
       {/* KPI Cards de Resumen */}
@@ -494,8 +494,10 @@ export default function LiderMiEquipoPage({ currentUser }) {
                   <span className="font-bold text-slate-800 font-mono">{modalKardexColab.fechaAlta || '—'}</span>
                 </div>
                 <div>
-                  <span className="text-[10px] text-slate-400 font-bold uppercase block">Saldo Disponible</span>
-                  <span className="font-black text-emerald-700 text-sm">{modalKardexColab.diasDisponibles || 0} días</span>
+                  <span className="text-[10px] text-slate-400 font-bold uppercase block">Saldo Disponible (Vigente)</span>
+                  <span className="font-black text-emerald-700 text-sm">
+                    {kardexData?.saldoTotalDisponible ?? modalKardexColab.diasDisponibles ?? 0} días
+                  </span>
                 </div>
               </div>
 
@@ -511,61 +513,10 @@ export default function LiderMiEquipoPage({ currentUser }) {
                   <p className="text-xs font-semibold">No se encontraron períodos acumulados para este colaborador.</p>
                 </div>
               ) : (
-                <div className="overflow-x-auto rounded-2xl border border-slate-200 shadow-2xs">
-                  <table className="w-full text-left text-xs">
-                    <thead>
-                      <tr className="bg-slate-100 text-slate-600 font-bold text-[10px] uppercase">
-                        <th className="py-2.5 px-3">Ciclo / Período</th>
-                        <th className="py-2.5 px-3 text-center">Antigüedad</th>
-                        <th className="py-2.5 px-3 text-center">Días Ley (LFT)</th>
-                        <th className="py-2.5 px-3 text-center">Días Gozados</th>
-                        <th className="py-2.5 px-3 text-center">Días Pendientes</th>
-                        <th className="py-2.5 px-3">Fecha Vencimiento</th>
-                        <th className="py-2.5 px-3 text-right">Estado</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-slate-100">
-                      {kardexData.periodos.map(p => {
-                        const esVigente = !p.esCerrado && p.diasPendientes > 0;
-                        return (
-                          <tr key={p.idSaldo || p.anioPeriodo} className="hover:bg-slate-50">
-                            <td className="py-2.5 px-3 font-bold text-slate-900">
-                              Período {p.anioPeriodo}
-                            </td>
-                            <td className="py-2.5 px-3 text-center font-semibold text-slate-700">
-                              {p.antiguedadCumplida} {p.antiguedadCumplida === 1 ? 'año' : 'años'}
-                            </td>
-                            <td className="py-2.5 px-3 text-center font-bold text-blue-700">
-                              {p.diasCorrespondientes} días
-                            </td>
-                            <td className="py-2.5 px-3 text-center text-slate-600">
-                              {p.diasGozados}
-                            </td>
-                            <td className="py-2.5 px-3 text-center">
-                              <span className={`font-black ${p.diasPendientes > 0 ? 'text-emerald-700' : 'text-slate-400'}`}>
-                                {p.diasPendientes}
-                              </span>
-                            </td>
-                            <td className="py-2.5 px-3 font-mono text-slate-600 text-[11px]">
-                              {p.fechaExpiracionPeriodo || '—'}
-                            </td>
-                            <td className="py-2.5 px-3 text-right">
-                              {esVigente ? (
-                                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-800 border border-emerald-200">
-                                  <Clock className="w-3 h-3" /> Vigente
-                                </span>
-                              ) : (
-                                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-slate-100 text-slate-600 border border-slate-200">
-                                  <CheckCircle2 className="w-3 h-3" /> Cerrado
-                                </span>
-                              )}
-                            </td>
-                          </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
-                </div>
+                <KardexVacaciones 
+                  periodos={kardexData.periodos} 
+                  colaborador={kardexData.colaborador || modalKardexColab} 
+                />
               )}
             </div>
 
@@ -659,7 +610,18 @@ export default function LiderMiEquipoPage({ currentUser }) {
                               {s.Folio}
                             </td>
                             <td className="py-2.5 px-3 font-medium text-slate-800">
-                              {s.FechaInicio} al {s.FechaFin}
+                              {(() => {
+                                const fInicio = s.FechaInicio || s.fechaInicio || s.fecha_inicio;
+                                const fFin = s.FechaFin || s.fechaFin || s.fecha_fin;
+                                if (!fInicio || !fFin) return <span className="text-slate-400 italic text-xs">Sin fechas</span>;
+                                const fmt = (v) => {
+                                  try {
+                                    const [y, m, d] = String(v).split('T')[0].split('-');
+                                    return (y && m && d) ? `${d}/${m}/${y}` : String(v);
+                                  } catch { return String(v); }
+                                };
+                                return `${fmt(fInicio)} al ${fmt(fFin)}`;
+                              })()}
                             </td>
                             <td className="py-2.5 px-3 text-center font-extrabold text-blue-700">
                               {s.TotalDiasLaborables} días

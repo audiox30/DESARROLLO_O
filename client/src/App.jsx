@@ -256,7 +256,7 @@ export default function App() {
         )}
 
         {activeTab === 'colaboradores' && (
-          <AdminColaboradoresPage />
+          <AdminColaboradoresPage currentUser={effectiveUser} />
         )}
 
         {activeTab === 'admin-do' && (
