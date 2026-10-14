@@ -207,6 +207,9 @@ export const api = {
   resetUsuarioPassword: (id) => request(`/sistemas/usuarios/${id}/reset-password`, { method: 'POST' }),
   getSistemasAuditoria: () => request('/sistemas/auditoria'),
   getSistemasDiagnostico: () => request('/sistemas/diagnostico'),
+  getConfiguracionSistema: () => request('/admin/configuracion'),
+  updateConfiguracionSistema: (data) => request('/admin/configuracion', { method: 'PUT', body: JSON.stringify(data) }),
+  probarCorreoSistema: (data) => request('/admin/configuracion/probar-correo', { method: 'POST', body: JSON.stringify(data) }),
 
   // Descarga Genérica de Archivos Excel (.xlsx)
   descargarExcel: async (endpoint, filename) => {

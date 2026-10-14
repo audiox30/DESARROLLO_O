@@ -12,6 +12,7 @@ const syncController = require('../controllers/syncController');
 const sistemasController = require('../controllers/sistemasController');
 const adminColaboradoresController = require('../controllers/adminColaboradoresController');
 const reportesController = require('../controllers/reportesController');
+const configuracionController = require('../controllers/configuracionController');
 
 const { 
   authMiddleware, 
@@ -160,6 +161,13 @@ router.post('/sistemas/usuarios/:id/toggle-activo', authMiddleware, requireRole(
 router.post('/sistemas/usuarios/:id/reset-password', authMiddleware, requireRole('SUPERADMIN', 'SISTEMAS'), sistemasController.resetPassword);
 router.get('/sistemas/auditoria', authMiddleware, requireRole('SUPERADMIN', 'SISTEMAS'), sistemasController.getAuditoria);
 router.get('/sistemas/diagnostico', authMiddleware, requireRole('SUPERADMIN', 'SISTEMAS'), sistemasController.getDiagnostico);
+
+// =========================================================================
+// 9.1 CONFIGURACIÓN GLOBAL DEL SISTEMA (SUPERADMIN / SISTEMAS)
+// =========================================================================
+router.get('/admin/configuracion', authMiddleware, requireRole('SUPERADMIN', 'SISTEMAS'), configuracionController.getConfiguracion);
+router.put('/admin/configuracion', authMiddleware, requireRole('SUPERADMIN', 'SISTEMAS'), configuracionController.updateConfiguracion);
+router.post('/admin/configuracion/probar-correo', authMiddleware, requireRole('SUPERADMIN', 'SISTEMAS'), configuracionController.probarCorreo);
 
 // =========================================================================
 // 10. MÓDULO ADMINISTRATIVO DE COLABORADORES & ROLES (ADMIN_DO, SISTEMAS)

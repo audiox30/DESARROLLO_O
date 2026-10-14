@@ -2,7 +2,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import { 
   Building2, Users, UserCheck, ShieldCheck, CalendarCheck, 
   ChevronDown, Sparkles, Eye, LogOut, KeyRound, Check, 
-  Terminal, FileSpreadsheet, UserPlus, Menu, X
+  Terminal, FileSpreadsheet, UserPlus, Menu, X, Settings
 } from 'lucide-react';
 import logoJama from '../assets/logo-jama.png';
 import { formatearNombreColaborador, obtenerInicialesColaborador } from '../utils/formatters';
@@ -97,7 +97,7 @@ export default function Navbar({
   }[rolEfectivo];
 
   const esEquipoActivo = activeTab === 'lider' || activeTab === 'mi-equipo';
-  const esGestionDOActivo = activeTab === 'admin' || activeTab === 'colaboradores' || activeTab === 'admin-do' || activeTab === 'sistemas';
+  const esGestionDOActivo = activeTab === 'admin' || activeTab === 'colaboradores' || activeTab === 'admin-do' || activeTab === 'sistemas' || activeTab === 'configuracion';
 
   const currentRoleConfig = {
     'SISTEMAS': { icon: '🛠️', label: 'Sistemas (TI)' },
@@ -342,6 +342,27 @@ export default function Navbar({
                             </div>
                           </div>
                           {activeTab === 'sistemas' && <Check className="w-4 h-4 text-purple-600" />}
+                        </button>
+
+                        <button
+                          onClick={() => {
+                            onTabChange('configuracion');
+                            setShowGestionDropdown(false);
+                          }}
+                          className={`w-full text-left px-3.5 py-2.5 hover:bg-slate-50 flex items-center justify-between transition cursor-pointer ${
+                            activeTab === 'configuracion' ? 'bg-purple-50/70 text-purple-950 font-bold' : 'text-slate-700'
+                          }`}
+                        >
+                          <div className="flex items-center gap-2.5">
+                            <div className="p-1.5 bg-purple-100 text-purple-700 rounded-lg">
+                              <Settings className="w-4 h-4" />
+                            </div>
+                            <div>
+                              <div className="text-xs font-bold text-slate-800">Configuración del Sistema</div>
+                              <div className="text-[11px] text-slate-400">Infraestructura, SMTP, CONTPAQi y LFT</div>
+                            </div>
+                          </div>
+                          {activeTab === 'configuracion' && <Check className="w-4 h-4 text-purple-600" />}
                         </button>
                       </>
                     )}
@@ -595,6 +616,24 @@ export default function Navbar({
                   </div>
 
                   <div className="py-1">
+                    {esSistemas && (
+                      <>
+                        <button
+                          onClick={() => {
+                            setShowUserDropdown(false);
+                            onTabChange('configuracion');
+                          }}
+                          className={`w-full text-left px-4 py-2 hover:bg-purple-50 text-xs font-semibold flex items-center gap-2.5 transition cursor-pointer ${
+                            activeTab === 'configuracion' ? 'bg-purple-50 text-purple-900 font-bold' : 'text-slate-700'
+                          }`}
+                        >
+                          <Settings className="w-4 h-4 text-purple-600" />
+                          <span>⚙️ Configuración del Sistema</span>
+                        </button>
+                        <div className="my-1 border-t border-slate-100"></div>
+                      </>
+                    )}
+
                     <button
                       onClick={() => {
                         setShowUserDropdown(false);
@@ -726,18 +765,32 @@ export default function Navbar({
                   <span>Administración de Roles DO</span>
                 </button>
                 {esSistemas && (
-                  <button
-                    onClick={() => {
-                      onTabChange('sistemas');
-                      setMobileMenuOpen(false);
-                    }}
-                    className={`w-full text-left px-3 py-2 rounded-xl text-xs font-semibold flex items-center gap-2 pl-6 ${
-                      activeTab === 'sistemas' ? 'bg-purple-50 text-purple-900 font-bold' : 'text-slate-700'
-                    }`}
-                  >
-                    <Terminal className="w-4 h-4 text-purple-600" />
-                    <span>Panel Sistemas & TI</span>
-                  </button>
+                  <>
+                    <button
+                      onClick={() => {
+                        onTabChange('sistemas');
+                        setMobileMenuOpen(false);
+                      }}
+                      className={`w-full text-left px-3 py-2 rounded-xl text-xs font-semibold flex items-center gap-2 pl-6 ${
+                        activeTab === 'sistemas' ? 'bg-purple-50 text-purple-900 font-bold' : 'text-slate-700'
+                      }`}
+                    >
+                      <Terminal className="w-4 h-4 text-purple-600" />
+                      <span>Panel Sistemas & TI</span>
+                    </button>
+                    <button
+                      onClick={() => {
+                        onTabChange('configuracion');
+                        setMobileMenuOpen(false);
+                      }}
+                      className={`w-full text-left px-3 py-2 rounded-xl text-xs font-semibold flex items-center gap-2 pl-6 ${
+                        activeTab === 'configuracion' ? 'bg-purple-50 text-purple-900 font-bold' : 'text-slate-700'
+                      }`}
+                    >
+                      <Settings className="w-4 h-4 text-purple-600" />
+                      <span>Configuración del Sistema</span>
+                    </button>
+                  </>
                 )}
               </>
             )}

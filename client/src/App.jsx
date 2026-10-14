@@ -9,6 +9,7 @@ import SistemasAuditPanel from './pages/SistemasAuditPanel';
 import AdminColaboradoresPage from './pages/AdminColaboradoresPage';
 import AdminDORolesPage from './pages/AdminDORolesPage';
 import ReportesAnaliticaPage from './pages/ReportesAnaliticaPage';
+import AdminConfiguracionPage from './pages/AdminConfiguracionPage';
 import ModalCambiarPassword from './components/ModalCambiarPassword';
 import SimulateBanner from './components/SimulateBanner';
 import { api, setAuthToken, clearAuth, setSimulationHeaders, setActiveSimulation } from './api/client';
@@ -75,6 +76,10 @@ export default function App() {
   }
 
   function inicializarTabSegunRol(rol) {
+    if (window.location.pathname === '/admin/configuracion' && (rol === 'SUPERADMIN' || rol === 'SISTEMAS')) {
+      setActiveTab('configuracion');
+      return;
+    }
     if (rol === 'SUPERADMIN' || rol === 'SISTEMAS') {
       setActiveTab('sistemas');
     } else if (rol === 'ADMIN_DO') {
@@ -115,8 +120,8 @@ export default function App() {
       'COLABORADOR': ['colaborador'],
       'LIDER': ['colaborador', 'lider', 'mi-equipo'],
       'ADMIN_DO': ['colaborador', 'admin', 'colaboradores', 'reportes'],
-      'SISTEMAS': ['colaborador', 'lider', 'mi-equipo', 'admin', 'colaboradores', 'admin-do', 'reportes', 'sistemas'],
-      'SUPERADMIN': ['colaborador', 'lider', 'mi-equipo', 'admin', 'colaboradores', 'admin-do', 'reportes', 'sistemas']
+      'SISTEMAS': ['colaborador', 'lider', 'mi-equipo', 'admin', 'colaboradores', 'admin-do', 'reportes', 'sistemas', 'configuracion'],
+      'SUPERADMIN': ['colaborador', 'lider', 'mi-equipo', 'admin', 'colaboradores', 'admin-do', 'reportes', 'sistemas', 'configuracion']
     };
 
     const allowed = validTabsByRole[newRole] || ['colaborador'];
@@ -269,6 +274,10 @@ export default function App() {
 
         {activeTab === 'sistemas' && (
           <SistemasAuditPanel currentUser={currentUser} />
+        )}
+
+        {activeTab === 'configuracion' && (
+          <AdminConfiguracionPage currentUser={currentUser} onNavigateTab={setActiveTab} />
         )}
 
       </main>
