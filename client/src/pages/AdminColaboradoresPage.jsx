@@ -81,18 +81,15 @@ function CampoSoloLectura({ label, valor, icono: Icono = Lock, monospace = false
 
 function deducirGenero(colab) {
   if (!colab) return '—';
-  if (colab.Genero && String(colab.Genero).trim() !== '' && String(colab.Genero).trim() !== '—') return colab.Genero;
-  if (colab.genero && String(colab.genero).trim() !== '' && String(colab.genero).trim() !== '—') return colab.genero;
   const curp = String(colab.CURP || colab.curp || '').trim().toUpperCase();
   if (curp.length >= 11) {
     const ch = curp.charAt(10); // Carácter en posición 11 (índice 10)
     if (ch === 'M') return 'Mujer';
     if (ch === 'H') return 'Hombre';
   }
-  const sexo = String(colab.Sexo || colab.sexo || '').trim().toUpperCase();
-  if (sexo === 'F') return 'Mujer';
-  if (sexo === 'M' || sexo === 'H') return 'Hombre';
-  return '—';
+  if (colab.Genero && String(colab.Genero).trim() !== '' && String(colab.Genero).trim() !== '—') return colab.Genero;
+  if (colab.genero && String(colab.genero).trim() !== '' && String(colab.genero).trim() !== '—') return colab.genero;
+  return 'No especificado';
 }
 
 const OPCIONES_DIAS_SEMANA = [

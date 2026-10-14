@@ -177,15 +177,16 @@ class ColaboradorModel {
     const colabRes = await request.query(colabQuery);
     if (!colabRes.recordset[0]) return null;
 
+    const colaborador = colabRes.recordset[0];
     if (!colaborador.Genero) {
       const curpVal = String(colaborador.CURP || '').trim().toUpperCase();
       if (curpVal.length >= 11) {
         const c11 = curpVal.charAt(10);
         if (c11 === 'M') colaborador.Genero = 'Mujer';
         else if (c11 === 'H') colaborador.Genero = 'Hombre';
-      }
-      if (!colaborador.Genero) {
-        colaborador.Genero = (colaborador.Sexo === 'F' ? 'Mujer' : 'Hombre');
+        else colaborador.Genero = 'No especificado';
+      } else {
+        colaborador.Genero = 'No especificado';
       }
     }
     colaborador.genero = colaborador.Genero;
