@@ -3,7 +3,7 @@ import { X, CheckCircle, XCircle, AlertTriangle, MessageSquare, ShieldCheck, Clo
 import { api } from '../api/client';
 import { formatearNombreColaborador } from '../utils/formatters';
 
-export default function ModalAprobacion({ solicitud, isOpen, onClose, onSuccess, esAdminDO = false }) {
+export default function ModalAprobacion({ solicitud, isOpen, onClose, onSuccess, esAdminDO = false, currentUser = null }) {
   const [modo, setModo] = useState('detalle'); // 'detalle', 'aprobar', 'rechazar'
   const [comentarios, setComentarios] = useState('');
   const [motivoRechazo, setMotivoRechazo] = useState('');
@@ -11,6 +11,53 @@ export default function ModalAprobacion({ solicitud, isOpen, onClose, onSuccess,
   const [error, setError] = useState('');
 
   if (!isOpen || !solicitud) return null;
+
+  // Identificación del usuario en sesión y validación de excepción para Susana Martínez
+  const emailUsuario = (
+    currentUser?.emailCorporativo ||
+    currentUser?.email ||
+    currentUser?.EmailCorporativo ||
+    currentUser?.Email ||
+    ''
+  ).toLowerCase().trim();
+
+  const usernameUsuario = (
+    currentUser?.username ||
+    currentUser?.Username ||
+    currentUser?.codigoEmpleado ||
+    currentUser?.CodigoEmpleado ||
+    ''
+  ).toLowerCase().trim();
+
+  const idColabUsuario = Number(
+    currentUser?.idColaborador ||
+    currentUser?.IdColaborador ||
+    currentUser?.id ||
+    currentUser?.id_colaborador ||
+    0
+  );
+
+  const esSusanaMartinez = (
+    emailUsuario === 'smartinez@grupojama.com' ||
+    usernameUsuario === 'smartinez@grupojama.com' ||
+    usernameUsuario === 'smartinez' ||
+    usernameUsuario === '0214' ||
+    usernameUsuario === 'cont-214' ||
+    idColabUsuario === 15 ||
+    idColabUsuario === 80 ||
+    (currentUser?.nombreCompleto && currentUser.nombreCompleto.toUpperCase().includes('SUSANA MARTINEZ'))
+  );
+
+  const estadoNorm = (solicitud.estado || solicitud.Estado || '').toUpperCase().trim();
+  const estaPendienteJerarquia = [
+    'PENDIENTE_LIDER',
+    'PENDIENTE_GERENTE',
+    'PENDIENTE LÍDER',
+    'PENDIENTE LIDER',
+    'PENDIENTE GERENTE'
+  ].includes(estadoNorm);
+
+  const bloqueoVoBoDO = esAdminDO && estaPendienteJerarquia && !esSusanaMartinez;
 
   async function handleAprobar() {
     try {
@@ -161,6 +208,33 @@ export default function ModalAprobacion({ solicitud, isOpen, onClose, onSuccess,
           {/* Formulario de Aprobación o Rechazo */}
           {modo === 'detalle' && (
             <div className="space-y-4">
+              {/* Alerta de Bloqueo por Gobernanza Jerárquica */}
+              {bloqueoVoBoDO && (
+                <div className="p-3.5 rounded-2xl bg-amber-50 border border-amber-300 text-amber-950 flex items-start gap-3 text-xs shadow-xs">
+                  <div className="w-8 h-8 rounded-xl bg-amber-100 text-amber-800 flex items-center justify-center shrink-0 mt-0.5">
+                    <AlertTriangle className="w-4 h-4 text-amber-700" />
+                  </div>
+                  <div className="space-y-1">
+                    <strong className="block font-bold text-amber-950 text-xs uppercase tracking-wide">
+                      Autorización Jerárquica Pendiente
+                    </strong>
+                    <p className="text-[11px] leading-relaxed text-amber-900">
+                      Esta solicitud está pendiente de autorización por la línea jerárquica. Solo Susana Martínez puede emitir Vo.Bo. directo.
+                    </p>
+                  </div>
+                </div>
+              )}
+
+              {/* Banner de Excepción Ejecutiva para Susana Martínez */}
+              {esAdminDO && estaPendienteJerarquia && esSusanaMartinez && (
+                <div className="p-3.5 rounded-2xl bg-indigo-50 border border-indigo-200 text-indigo-950 flex items-center gap-2.5 text-xs shadow-xs">
+                  <ShieldCheck className="w-4 h-4 text-indigo-700 shrink-0" />
+                  <span className="text-[11px] font-semibold text-indigo-950">
+                    <strong>Excepción Ejecutiva Autorizada:</strong> Sesión activa de Susana Martínez. Tienes facultad para otorgar el Vo.Bo. directo independientemente de los jefes.
+                  </span>
+                </div>
+              )}
+
               <div>
                 <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
                   Notas de Aprobación (Opcional)
@@ -253,8 +327,13 @@ export default function ModalAprobacion({ solicitud, isOpen, onClose, onSuccess,
               <button
                 type="button"
                 onClick={handleAprobar}
-                disabled={loading}
-                className="flex items-center gap-1.5 px-5 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold transition-all shadow-xs"
+                disabled={loading || bloqueoVoBoDO}
+                title={bloqueoVoBoDO ? "Esta solicitud está pendiente de autorización por la línea jerárquica. Solo Susana Martínez puede emitir Vo.Bo. directo." : ""}
+                className={`flex items-center gap-1.5 px-5 py-2.5 rounded-xl text-white text-xs font-bold transition-all shadow-xs ${
+                  bloqueoVoBoDO
+                    ? 'bg-slate-300 text-slate-500 cursor-not-allowed opacity-60 hover:bg-slate-300'
+                    : 'bg-emerald-600 hover:bg-emerald-700'
+                }`}
               >
                 <CheckCircle className="w-4 h-4" />
                 {loading ? 'Procesando...' : (

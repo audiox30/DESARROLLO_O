@@ -50,6 +50,8 @@ const PERSONAS_DEMO = [
 ];
 
 function generateToken(user) {
+  const emailCorp = user.EmailCorporativo || user.emailCorporativo || '';
+  const emailPers = user.Email || user.email || '';
   return jwt.sign(
     {
       sub: String(user.IdUsuario || user.sub || user.id || 1),
@@ -58,7 +60,9 @@ function generateToken(user) {
       id_empresa: Number(user.IdEmpresa || user.id_empresa || 1),
       username: user.Username || user.username || user.CodigoEmpleado || 'usuario',
       nombre: user.NombreCompleto || user.nombreCompleto || 'Colaborador',
-      email: user.Email || user.email || ''
+      email: emailCorp || emailPers,
+      emailCorporativo: emailCorp,
+      emailPersonal: emailPers
     },
     JWT_SECRET,
     { expiresIn: '8h' }
@@ -104,6 +108,11 @@ const authController = {
         'admin.do': 'ADMIN_DO',
         'admin_do': 'ADMIN_DO',
         'admindo': 'ADMIN_DO',
+        'smartinez': 'ADMIN_DO',
+        'susana': 'ADMIN_DO',
+        'susana.martinez': 'ADMIN_DO',
+        '0214': 'ADMIN_DO',
+        'cont-214': 'ADMIN_DO',
         'lider': 'LIDER',
         'lider.ulises': 'LIDER',
         'lider_ulises': 'LIDER',
@@ -121,6 +130,8 @@ const authController = {
           user = mockStore.colaboradores.find(c => c.id === 2022 || c.rolApp === 'SISTEMAS');
         } else if (uClean === 'admin.do' || uClean === 'admin_do' || uClean === '0906' || uClean === 'cont-906') {
           user = mockStore.colaboradores.find(c => c.id === 383 || c.codigoEmpleado === 'CONT-906');
+        } else if (uClean === 'smartinez' || uClean === 'susana' || uClean === '0214' || uClean === 'cont-214') {
+          user = mockStore.colaboradores.find(c => c.id === 80 || c.codigoEmpleado === 'CONT-214' || c.codigoEmpleado === '0214' || (c.nombreCompleto && c.nombreCompleto.includes('SUSANA MARTINEZ')));
         } else if (uClean === 'lider.ulises' || uClean === 'lider' || uClean === '850' || uClean === 'lat-155') {
           user = mockStore.colaboradores.find(c => c.id === 46 || c.codigoEmpleado === 'LAT-155');
         } else if (uClean === 'colab.gonzalo' || uClean === 'colaborador' || uClean === '1077' || uClean === 'lat-1077') {
@@ -133,6 +144,7 @@ const authController = {
           user = mockStore.colaboradores.find(c => 
             (c.codigoEmpleado && c.codigoEmpleado.toLowerCase() === uClean) ||
             (c.email && c.email.toLowerCase() === uClean) ||
+            (c.emailCorporativo && c.emailCorporativo.toLowerCase() === uClean) ||
             (c.nombreCompleto && c.nombreCompleto.toLowerCase().includes(uClean))
           ) || mockStore.colaboradores[0];
         }
@@ -155,7 +167,9 @@ const authController = {
             rolApp: rolFinal,
             idEmpresa: user.idEmpresa || 1,
             empresa: user.empresa,
-            email: user.email,
+            email: user.emailCorporativo || user.email,
+            emailCorporativo: user.emailCorporativo || null,
+            emailPersonal: user.email || null,
             debeCambiarPassword: false
           }
         });
@@ -177,7 +191,7 @@ const authController = {
               'sistemas' AS Username,
               'SUPERADMIN' AS RolApp,
               0 AS DebeCambiarPassword,
-              c.CodigoEmpleado, c.Subfijo, c.NombreCompleto, c.Email,
+              c.CodigoEmpleado, c.Subfijo, c.NombreCompleto, c.Email, c.EmailCorporativo,
               c.IdEmpresa, ISNULL(e.AliasEmpresa, c.Empresa) AS Empresa,
               c.Sucursal, c.IdDepartamento, c.IdPuesto, c.IdJefeDirecto
             FROM dbo.Colaboradores c
@@ -188,6 +202,25 @@ const authController = {
             ORDER BY CASE WHEN u.Username = 'sistemas' THEN 0 ELSE 1 END, c.IdColaborador ASC;
           `);
           colabUser = resSis.recordset[0];
+        } else if (uClean === 'smartinez' || uClean === 'susana' || uClean === 'susana.martinez' || uClean === '0214' || uClean === 'cont-214') {
+          const resSusana = await pool.request().query(`
+            SELECT TOP 1
+              ISNULL(u.IdUsuario, c.IdColaborador) AS IdUsuario,
+              c.IdColaborador,
+              ISNULL(u.Username, '0214') AS Username,
+              'ADMIN_DO' AS RolApp,
+              0 AS DebeCambiarPassword,
+              c.CodigoEmpleado, c.Subfijo, c.NombreCompleto, c.Email, c.EmailCorporativo,
+              c.IdEmpresa, ISNULL(e.AliasEmpresa, c.Empresa) AS Empresa,
+              c.Sucursal, c.IdDepartamento, c.IdPuesto, c.IdJefeDirecto
+            FROM dbo.Colaboradores c
+            LEFT JOIN dbo.UsuariosApp u ON u.IdColaborador = c.IdColaborador
+            LEFT JOIN dbo.EmpresasNomipaq e ON e.IdEmpresa = c.IdEmpresa
+            WHERE (c.NombreCompleto LIKE '%SUSANA%MARTINEZ%' OR c.CodigoEmpleado = '0214' OR c.EmailCorporativo = 'smartinez@grupojama.com')
+              AND c.Activo = 1
+            ORDER BY c.IdColaborador ASC;
+          `);
+          colabUser = resSusana.recordset[0];
         } else if (uClean === 'admin.do' || uClean === 'admin_do' || uClean === 'admindo') {
           const resDO = await pool.request().query(`
             SELECT TOP 1
@@ -196,7 +229,7 @@ const authController = {
               ISNULL(u.Username, 'admin.do') AS Username,
               'ADMIN_DO' AS RolApp,
               0 AS DebeCambiarPassword,
-              c.CodigoEmpleado, c.Subfijo, c.NombreCompleto, c.Email,
+              c.CodigoEmpleado, c.Subfijo, c.NombreCompleto, c.Email, c.EmailCorporativo,
               c.IdEmpresa, ISNULL(e.AliasEmpresa, c.Empresa) AS Empresa,
               c.Sucursal, c.IdDepartamento, c.IdPuesto, c.IdJefeDirecto
             FROM dbo.Colaboradores c
@@ -215,7 +248,7 @@ const authController = {
               ISNULL(u.Username, 'lider.ulises') AS Username,
               'LIDER' AS RolApp,
               0 AS DebeCambiarPassword,
-              c.CodigoEmpleado, c.Subfijo, c.NombreCompleto, c.Email,
+              c.CodigoEmpleado, c.Subfijo, c.NombreCompleto, c.Email, c.EmailCorporativo,
               c.IdEmpresa, ISNULL(e.AliasEmpresa, c.Empresa) AS Empresa,
               c.Sucursal, c.IdDepartamento, c.IdPuesto, c.IdJefeDirecto
             FROM dbo.Colaboradores c
@@ -234,7 +267,7 @@ const authController = {
               ISNULL(u.Username, 'colab.gonzalo') AS Username,
               'COLABORADOR' AS RolApp,
               0 AS DebeCambiarPassword,
-              c.CodigoEmpleado, c.Subfijo, c.NombreCompleto, c.Email,
+              c.CodigoEmpleado, c.Subfijo, c.NombreCompleto, c.Email, c.EmailCorporativo,
               c.IdEmpresa, ISNULL(e.AliasEmpresa, c.Empresa) AS Empresa,
               c.Sucursal, c.IdDepartamento, c.IdPuesto, c.IdJefeDirecto
             FROM dbo.Colaboradores c
@@ -253,7 +286,7 @@ const authController = {
               ISNULL(u.Username, 'colab.rocio') AS Username,
               'COLABORADOR' AS RolApp,
               0 AS DebeCambiarPassword,
-              c.CodigoEmpleado, c.Subfijo, c.NombreCompleto, c.Email,
+              c.CodigoEmpleado, c.Subfijo, c.NombreCompleto, c.Email, c.EmailCorporativo,
               c.IdEmpresa, ISNULL(e.AliasEmpresa, c.Empresa) AS Empresa,
               c.Sucursal, c.IdDepartamento, c.IdPuesto, c.IdJefeDirecto
             FROM dbo.Colaboradores c
@@ -275,6 +308,7 @@ const authController = {
             user: {
               idUsuario: colabUser.IdUsuario,
               idColaborador: colabUser.IdColaborador,
+              id: colabUser.IdColaborador,
               username: colabUser.Username,
               codigoEmpleado: colabUser.CodigoEmpleado,
               nombreCompleto: colabUser.NombreCompleto,
@@ -282,7 +316,9 @@ const authController = {
               rolApp: colabUser.RolApp,
               idEmpresa: colabUser.IdEmpresa,
               empresa: colabUser.Empresa,
-              email: colabUser.Email,
+              email: colabUser.EmailCorporativo || colabUser.Email,
+              emailCorporativo: colabUser.EmailCorporativo || colabUser.emailCorporativo || null,
+              emailPersonal: colabUser.Email || colabUser.email || null,
               debeCambiarPassword: false
             }
           });
@@ -298,13 +334,13 @@ const authController = {
           SELECT TOP 1
             u.IdUsuario, u.IdColaborador, u.Username, u.PasswordHash, u.RolApp,
             u.DebeCambiarPassword, u.Activo,
-            c.CodigoEmpleado, c.Subfijo, c.NombreCompleto, c.Email, 
+            c.CodigoEmpleado, c.Subfijo, c.NombreCompleto, c.Email, c.EmailCorporativo,
             c.IdEmpresa, ISNULL(e.AliasEmpresa, c.Empresa) AS Empresa,
             c.Sucursal, c.IdDepartamento, c.IdPuesto, c.IdJefeDirecto
           FROM dbo.UsuariosApp u
           JOIN dbo.Colaboradores c ON c.IdColaborador = u.IdColaborador
           LEFT JOIN dbo.EmpresasNomipaq e ON e.IdEmpresa = c.IdEmpresa
-          WHERE (u.Username = @Username OR c.Email = @Username OR c.CodigoEmpleado = @Username)
+          WHERE (u.Username = @Username OR c.Email = @Username OR c.EmailCorporativo = @Username OR c.CodigoEmpleado = @Username)
             AND u.Activo = 1
             AND c.Activo = 1;
         `);
@@ -319,7 +355,7 @@ const authController = {
           .input('Codigo', username.trim())
           .query(`
             SELECT TOP 1 
-              c.IdColaborador, c.CodigoEmpleado, c.Subfijo, c.NombreCompleto, c.Email,
+              c.IdColaborador, c.CodigoEmpleado, c.Subfijo, c.NombreCompleto, c.Email, c.EmailCorporativo,
               c.IdEmpresa, ISNULL(e.AliasEmpresa, c.Empresa) AS Empresa, c.Sucursal,
               c.IdDepartamento, c.IdPuesto, c.IdJefeDirecto,
               CASE 
@@ -328,7 +364,7 @@ const authController = {
               END AS RolApp
             FROM dbo.Colaboradores c
             LEFT JOIN dbo.EmpresasNomipaq e ON e.IdEmpresa = c.IdEmpresa
-            WHERE (c.CodigoEmpleado = @Codigo OR c.Email = @Codigo)
+            WHERE (c.CodigoEmpleado = @Codigo OR c.Email = @Codigo OR c.EmailCorporativo = @Codigo)
               AND c.Activo = 1;
           `);
 
@@ -344,6 +380,7 @@ const authController = {
             Subfijo: cObj.Subfijo,
             NombreCompleto: cObj.NombreCompleto,
             Email: cObj.Email,
+            EmailCorporativo: cObj.EmailCorporativo,
             IdEmpresa: cObj.IdEmpresa,
             Empresa: cObj.Empresa,
             Sucursal: cObj.Sucursal,
@@ -411,7 +448,9 @@ const authController = {
           rolApp: user.RolApp,
           idEmpresa: user.IdEmpresa,
           empresa: user.Empresa,
-          email: user.Email,
+          email: user.EmailCorporativo || user.Email,
+          emailCorporativo: user.EmailCorporativo || user.emailCorporativo || null,
+          emailPersonal: user.Email || user.email || null,
           debeCambiarPassword: debeCambiar
         }
       });
@@ -521,7 +560,7 @@ const authController = {
           SELECT 
             c.IdColaborador AS id, c.IdColaborador, c.CodigoEmpleado, c.Subfijo,
             c.Nombre, c.ApellidoPaterno, c.ApellidoMaterno, c.NombreCompleto,
-            c.CURP, c.RFC, c.NSS, c.Email, c.Telefono, c.Empresa, c.Sucursal, c.FechaAlta,
+            c.CURP, c.RFC, c.NSS, c.Email, c.EmailCorporativo, c.Telefono, c.Empresa, c.Sucursal, c.FechaAlta,
             c.IdDepartamento, c.IdPuesto, c.IdJefeDirecto, c.RolApp, c.JornadaLaboralDias, c.Activo,
             p.Nombre AS Puesto, d.Nombre AS Departamento,
             j.NombreCompleto AS JefeDirectoNombre,
@@ -549,7 +588,9 @@ const authController = {
         rolApp: user.RolApp,
         rol: user.RolApp,
         empresa: user.AliasEmpresa || user.Empresa,
-        email: user.Email,
+        email: user.EmailCorporativo || user.Email,
+        emailCorporativo: user.EmailCorporativo || user.emailCorporativo || null,
+        emailPersonal: user.Email || user.email || null,
         debeCambiarPassword: Boolean(user.DebeCambiarPassword)
       };
 

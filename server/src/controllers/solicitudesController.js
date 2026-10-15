@@ -518,7 +518,49 @@ const solicitudesController = {
         ? 'Validada y aprobada por Desarrollo Organizacional.'
         : 'Rechazada por Desarrollo Organizacional.');
 
+      // -------------------------------------------------------------------------
+      // VALIDACIÓN ESTRICTA DE GOBERNANZA JERÁRQUICA Y EXCEPCIÓN SUSANA MARTÍNEZ
+      // -------------------------------------------------------------------------
+      let emailSesion = (req.user?.emailCorporativo || req.user?.email || '').toLowerCase().trim();
+      const usernameSesion = (req.user?.username || '').toLowerCase().trim();
+      const idColabSesion = Number(idAdmin || 0);
+
+      if (emailSesion !== 'smartinez@grupojama.com' && !isUsingMock() && idColabSesion) {
+        try {
+          const poolCheck = await getPool();
+          const checkAdmin = await poolCheck.request()
+            .input('IdAdmin', idColabSesion)
+            .query('SELECT EmailCorporativo, Email FROM dbo.Colaboradores WHERE IdColaborador = @IdAdmin');
+          if (checkAdmin.recordset[0]?.EmailCorporativo) {
+            emailSesion = checkAdmin.recordset[0].EmailCorporativo.toLowerCase().trim();
+          }
+        } catch (e) {
+          console.warn('[resolverDO] Error verificando correo de admin:', e.message);
+        }
+      }
+
+      const esSusana = (
+        emailSesion === 'smartinez@grupojama.com' ||
+        usernameSesion === 'smartinez@grupojama.com' ||
+        usernameSesion === '0214' ||
+        usernameSesion === 'cont-214' ||
+        idColabSesion === 15 ||
+        idColabSesion === 80
+      );
+
       if (isUsingMock()) {
+        const solExistente = mockStore.solicitudes.find(s => s.idSolicitud === Number(id) || s.id === Number(id));
+        if (!solExistente) {
+          return res.status(404).json({ error: 'Solicitud no encontrada.' });
+        }
+
+        const estadoActual = (solExistente.estado || '').toUpperCase();
+        if (accionNorm === 'APROBAR' && !esSusana && ['PENDIENTE_LIDER', 'PENDIENTE_GERENTE'].includes(estadoActual)) {
+          return res.status(403).json({ 
+            error: 'Acción denegada: La solicitud debe ser autorizada primero por el Líder / Gerente antes de que Admin_DO pueda emitir su Vo.Bo.' 
+          });
+        }
+
         let sol = null;
         if (accionNorm === 'APROBAR') {
           sol = mockStore.aprobarSolicitud(id, idAdmin, motivoFinal, 'WEB_DO');
@@ -543,6 +585,20 @@ const solicitudesController = {
       }
 
       const pool = await getPool();
+      const solRes = await pool.request()
+        .input('IdSolicitud', Number(id))
+        .query('SELECT Estado FROM dbo.SolicitudesVacaciones WHERE IdSolicitud = @IdSolicitud');
+
+      if (!solRes.recordset[0]) {
+        return res.status(404).json({ error: 'Solicitud no encontrada.' });
+      }
+
+      const estadoActual = (solRes.recordset[0].Estado || '').toUpperCase();
+      if (accionNorm === 'APROBAR' && !esSusana && ['PENDIENTE_LIDER', 'PENDIENTE_GERENTE'].includes(estadoActual)) {
+        return res.status(403).json({ 
+          error: 'Acción denegada: La solicitud debe ser autorizada primero por el Líder / Gerente antes de que Admin_DO pueda emitir su Vo.Bo.' 
+        });
+      }
       const spAccion = accionNorm === 'APROBAR' ? 'APROBADA' : 'RECHAZADA';
 
       const request = pool.request();

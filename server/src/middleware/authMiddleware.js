@@ -76,6 +76,8 @@ function authMiddleware(req, res, next) {
       username: decoded.username,
       nombre: decoded.nombre,
       email: decoded.email,
+      emailCorporativo: decoded.emailCorporativo,
+      emailPersonal: decoded.emailPersonal,
       isSimulating: Boolean(simulateRole || simulateColaborador)
     };
 

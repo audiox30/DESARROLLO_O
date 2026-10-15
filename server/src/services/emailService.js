@@ -1777,6 +1777,93 @@ const emailService = {
           console.error(`[NOTIFICACIONES EMAIL] Error notificando conclusión a autorizadores (${folio}):`, errLider.message);
         }
 
+        // 3. COPIA / CONFIRMACIÓN FORMAL A ADMIN_DO (María Vera - admin.rh@grupojama.com)
+        try {
+          const config = await obtenerConfiguracionEmail();
+          const emailAdminDO = config.adminDoEmail || ADMIN_DO_DEFECTO.email;
+          const nombreAdminDO = config.adminDoNombre || ADMIN_DO_DEFECTO.nombre;
+
+          const asuntoAdminDO = `[Vacaciones Grupo JAMA] Trámite Concluido y Formalizado - ${colaborador.nombre} (Folio ${folio})`;
+
+          const cuerpoAdminDO = `
+            <p style="margin:0 0 16px 0;">
+              Estimada <strong>${nombreAdminDO}</strong> (Desarrollo Organizacional),
+            </p>
+            <p style="margin:0 0 16px 0;">
+              Te confirmamos que el trámite de solicitud de vacaciones correspondiente al colaborador <strong>${colaborador.nombre}</strong> (Folio: <strong style="color:#002D62;">${folio}</strong>) ha sido <strong>concluido y formalizado exitosamente por Desarrollo Organizacional</strong>.
+            </p>
+            <p style="margin:0 0 16px 0;">
+              Los saldos de vacaciones han sido aplicados y el período ha quedado formalmente registrado en el sistema.
+            </p>
+
+            <!-- Resumen Institucional del Trámite Concluido -->
+            <table width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color:#f8fafc; border:1px solid #e2e8f0; border-radius:10px; margin:16px 0; overflow:hidden;">
+              <tr>
+                <td style="padding:10px 14px; border-bottom:1px solid #e2e8f0; color:#64748b; font-size:12px; font-weight:600; width:35%;">Colaborador:</td>
+                <td style="padding:10px 14px; border-bottom:1px solid #e2e8f0; color:#0f172a; font-size:13px; font-weight:bold;">${colaborador.nombre}</td>
+              </tr>
+              <tr>
+                <td style="padding:10px 14px; border-bottom:1px solid #e2e8f0; color:#64748b; font-size:12px; font-weight:600;">No. Nómina:</td>
+                <td style="padding:10px 14px; border-bottom:1px solid #e2e8f0; color:#0f172a; font-size:13px; font-mono font-bold;">${colaborador.codigo || '—'}</td>
+              </tr>
+              <tr>
+                <td style="padding:10px 14px; border-bottom:1px solid #e2e8f0; color:#64748b; font-size:12px; font-weight:600;">Empresa / Sucursal:</td>
+                <td style="padding:10px 14px; border-bottom:1px solid #e2e8f0; color:#0f172a; font-size:12px;">${colaborador.empresa} (${colaborador.sucursal})</td>
+              </tr>
+              <tr>
+                <td style="padding:10px 14px; border-bottom:1px solid #e2e8f0; color:#64748b; font-size:12px; font-weight:600;">Folio Solicitud:</td>
+                <td style="padding:10px 14px; border-bottom:1px solid #e2e8f0; color:#002D62; font-size:13px; font-weight:bold;">${folio}</td>
+              </tr>
+              <tr>
+                <td style="padding:10px 14px; border-bottom:1px solid #e2e8f0; color:#64748b; font-size:12px; font-weight:600;">Período Autorizado:</td>
+                <td style="padding:10px 14px; border-bottom:1px solid #e2e8f0; color:#0f172a; font-size:13px; font-weight:bold;">
+                  Desde ${formatFecha(fechaInicio)} hasta ${formatFecha(fechaFin)}
+                </td>
+              </tr>
+              <tr>
+                <td style="padding:10px 14px; border-bottom:1px solid #e2e8f0; color:#64748b; font-size:12px; font-weight:600;">Días Disfrutados:</td>
+                <td style="padding:10px 14px; border-bottom:1px solid #e2e8f0; color:#0f172a; font-size:13px; font-weight:bold;">
+                  ${totalDiasLaborables} días hábiles
+                </td>
+              </tr>
+              <tr>
+                <td style="padding:10px 14px; color:#64748b; font-size:12px; font-weight:600;">Saldo Disponible Restante:</td>
+                <td style="padding:10px 14px; color:#059669; font-size:13px; font-weight:bold;">
+                  ${saldoDisponible.toFixed(1)} días
+                </td>
+              </tr>
+            </table>
+
+            ${tablaHistorialHtml}
+
+            <p style="margin:16px 0; font-size:12px; color:#475569; background-color:#f0fdf4; border:1px solid #bbf7d0; padding:12px 16px; border-radius:8px;">
+              📎 <strong>Archivo Adjunto:</strong> Se anexa el formato institucional <code>FDO-84_Solicitud_${String(folio || idSolicitud).trim().replace(/[^a-zA-Z0-9_-]/g, '_')}.pdf</code> con todas las firmas y sellos digitales completos para el archivo y kardex del área.
+            </p>
+          `;
+
+          const htmlAdminDO = generarPlantillaHtml({
+            titulo: 'Confirmación de Trámite Formalizado por DO',
+            badgeTexto: 'Trámite Concluido y Formalizado',
+            badgeColor: '#002D62',
+            badgeBg: '#eff6ff',
+            badgeBorder: '#bfdbfe',
+            cuerpoHtml: cuerpoAdminDO,
+            ctaTexto: 'Ver Gestión de Vacaciones',
+            ctaUrl: '/admin/gestion-vacaciones'
+          });
+
+          await enviarEmail({
+            to: emailAdminDO,
+            subject: asuntoAdminDO,
+            html: htmlAdminDO,
+            attachments,
+            tipoEvento: 'CONCLUSION_DO_ADMIN',
+            folioSolicitud: folio
+          });
+        } catch (errAdminDO) {
+          console.error(`[NOTIFICACIONES EMAIL] Error notificando conclusión a Admin_DO (${folio}):`, errAdminDO.message);
+        }
+
       } else {
         // =====================================================================
         // CASO B: SOLICITUD RECHAZADA / NO VALIDADA POR DO

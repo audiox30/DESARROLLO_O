@@ -808,6 +808,7 @@ export default function AdminDOPanel({ currentUser }) {
           cargarSolicitudes();
         }}
         esAdminDO={true}
+        currentUser={currentUser}
       />
     </div>
   );

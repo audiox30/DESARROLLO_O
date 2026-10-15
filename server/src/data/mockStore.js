@@ -221,6 +221,14 @@ class MockStore {
           mariaVera.emailCorporativo = 'admin.rh@grupojama.com';
         }
 
+        // Configurar Susana Martínez como ADMIN_DO con excepción ejecutiva y correo corporativo
+        const susana = this.colaboradores.find(c => c.id === 80 || c.id === 15 || c.codigoEmpleado === 'CONT-214' || c.codigoEmpleado === '0214' || (c.nombreCompleto && c.nombreCompleto.includes('SUSANA MARTINEZ')));
+        if (susana) {
+          susana.rolApp = 'ADMIN_DO';
+          susana.rol = 'ADMIN_DO';
+          susana.emailCorporativo = 'smartinez@grupojama.com';
+        }
+
         // Resolución de Nombres de Jefes Directos y Sucursales para todo el catálogo
         const colabMap = new Map(this.colaboradores.map(c => [c.id, c]));
         this.colaboradores.forEach(c => {
