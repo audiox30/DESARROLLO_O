@@ -345,33 +345,6 @@ export default function Navbar({
                         </button>
                       </>
                     )}
-
-                    {/* Opción de Configuración Global del Sistema (SISTEMAS & ADMIN_DO) */}
-                    {(esSistemas || esAdminDO) && (
-                      <>
-                        {!esSistemas && <div className="my-1 border-t border-slate-100"></div>}
-                        <button
-                          onClick={() => {
-                            onTabChange('configuracion');
-                            setShowGestionDropdown(false);
-                          }}
-                          className={`w-full text-left px-3.5 py-2.5 hover:bg-slate-50 flex items-center justify-between transition cursor-pointer ${
-                            activeTab === 'configuracion' ? 'bg-purple-50/70 text-purple-950 font-bold' : 'text-slate-700'
-                          }`}
-                        >
-                          <div className="flex items-center gap-2.5">
-                            <div className="p-1.5 bg-purple-100 text-purple-700 rounded-lg">
-                              <Settings className="w-4 h-4" />
-                            </div>
-                            <div>
-                              <div className="text-xs font-bold text-slate-800">Configuración del Sistema</div>
-                              <div className="text-[11px] text-slate-400">Infraestructura, SMTP, CONTPAQi y LFT</div>
-                            </div>
-                          </div>
-                          {activeTab === 'configuracion' && <Check className="w-4 h-4 text-purple-600" />}
-                        </button>
-                      </>
-                    )}
                   </div>
                 )}
               </div>
@@ -820,20 +793,6 @@ export default function Navbar({
                     <span>Panel Sistemas & TI</span>
                   </button>
                 )}
-                {(esSistemas || esAdminDO) && (
-                  <button
-                    onClick={() => {
-                      onTabChange('configuracion');
-                      setMobileMenuOpen(false);
-                    }}
-                    className={`w-full text-left px-3 py-2 rounded-xl text-xs font-semibold flex items-center gap-2 pl-6 ${
-                      activeTab === 'configuracion' ? 'bg-purple-50 text-purple-900 font-bold' : 'text-slate-700'
-                    }`}
-                  >
-                    <Settings className="w-4 h-4 text-purple-600" />
-                    <span>Configuración del Sistema</span>
-                  </button>
-                )}
               </>
             )}
 
@@ -849,6 +808,21 @@ export default function Navbar({
               >
                 <FileSpreadsheet className="w-4 h-4 text-emerald-600" />
                 <span>Reportes & Analítica</span>
+              </button>
+            )}
+
+            {(esSistemas || esAdminDO) && (
+              <button
+                onClick={() => {
+                  onTabChange('configuracion');
+                  setMobileMenuOpen(false);
+                }}
+                className={`w-full text-left px-3 py-2 rounded-xl text-xs font-semibold flex items-center gap-2 ${
+                  activeTab === 'configuracion' ? 'bg-purple-50 text-purple-900 font-bold' : 'text-slate-700'
+                }`}
+              >
+                <Settings className="w-4 h-4 text-purple-600" />
+                <span>Configuración del Sistema</span>
               </button>
             )}
           </div>
