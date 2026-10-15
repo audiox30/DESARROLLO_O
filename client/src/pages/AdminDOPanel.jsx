@@ -976,7 +976,7 @@ export default function AdminDOPanel({ currentUser }) {
             {/* Modal Body */}
             <div className="p-6 overflow-y-auto space-y-4">
               {/* Ficha Resumen */}
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 bg-slate-50 p-4 rounded-2xl border border-slate-200/70 text-xs">
+              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-3 bg-slate-50 p-4 rounded-2xl border border-slate-200/70 text-xs">
                 <div>
                   <span className="text-[10px] text-slate-400 font-bold uppercase block">Empresa</span>
                   <span className="font-bold text-slate-800 truncate block" title={modalKardexColab.empresa}>
@@ -992,6 +992,16 @@ export default function AdminDOPanel({ currentUser }) {
                 <div>
                   <span className="text-[10px] text-slate-400 font-bold uppercase block">Fecha Ingreso</span>
                   <span className="font-bold text-slate-800 font-mono">{modalKardexColab.fechaAlta || '—'}</span>
+                </div>
+                <div>
+                  <span className="text-[10px] text-slate-400 font-bold uppercase block">Antigüedad</span>
+                  <span className="font-bold text-slate-800">
+                    {modalKardexColab.antiguedadAnios !== undefined && modalKardexColab.antiguedadAnios !== null
+                      ? `${modalKardexColab.antiguedadAnios} ${Number(modalKardexColab.antiguedadAnios) === 1 ? 'año' : 'años'}`
+                      : (modalKardexColab.fechaAlta 
+                          ? `${Math.max(0, Math.floor((new Date() - new Date(modalKardexColab.fechaAlta)) / (365.25 * 24 * 3600 * 1000)))} años`
+                          : '—')}
+                  </span>
                 </div>
                 <div>
                   <span className="text-[10px] text-slate-400 font-bold uppercase block">Saldo Total Disponible</span>
