@@ -230,6 +230,7 @@ const adminColaboradoresController = {
           END AS NombreGerenteSucursal,
           c.RolApp, c.Activo, c.EstatusNomina, c.FechaAlta, c.FechaReingreso,
           c.DiasDescanso, c.CentroCostos, c.TipoNomina,
+          c.TipoContrato, c.PeriodicidadPago, c.FechaAltaImss, c.FechaEvaluacion, c.FechaRealContratacion,
           c.FechaNacimiento, c.EstadoCivil, c.Nacionalidad, c.Escolaridad,
           c.AvisarEmergencia, c.AvisarEmergencia AS ContactoEmergenciaNombre,
           c.ParentescoEmergencia, c.ParentescoEmergencia AS ContactoEmergenciaParentesco,
@@ -286,6 +287,20 @@ const adminColaboradoresController = {
         EmailCorporativo,
         diasDescanso,
         rolApp,
+        fechaRealContratacion,
+        FechaRealContratacion,
+        centroCostos,
+        CentroCostos,
+        tipoNomina,
+        TipoNomina,
+        tipoContrato,
+        TipoContrato,
+        periodicidadPago,
+        PeriodicidadPago,
+        fechaAltaImss,
+        FechaAltaImss,
+        fechaEvaluacion,
+        FechaEvaluacion,
         telefono,
         avisarEmergencia,
         parentescoEmergencia,
@@ -343,6 +358,42 @@ const adminColaboradoresController = {
       const alergiasSanitizado = (alergiasPadecimientos && typeof alergiasPadecimientos === 'string' && alergiasPadecimientos.trim()) ? alergiasPadecimientos.trim() : null;
       const rolAppFinal = rolApp ? String(rolApp).trim().toUpperCase() : 'COLABORADOR';
 
+      // Campos laborales y de contratación (DESARROLLO_O)
+      const rawFechaReal = fechaRealContratacion !== undefined ? fechaRealContratacion : FechaRealContratacion;
+      const fechaRealSanitizada = (rawFechaReal && typeof rawFechaReal === 'string' && rawFechaReal.trim())
+        ? rawFechaReal.trim().substring(0, 10)
+        : null;
+
+      const rawCentroCostos = centroCostos !== undefined ? centroCostos : CentroCostos;
+      const centroCostosSanitizado = (rawCentroCostos && typeof rawCentroCostos === 'string' && rawCentroCostos.trim())
+        ? rawCentroCostos.trim()
+        : null;
+
+      const rawTipoNomina = tipoNomina !== undefined ? tipoNomina : TipoNomina;
+      const tipoNominaSanitizado = (rawTipoNomina && typeof rawTipoNomina === 'string' && rawTipoNomina.trim())
+        ? rawTipoNomina.trim()
+        : null;
+
+      const rawTipoContrato = tipoContrato !== undefined ? tipoContrato : TipoContrato;
+      const tipoContratoSanitizado = (rawTipoContrato && typeof rawTipoContrato === 'string' && rawTipoContrato.trim())
+        ? rawTipoContrato.trim()
+        : null;
+
+      const rawPeriodicidadPago = periodicidadPago !== undefined ? periodicidadPago : PeriodicidadPago;
+      const periodicidadPagoSanitizado = (rawPeriodicidadPago && typeof rawPeriodicidadPago === 'string' && rawPeriodicidadPago.trim())
+        ? rawPeriodicidadPago.trim()
+        : null;
+
+      const rawFechaAltaImss = fechaAltaImss !== undefined ? fechaAltaImss : FechaAltaImss;
+      const fechaAltaImssSanitizada = (rawFechaAltaImss && typeof rawFechaAltaImss === 'string' && rawFechaAltaImss.trim())
+        ? rawFechaAltaImss.trim().substring(0, 10)
+        : null;
+
+      const rawFechaEvaluacion = fechaEvaluacion !== undefined ? fechaEvaluacion : FechaEvaluacion;
+      const fechaEvaluacionSanitizada = (rawFechaEvaluacion && typeof rawFechaEvaluacion === 'string' && rawFechaEvaluacion.trim())
+        ? rawFechaEvaluacion.trim().substring(0, 10)
+        : null;
+
       const pool = await getLocalPool();
 
       // MODO FALLBACK (Motor Local / Mock)
@@ -372,6 +423,20 @@ const adminColaboradoresController = {
           diasDescanso: diasDescansoStr,
           RolApp: rolAppFinal,
           rolApp: rolAppFinal,
+          FechaRealContratacion: fechaRealSanitizada,
+          fechaRealContratacion: fechaRealSanitizada,
+          CentroCostos: centroCostosSanitizado,
+          centroCostos: centroCostosSanitizado,
+          TipoNomina: tipoNominaSanitizado,
+          tipoNomina: tipoNominaSanitizado,
+          TipoContrato: tipoContratoSanitizado,
+          tipoContrato: tipoContratoSanitizado,
+          PeriodicidadPago: periodicidadPagoSanitizado,
+          periodicidadPago: periodicidadPagoSanitizado,
+          FechaAltaImss: fechaAltaImssSanitizada,
+          fechaAltaImss: fechaAltaImssSanitizada,
+          FechaEvaluacion: fechaEvaluacionSanitizada,
+          fechaEvaluacion: fechaEvaluacionSanitizada,
           Telefono: telefonoSanitizado !== null ? telefonoSanitizado : colab.Telefono,
           telefono: telefonoSanitizado !== null ? telefonoSanitizado : colab.telefono,
           AvisarEmergencia: avisarEmergenciaSanitizado,
@@ -423,6 +488,9 @@ const adminColaboradoresController = {
             ALTER TABLE dbo.Colaboradores ADD DiasDescanso VARCHAR(100) NULL;
         ELSE
             ALTER TABLE dbo.Colaboradores ALTER COLUMN DiasDescanso VARCHAR(100) NULL;
+
+        IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('dbo.Colaboradores') AND name = 'FechaRealContratacion')
+            ALTER TABLE dbo.Colaboradores ADD FechaRealContratacion DATE NULL;
       `);
 
       const request = pool.request();
@@ -432,6 +500,13 @@ const adminColaboradoresController = {
       request.input('EmailCorporativo', emailCorpSanitizado);
       request.input('DiasDescanso', diasDescansoStr);
       request.input('RolApp', rolAppFinal);
+      request.input('CentroCostos', centroCostosSanitizado);
+      request.input('TipoNomina', tipoNominaSanitizado);
+      request.input('TipoContrato', tipoContratoSanitizado);
+      request.input('PeriodicidadPago', periodicidadPagoSanitizado);
+      request.input('FechaAltaImss', fechaAltaImssSanitizada);
+      request.input('FechaEvaluacion', fechaEvaluacionSanitizada);
+      request.input('FechaRealContratacion', fechaRealSanitizada);
       request.input('Telefono', telefonoSanitizado);
       request.input('AvisarEmergencia', avisarEmergenciaSanitizado);
       request.input('ParentescoEmergencia', parentescoEmergenciaSanitizado);
@@ -447,6 +522,13 @@ const adminColaboradoresController = {
           EmailCorporativo = @EmailCorporativo,
           DiasDescanso = @DiasDescanso,
           RolApp = @RolApp,
+          CentroCostos = @CentroCostos,
+          TipoNomina = @TipoNomina,
+          TipoContrato = @TipoContrato,
+          PeriodicidadPago = @PeriodicidadPago,
+          FechaAltaImss = @FechaAltaImss,
+          FechaEvaluacion = @FechaEvaluacion,
+          FechaRealContratacion = @FechaRealContratacion,
           Telefono = @Telefono,
           AvisarEmergencia = @AvisarEmergencia,
           ParentescoEmergencia = @ParentescoEmergencia,
