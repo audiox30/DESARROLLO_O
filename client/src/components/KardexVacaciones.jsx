@@ -40,16 +40,13 @@ export default function KardexVacaciones({ periodos = [], colaborador, resumen }
 
   return (
     <div className="bg-white rounded-2xl border border-slate-200/80 shadow-xs overflow-hidden">
-      <div className="px-5 py-4 border-b border-slate-100 flex flex-col sm:flex-row sm:items-center justify-between gap-2 bg-slate-50/50">
+      <div className="px-5 py-4 border-b border-slate-100 flex items-center justify-between gap-2 bg-slate-50/50">
         <div className="flex items-center gap-2">
           <FileText className="w-4 h-4 text-blue-600" />
           <h3 className="text-xs font-bold text-slate-900 uppercase tracking-wider">
             Kárdex de Vacaciones por Período Laboral (Vigencia 18 Meses LFT)
           </h3>
         </div>
-        <span className="text-[11px] text-slate-500 font-mono">
-          Alta: <strong>{formatFechaUI(colaborador?.fechaAlta)}</strong> • {colaborador?.antiguedadTexto || `${colaborador?.antiguedadAnios || 0} años de servicio`}
-        </span>
       </div>
 
       <div className="overflow-x-auto">
