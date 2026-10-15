@@ -8,6 +8,28 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=Plus+Jakarta+Sans:wght@500;600;700;800&display=swap" rel="stylesheet">
+    <script>
+      window.addEventListener('error', function(e) {
+        var el = document.getElementById('debug-error-box');
+        if (!el) {
+          el = document.createElement('div');
+          el.id = 'debug-error-box';
+          el.style.cssText = 'position:fixed;top:10px;left:10px;right:10px;background:#fee2e2;border:2px solid #ef4444;color:#991b1b;padding:16px;border-radius:12px;font-family:monospace;font-size:13px;z-index:999999;box-shadow:0 10px 25px rgba(0,0,0,0.2);white-space:pre-wrap;';
+          document.body ? document.body.appendChild(el) : document.documentElement.appendChild(el);
+        }
+        el.textContent = '❌ ERROR EN CLIENTE:\n' + e.message + '\nArchivo: ' + e.filename + ':' + e.lineno + ':' + e.colno + '\n\n' + (e.error ? e.error.stack : '');
+      });
+      window.addEventListener('unhandledrejection', function(e) {
+        var el = document.getElementById('debug-error-box');
+        if (!el) {
+          el = document.createElement('div');
+          el.id = 'debug-error-box';
+          el.style.cssText = 'position:fixed;top:10px;left:10px;right:10px;background:#fee2e2;border:2px solid #ef4444;color:#991b1b;padding:16px;border-radius:12px;font-family:monospace;font-size:13px;z-index:999999;box-shadow:0 10px 25px rgba(0,0,0,0.2);white-space:pre-wrap;';
+          document.body ? document.body.appendChild(el) : document.documentElement.appendChild(el);
+        }
+        el.textContent = '❌ ERROR ASÍNCRONO:\n' + (e.reason ? (e.reason.stack || e.reason) : e.reason);
+      });
+    </script>
   </head>
   <body class="bg-slate-50 text-slate-900 font-sans antialiased min-h-screen">
     <div id="root"></div>
