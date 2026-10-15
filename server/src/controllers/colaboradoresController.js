@@ -160,6 +160,7 @@ const colaboradoresController = {
             c.CURP, c.RFC, c.NSS, c.Email, c.Email AS EmailNomina, c.EmailCorporativo, c.Telefono,
             d.Nombre AS Departamento, p.Nombre AS Puesto,
             c.FechaAlta, c.FechaReingreso, c.EstatusNomina, c.RolApp, c.JornadaLaboralDias, c.Activo,
+            c.CentroCostos, c.TipoNomina, c.TipoContrato, c.PeriodicidadPago, c.FechaAltaImss, c.FechaEvaluacion, c.FechaRealContratacion,
             c.IdJefeDirecto,
             jefe.NombreCompleto AS NombreJefeDirecto,
             jefe.NombreCompleto AS JefeDirectoNombre,

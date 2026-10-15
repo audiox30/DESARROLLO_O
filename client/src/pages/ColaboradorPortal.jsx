@@ -553,6 +553,47 @@ export default function ColaboradorPortal({ currentUser }) {
                           <span className="font-semibold text-slate-800">{perfilColab?.Puesto || currentUser?.puesto || '—'}</span>
                         </div>
                         <div className="flex justify-between">
+                          <span className="text-slate-400">Centro de Costos:</span>
+                          <span className="font-mono font-bold text-slate-800">{perfilColab?.CentroCostos || '—'}</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-slate-400">Tipo de Nómina:</span>
+                          <span className="font-semibold text-slate-800">{perfilColab?.TipoNomina || '—'}</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-slate-400">Tipo de Contrato:</span>
+                          <span className="font-semibold text-slate-800">{perfilColab?.TipoContrato || '—'}</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-slate-400">Periodicidad de Pago:</span>
+                          <span className="font-semibold text-slate-800">{perfilColab?.PeriodicidadPago || '—'}</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-slate-400">Fecha de Alta:</span>
+                          <span className="font-mono text-slate-700 font-semibold">
+                            {perfilColab?.FechaAlta ? `${formatearFecha(perfilColab.FechaAlta)} (${calcularAntiguedad(perfilColab.FechaAlta)})` : '—'}
+                          </span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-indigo-700 font-bold">Fecha Real Contratación:</span>
+                          <span className="font-mono text-indigo-950 font-bold">
+                            {(() => {
+                              const frc = perfilColab?.FechaRealContratacion;
+                              if (!frc) return <span className="text-slate-400 font-normal italic">Sin registrar</span>;
+                              const ant = calcularAntiguedad(frc);
+                              return `${formatearFecha(frc)}${ant ? ` (${ant})` : ''}`;
+                            })()}
+                          </span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-slate-400">Fecha Alta IMSS:</span>
+                          <span className="font-mono text-slate-700 font-semibold">{formatearFecha(perfilColab?.FechaAltaImss)}</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-slate-400">Fecha de Evaluación:</span>
+                          <span className="font-mono text-slate-700 font-semibold">{formatearFecha(perfilColab?.FechaEvaluacion)}</span>
+                        </div>
+                        <div className="flex justify-between">
                           <span className="text-slate-400">Jefe Directo:</span>
                           <span className="font-semibold text-amber-800">{perfilColab?.JefeDirectoNombre || 'Sin Jefe Asignado'}</span>
                         </div>

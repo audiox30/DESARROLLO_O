@@ -532,6 +532,7 @@ export default function AdminColaboradoresPage({ currentUser }) {
       emailCorporativo: c.EmailCorporativo || c.emailCorporativo || '',
       diasDescanso: parseDiasDescanso(c.DiasDescanso),
       rolApp: c.RolApp || 'COLABORADOR',
+      fechaRealContratacion: c.FechaRealContratacion ? String(c.FechaRealContratacion).substring(0, 10) : '',
       telefono: c.Telefono || '',
       avisarEmergencia: c.AvisarEmergencia || '',
       parentescoEmergencia: c.ParentescoEmergencia || '',
@@ -603,6 +604,8 @@ export default function AdminColaboradoresPage({ currentUser }) {
         IdAprobadorSegundo: idAprobadorSegundoSanitizado,
         diasDescanso: diasDescansoSanitizado,
         DiasDescanso: diasDescansoSanitizado,
+        fechaRealContratacion: formEditar.fechaRealContratacion || null,
+        FechaRealContratacion: formEditar.fechaRealContratacion || null,
         telefono: (formEditar.telefono && typeof formEditar.telefono === 'string' && formEditar.telefono.trim() !== '') ? formEditar.telefono.trim() : null,
         avisarEmergencia: (formEditar.avisarEmergencia && typeof formEditar.avisarEmergencia === 'string' && formEditar.avisarEmergencia.trim() !== '') ? formEditar.avisarEmergencia.trim() : null,
         parentescoEmergencia: (formEditar.parentescoEmergencia && typeof formEditar.parentescoEmergencia === 'string' && formEditar.parentescoEmergencia.trim() !== '') ? formEditar.parentescoEmergencia.trim() : null,
@@ -624,6 +627,7 @@ export default function AdminColaboradoresPage({ currentUser }) {
                 ...payload, 
                 EmailCorporativo: payload.emailCorporativo,
                 DiasDescanso: payload.diasDescanso,
+                FechaRealContratacion: payload.fechaRealContratacion,
                 IdJefeDirecto: payload.idJefeDirecto,
                 JefeDirectoNombre: jefeSel ? jefeSel.NombreCompleto : null,
                 IdAprobadorSegundo: payload.idAprobadorSegundo,
@@ -1292,6 +1296,10 @@ export default function AdminColaboradoresPage({ currentUser }) {
                       <CampoSoloLectura label="Sucursal" valor={colabEditar.Sucursal} icono={Building2} />
                       <CampoSoloLectura label="Departamento" valor={colabEditar.Departamento} icono={Briefcase} />
                       <CampoSoloLectura label="Puesto" valor={colabEditar.Puesto} icono={Briefcase} />
+                      <CampoSoloLectura label="Centro de Costos" valor={colabEditar.CentroCostos} icono={Building2} monospace />
+                      <CampoSoloLectura label="Tipo de Nómina" valor={colabEditar.TipoNomina} icono={Shield} />
+                      <CampoSoloLectura label="Tipo de Contrato" valor={colabEditar.TipoContrato} icono={Briefcase} />
+                      <CampoSoloLectura label="Periodicidad de Pago" valor={colabEditar.PeriodicidadPago} icono={CreditCard} />
                       <CampoSoloLectura 
                         label="Fecha de Alta (Antigüedad)" 
                         valor={colabEditar.FechaAlta 
@@ -1300,14 +1308,19 @@ export default function AdminColaboradoresPage({ currentUser }) {
                         icono={Calendar} 
                       />
                       <CampoSoloLectura 
+                        label="Fecha Alta IMSS" 
+                        valor={formatearFecha(colabEditar.FechaAltaImss)} 
+                        icono={Calendar} 
+                      />
+                      <CampoSoloLectura 
+                        label="Fecha de Evaluación" 
+                        valor={formatearFecha(colabEditar.FechaEvaluacion)} 
+                        icono={Calendar} 
+                      />
+                      <CampoSoloLectura 
                         label="Jefe Directo (registrado en Nómina)" 
                         valor={colabEditar.JefeDirectoNombre || '—'} 
                         icono={User} 
-                      />
-                      <CampoSoloLectura 
-                        label="Rol / Tipo Nómina" 
-                        valor={colabEditar.TipoNomina || colabEditar.EstatusNomina || '—'} 
-                        icono={Shield} 
                       />
                     </div>
                   </div>
@@ -1521,6 +1534,37 @@ export default function AdminColaboradoresPage({ currentUser }) {
                       disabled={isReadOnly}
                       onChange={(nuevos) => setFormEditar({ ...formEditar, diasDescanso: nuevos })}
                     />
+                  </div>
+
+                  {/* Fecha Real Contratación */}
+                  <div className="sm:col-span-2 p-3.5 bg-indigo-50/40 border border-indigo-100 rounded-2xl">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 items-center">
+                      <div>
+                        <label className="block text-xs font-bold text-indigo-950 mb-1 flex items-center gap-1.5">
+                          <Calendar className="w-3.5 h-3.5 text-indigo-600" />
+                          <span>FECHA REAL CONTRATACIÓN</span>
+                          <span className="text-[10px] text-indigo-700 bg-indigo-100/70 border border-indigo-200 px-1.5 py-0.5 rounded font-bold">
+                            Ingreso Real
+                          </span>
+                        </label>
+                        <input
+                          type="date"
+                          name="fecha_real_contratacion"
+                          disabled={isReadOnly}
+                          value={formEditar.fechaRealContratacion || ''}
+                          onChange={(e) => setFormEditar({ ...formEditar, fechaRealContratacion: e.target.value })}
+                          className="w-full px-3 py-2 bg-white disabled:bg-slate-100 disabled:text-slate-700 disabled:cursor-not-allowed border border-slate-300 rounded-xl text-xs focus:ring-2 focus:ring-indigo-600 outline-none"
+                        />
+                      </div>
+                      <div className="text-xs text-slate-500">
+                        <span className="font-semibold text-slate-700 block mb-0.5">Antigüedad Calculada:</span>
+                        <span className="text-indigo-800 font-bold">
+                          {formEditar.fechaRealContratacion 
+                            ? `${calcularAntiguedad(formEditar.fechaRealContratacion)} de antigüedad real` 
+                            : 'Sin fecha real capturada (se tomará la fecha de alta de nómina)'}
+                        </span>
+                      </div>
+                    </div>
                   </div>
 
                   {/* FILA GRID 3 COLUMNAS: [ Correo Corporativo / Empresa ] | [ Teléfono Particular ] | [ Tipo de Sangre ] */}
@@ -1896,6 +1940,56 @@ export default function AdminColaboradoresPage({ currentUser }) {
                       <span className="text-[11px] text-slate-400 block">Puesto</span>
                       <span className="font-semibold text-slate-800">{fichaData?.Puesto || colabFicha.Puesto || '—'}</span>
                     </div>
+
+                    <div>
+                      <span className="text-[11px] text-slate-400 block">Centro de Costos</span>
+                      <span className="font-mono font-bold text-slate-800 bg-slate-100 px-2 py-0.5 rounded border border-slate-200 inline-block">
+                        {fichaData?.CentroCostos || colabFicha.CentroCostos || '—'}
+                      </span>
+                    </div>
+                    <div>
+                      <span className="text-[11px] text-slate-400 block">Tipo de Nómina</span>
+                      <span className="font-semibold text-slate-700">{fichaData?.TipoNomina || colabFicha.TipoNomina || '—'}</span>
+                    </div>
+                    <div>
+                      <span className="text-[11px] text-slate-400 block">Tipo de Contrato</span>
+                      <span className="font-semibold text-slate-700">{fichaData?.TipoContrato || colabFicha.TipoContrato || '—'}</span>
+                    </div>
+                    <div>
+                      <span className="text-[11px] text-slate-400 block">Periodicidad de Pago</span>
+                      <span className="font-semibold text-slate-700">{fichaData?.PeriodicidadPago || colabFicha.PeriodicidadPago || '—'}</span>
+                    </div>
+
+                    <div>
+                      <span className="text-[11px] text-slate-400 block">Fecha de Alta (Nómina)</span>
+                      <span className="font-mono text-slate-700 font-semibold">
+                        {fichaData?.FechaAlta ? `${formatearFecha(fichaData.FechaAlta)} (${calcularAntiguedad(fichaData.FechaAlta)})` : (colabFicha.FechaAlta ? `${formatearFecha(colabFicha.FechaAlta)} (${calcularAntiguedad(colabFicha.FechaAlta)})` : '—')}
+                      </span>
+                    </div>
+                    <div>
+                      <span className="text-[11px] text-indigo-700 font-black block">FECHA REAL CONTRATACIÓN</span>
+                      <span className="font-mono font-bold text-indigo-950 bg-indigo-50 border border-indigo-200 px-2 py-0.5 rounded inline-block">
+                        {(() => {
+                          const frc = fichaData?.FechaRealContratacion || colabFicha.FechaRealContratacion;
+                          if (!frc) return <span className="text-slate-400 font-normal italic">Sin registrar</span>;
+                          const ant = calcularAntiguedad(frc);
+                          return `${formatearFecha(frc)}${ant ? ` (${ant})` : ''}`;
+                        })()}
+                      </span>
+                    </div>
+                    <div>
+                      <span className="text-[11px] text-slate-400 block">Fecha Alta IMSS</span>
+                      <span className="font-mono text-slate-700 font-semibold">
+                        {formatearFecha(fichaData?.FechaAltaImss || colabFicha.FechaAltaImss)}
+                      </span>
+                    </div>
+                    <div>
+                      <span className="text-[11px] text-slate-400 block">Fecha de Evaluación</span>
+                      <span className="font-mono text-slate-700 font-semibold">
+                        {formatearFecha(fichaData?.FechaEvaluacion || colabFicha.FechaEvaluacion)}
+                      </span>
+                    </div>
+
                     <div>
                       <span className="text-[11px] text-slate-400 block">Jefe Directo (Aprobador NV1)</span>
                       <span className="font-semibold text-amber-800">
@@ -1911,22 +2005,12 @@ export default function AdminColaboradoresPage({ currentUser }) {
                       </span>
                     </div>
                     <div>
-                      <span className="text-[11px] text-slate-400 block">Fecha de Alta</span>
-                      <span className="font-mono text-slate-700">
-                        {fichaData?.FechaAlta ? `${formatearFecha(fichaData.FechaAlta)} (${calcularAntiguedad(fichaData.FechaAlta)})` : (colabFicha.FechaAlta ? `${formatearFecha(colabFicha.FechaAlta)} (${calcularAntiguedad(colabFicha.FechaAlta)})` : '—')}
-                      </span>
-                    </div>
-                    <div>
                       <span className="text-[11px] text-slate-400 block">Días de Descanso</span>
                       <span className="font-medium text-slate-700">{fichaData?.DiasDescanso || colabFicha.DiasDescanso || 'DOMINGO'}</span>
                     </div>
                     <div>
                       <span className="text-[11px] text-slate-400 block">Rol en la App</span>
                       <span className="font-bold text-blue-700">{fichaData?.RolApp || colabFicha.RolApp || 'COLABORADOR'}</span>
-                    </div>
-                    <div>
-                      <span className="text-[11px] text-slate-400 block">Tipo Nómina / Contrato</span>
-                      <span className="font-medium text-slate-700">{fichaData?.TipoNomina || 'Quincenal'} • {fichaData?.TipoContrato || 'Planta'}</span>
                     </div>
                   </div>
                 </div>

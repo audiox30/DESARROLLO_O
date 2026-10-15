@@ -69,6 +69,7 @@ class ColaboradorModel {
         AlergiasPadecimientos: colab.PadecimientosMedicos || colab.alergiasPadecimientos || colab.AlergiasPadecimientos,
         PadecimientosMedicos: colab.PadecimientosMedicos || colab.alergiasPadecimientos || colab.AlergiasPadecimientos,
         FechaAlta: colab.fechaAlta || colab.FechaAlta,
+        FechaRealContratacion: colab.fechaRealContratacion || colab.FechaRealContratacion,
         FechaNacimiento: colab.fechaNacimiento || colab.FechaNacimiento,
         CURP: colab.curp || colab.CURP,
         RFC: colab.rfc || colab.RFC,
@@ -131,6 +132,7 @@ class ColaboradorModel {
         c.PeriodicidadPago,
         c.FechaAltaImss,
         c.FechaEvaluacion,
+        c.FechaRealContratacion,
         c.DomicilioLaboral,
         c.AvisarEmergencia,
         c.AvisarEmergencia AS ContactoEmergenciaNombre,
@@ -394,6 +396,9 @@ class ColaboradorModel {
           ALTER TABLE dbo.Colaboradores ADD DiasDescanso VARCHAR(100) NULL;
       ELSE
           ALTER TABLE dbo.Colaboradores ALTER COLUMN DiasDescanso VARCHAR(100) NULL;
+
+      IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('dbo.Colaboradores') AND name = 'FechaRealContratacion')
+          ALTER TABLE dbo.Colaboradores ADD FechaRealContratacion DATE NULL;
     `);
 
     const request = pool.request();
@@ -404,7 +409,7 @@ class ColaboradorModel {
       'Subfijo', 'NSS', 'Sexo', 'FechaNacimiento', 'EstadoCivil', 'Nacionalidad', 'Escolaridad',
       'Domicilio', 'Municipio', 'EstadoProvincia', 'CodigoPostal', 'Email', 'EmailCorporativo', 'Telefono',
       'DiasDescanso', 'CentroCostos', 'TipoNomina', 'TipoContrato', 'PeriodicidadPago',
-      'FechaAltaImss', 'FechaEvaluacion', 'DomicilioLaboral',
+      'FechaAltaImss', 'FechaEvaluacion', 'FechaRealContratacion', 'DomicilioLaboral',
       'AvisarEmergencia', 'ParentescoEmergencia', 'TelefonoEmergencia', 'TipoSangre', 'AlergiasPadecimientos',
       'Beneficiario', 'ParentescoBeneficiario', 'RfcBeneficiario', 'TieneInfonavit', 'TieneFonacot', 'FuenteReclutamiento',
       'IdJefeDirecto', 'IdAprobadorSegundo', 'RolApp'
