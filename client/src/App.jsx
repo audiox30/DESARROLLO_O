@@ -76,15 +76,16 @@ export default function App() {
   }
 
   function inicializarTabSegunRol(rol) {
-    if (window.location.pathname === '/admin/configuracion' && (rol === 'SUPERADMIN' || rol === 'SISTEMAS')) {
+    const rolNorm = String(rol || '').toUpperCase();
+    if (window.location.pathname === '/admin/configuracion' && (rolNorm === 'SUPERADMIN' || rolNorm === 'SISTEMAS' || rolNorm === 'ADMIN_DO')) {
       setActiveTab('configuracion');
       return;
     }
-    if (rol === 'SUPERADMIN' || rol === 'SISTEMAS') {
+    if (rolNorm === 'SUPERADMIN' || rolNorm === 'SISTEMAS') {
       setActiveTab('sistemas');
-    } else if (rol === 'ADMIN_DO') {
+    } else if (rolNorm === 'ADMIN_DO') {
       setActiveTab('admin');
-    } else if (rol === 'LIDER') {
+    } else if (rolNorm === 'LIDER') {
       setActiveTab('lider');
     } else {
       setActiveTab('colaborador');
@@ -119,7 +120,7 @@ export default function App() {
     const validTabsByRole = {
       'COLABORADOR': ['colaborador'],
       'LIDER': ['colaborador', 'lider', 'mi-equipo'],
-      'ADMIN_DO': ['colaborador', 'admin', 'colaboradores', 'reportes'],
+      'ADMIN_DO': ['colaborador', 'admin', 'colaboradores', 'admin-do', 'reportes', 'configuracion'],
       'SISTEMAS': ['colaborador', 'lider', 'mi-equipo', 'admin', 'colaboradores', 'admin-do', 'reportes', 'sistemas', 'configuracion'],
       'SUPERADMIN': ['colaborador', 'lider', 'mi-equipo', 'admin', 'colaboradores', 'admin-do', 'reportes', 'sistemas', 'configuracion']
     };
@@ -277,7 +278,7 @@ export default function App() {
         )}
 
         {activeTab === 'configuracion' && (
-          <AdminConfiguracionPage currentUser={currentUser} onNavigateTab={setActiveTab} />
+          <AdminConfiguracionPage currentUser={effectiveUser} onNavigateTab={setActiveTab} />
         )}
 
       </main>

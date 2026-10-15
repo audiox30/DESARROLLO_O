@@ -168,13 +168,13 @@ router.get('/sistemas/auditoria', authMiddleware, requireRole('SUPERADMIN', 'SIS
 router.get('/sistemas/diagnostico', authMiddleware, requireRole('SUPERADMIN', 'SISTEMAS'), sistemasController.getDiagnostico);
 
 // =========================================================================
-// 9.1 CONFIGURACIÓN GLOBAL DEL SISTEMA (SUPERADMIN / SISTEMAS)
+// 9.1 CONFIGURACIÓN GLOBAL DEL SISTEMA (SUPERADMIN / SISTEMAS / ADMIN_DO)
 // =========================================================================
-router.get('/admin/configuracion', authMiddleware, requireRole('SUPERADMIN', 'SISTEMAS'), configuracionController.getConfiguracion);
-router.put('/admin/configuracion', authMiddleware, requireRole('SUPERADMIN', 'SISTEMAS'), configuracionController.updateConfiguracion);
-router.post('/admin/configuracion/probar-correo', authMiddleware, requireRole('SUPERADMIN', 'SISTEMAS'), configuracionController.probarCorreo);
-router.get('/admin/configuracion/log-correos', authMiddleware, requireRole('SUPERADMIN', 'SISTEMAS'), configuracionController.getLogCorreos);
-router.get('/sistemas/log-correos', authMiddleware, requireRole('SUPERADMIN', 'SISTEMAS'), configuracionController.getLogCorreos);
+router.get('/admin/configuracion', authMiddleware, requireRole('SUPERADMIN', 'SISTEMAS', 'ADMIN_DO'), configuracionController.getConfiguracion);
+router.put('/admin/configuracion', authMiddleware, requireRole('SUPERADMIN', 'SISTEMAS', 'ADMIN_DO'), configuracionController.updateConfiguracion);
+router.post('/admin/configuracion/probar-correo', authMiddleware, requireRole('SUPERADMIN', 'SISTEMAS', 'ADMIN_DO'), configuracionController.probarCorreo);
+router.get('/admin/configuracion/log-correos', authMiddleware, requireRole('SUPERADMIN', 'SISTEMAS', 'ADMIN_DO'), configuracionController.getLogCorreos);
+router.get('/sistemas/log-correos', authMiddleware, requireRole('SUPERADMIN', 'SISTEMAS', 'ADMIN_DO'), configuracionController.getLogCorreos);
 router.post('/admin/configuracion/avisos-vigencia/ejecutar', authMiddleware, requireRole('SUPERADMIN', 'SISTEMAS', 'ADMIN_DO'), configuracionController.ejecutarAvisosVigencia);
 router.get('/admin/configuracion/avisos-vigencia/logs', authMiddleware, requireRole('SUPERADMIN', 'SISTEMAS', 'ADMIN_DO'), configuracionController.getLogsAvisosVigencia);
 

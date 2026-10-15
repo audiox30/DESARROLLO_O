@@ -343,7 +343,13 @@ export default function Navbar({
                           </div>
                           {activeTab === 'sistemas' && <Check className="w-4 h-4 text-purple-600" />}
                         </button>
+                      </>
+                    )}
 
+                    {/* Opción de Configuración Global del Sistema (SISTEMAS & ADMIN_DO) */}
+                    {(esSistemas || esAdminDO) && (
+                      <>
+                        {!esSistemas && <div className="my-1 border-t border-slate-100"></div>}
                         <button
                           onClick={() => {
                             onTabChange('configuracion');
@@ -765,32 +771,32 @@ export default function Navbar({
                   <span>Administración de Roles DO</span>
                 </button>
                 {esSistemas && (
-                  <>
-                    <button
-                      onClick={() => {
-                        onTabChange('sistemas');
-                        setMobileMenuOpen(false);
-                      }}
-                      className={`w-full text-left px-3 py-2 rounded-xl text-xs font-semibold flex items-center gap-2 pl-6 ${
-                        activeTab === 'sistemas' ? 'bg-purple-50 text-purple-900 font-bold' : 'text-slate-700'
-                      }`}
-                    >
-                      <Terminal className="w-4 h-4 text-purple-600" />
-                      <span>Panel Sistemas & TI</span>
-                    </button>
-                    <button
-                      onClick={() => {
-                        onTabChange('configuracion');
-                        setMobileMenuOpen(false);
-                      }}
-                      className={`w-full text-left px-3 py-2 rounded-xl text-xs font-semibold flex items-center gap-2 pl-6 ${
-                        activeTab === 'configuracion' ? 'bg-purple-50 text-purple-900 font-bold' : 'text-slate-700'
-                      }`}
-                    >
-                      <Settings className="w-4 h-4 text-purple-600" />
-                      <span>Configuración del Sistema</span>
-                    </button>
-                  </>
+                  <button
+                    onClick={() => {
+                      onTabChange('sistemas');
+                      setMobileMenuOpen(false);
+                    }}
+                    className={`w-full text-left px-3 py-2 rounded-xl text-xs font-semibold flex items-center gap-2 pl-6 ${
+                      activeTab === 'sistemas' ? 'bg-purple-50 text-purple-900 font-bold' : 'text-slate-700'
+                    }`}
+                  >
+                    <Terminal className="w-4 h-4 text-purple-600" />
+                    <span>Panel Sistemas & TI</span>
+                  </button>
+                )}
+                {(esSistemas || esAdminDO) && (
+                  <button
+                    onClick={() => {
+                      onTabChange('configuracion');
+                      setMobileMenuOpen(false);
+                    }}
+                    className={`w-full text-left px-3 py-2 rounded-xl text-xs font-semibold flex items-center gap-2 pl-6 ${
+                      activeTab === 'configuracion' ? 'bg-purple-50 text-purple-900 font-bold' : 'text-slate-700'
+                    }`}
+                  >
+                    <Settings className="w-4 h-4 text-purple-600" />
+                    <span>Configuración del Sistema</span>
+                  </button>
                 )}
               </>
             )}

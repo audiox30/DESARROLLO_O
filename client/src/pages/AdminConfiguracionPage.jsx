@@ -114,17 +114,21 @@ export default function AdminConfiguracionPage({ currentUser, onNavigateTab }) {
   const [correoDestinoPrueba, setCorreoDestinoPrueba] = useState(currentUser?.email || currentUser?.Email || 'sistemas@grupojama.com.mx');
   const [cambiosPendientes, setCambiosPendientes] = useState(false);
 
-  const esSistemas = currentUser?.rolApp === 'SISTEMAS' || currentUser?.rolApp === 'SUPERADMIN' ||
-    currentUser?.rol === 'SISTEMAS' || currentUser?.rol === 'SUPERADMIN' ||
-    currentUser?.username === 'sistemas';
+  const rolUpper = String(currentUser?.rolApp || currentUser?.rol || '').toUpperCase();
+  const usernameLower = String(currentUser?.username || '').toLowerCase();
+  const esSistemas = rolUpper === 'SISTEMAS' || rolUpper === 'SUPERADMIN' || usernameLower === 'sistemas';
+  const esAdminDO = rolUpper === 'ADMIN_DO' || usernameLower === 'admin.do' || usernameLower === 'admin_do';
+  const esAutorizado = esSistemas || esAdminDO;
 
   useEffect(() => {
-    if (esSistemas) {
+    if (esAutorizado) {
       cargarConfiguracion();
       cargarLogsCorreo();
       cargarLogsAvisosVigencia();
+    } else {
+      setLoading(false);
     }
-  }, [esSistemas]);
+  }, [esAutorizado]);
 
   async function cargarLogsCorreo(filtroOverride = null, busquedaOverride = null) {
     try {
@@ -294,8 +298,8 @@ export default function AdminConfiguracionPage({ currentUser, onNavigateTab }) {
     }
   }
 
-  // Si el usuario no tiene rol SISTEMAS, bloquear acceso visual con 403
-  if (!esSistemas) {
+  // Si el usuario no tiene rol SISTEMAS ni ADMIN_DO, bloquear acceso visual con 403
+  if (!esAutorizado) {
     return (
       <div className="bg-white rounded-2xl border border-rose-200 p-8 text-center max-w-xl mx-auto my-12 shadow-sm">
         <div className="w-14 h-14 bg-rose-50 text-rose-600 rounded-2xl flex items-center justify-center mx-auto mb-4 border border-rose-200">
@@ -305,7 +309,7 @@ export default function AdminConfiguracionPage({ currentUser, onNavigateTab }) {
           Acceso Restringido • 403 Prohibido
         </h2>
         <p className="text-xs text-slate-500 mt-2 leading-relaxed">
-          El <strong>Panel de Configuración Global</strong> está reservado exclusivamente para la cuenta maestra y administradores con rol oficial <strong>SISTEMAS (TI)</strong> de Grupo JAMA.
+          El <strong>Panel de Configuración Global</strong> está reservado exclusivamente para la administración institucional (<strong>SISTEMAS TI</strong> y <strong>DESARROLLO ORGANIZACIONAL</strong>) de Grupo JAMA.
         </p>
         <div className="mt-6">
           <button
@@ -326,8 +330,12 @@ export default function AdminConfiguracionPage({ currentUser, onNavigateTab }) {
       <div className="bg-white rounded-2xl p-6 border border-slate-200/90 shadow-xs flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
           <div className="flex items-center gap-2 mb-1">
-            <span className="px-2.5 py-0.5 rounded-full text-[10px] font-black tracking-wider uppercase bg-purple-100 text-purple-900 border border-purple-200">
-              Sistemas TI • SuperAdmin
+            <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-black tracking-wider uppercase border ${
+              esSistemas 
+                ? 'bg-purple-100 text-purple-900 border-purple-200' 
+                : 'bg-blue-100 text-blue-900 border-blue-200'
+            }`}>
+              {esSistemas ? 'Sistemas TI • SuperAdmin' : 'Desarrollo Organizacional • Admin DO'}
             </span>
             <span className="text-slate-300">•</span>
             <span className="text-[11px] font-bold text-slate-500 flex items-center gap-1">
