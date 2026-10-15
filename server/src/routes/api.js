@@ -183,6 +183,7 @@ router.get('/admin/configuracion/avisos-vigencia/logs', authMiddleware, requireR
 // 10. MÓDULO ADMINISTRATIVO DE COLABORADORES & ROLES (ADMIN_DO, SISTEMAS)
 // =========================================================================
 router.get('/admin/colaboradores', authMiddleware, requireRole('ADMIN_DO', 'SUPERADMIN', 'SISTEMAS'), adminColaboradoresController.getColaboradoresAdmin);
+router.get('/admin/colaboradores/catalogos-laborales', authMiddleware, requireRole('ADMIN_DO', 'SUPERADMIN', 'SISTEMAS'), adminColaboradoresController.getCatalogosLaborales);
 router.put('/admin/colaboradores/:id', authMiddleware, requireRole('ADMIN_DO', 'SUPERADMIN', 'SISTEMAS'), adminColaboradoresController.updateComplementarios);
 router.post('/admin/colaboradores/:id/reset-password', authMiddleware, requireRole('ADMIN_DO', 'SUPERADMIN', 'SISTEMAS'), adminColaboradoresController.resetPasswordAdmin);
 

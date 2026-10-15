@@ -236,6 +236,7 @@ export const api = {
 
   // Catálogo Administrativo de Colaboradores & Roles (ADMIN_DO / SISTEMAS)
   getColaboradoresAdmin: (params = '') => request(`/admin/colaboradores${params ? '?' + params : ''}`),
+  getCatalogosLaborales: () => request('/admin/colaboradores/catalogos-laborales'),
   updateColaboradorComplementarios: (id, data) => request(`/admin/colaboradores/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
   resetColaboradorPasswordAdmin: (id, data = {}) => request(`/admin/colaboradores/${id}/reset-password`, { method: 'POST', body: JSON.stringify(data) }),
 

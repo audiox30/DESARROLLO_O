@@ -410,6 +410,43 @@ export default function AdminColaboradoresPage({ currentUser }) {
     fetchEmpresas();
   }, []);
 
+  const [catalogosLaborales, setCatalogosLaborales] = useState({
+    centrosCostos: [
+      'AGAD', 'AGAL', 'AGRE', 'AGSAD', 'AGSAL', 'AGSRE', 'AGSVTA', 'CMSLPAD', 'CTAD',
+      'DI1AL', 'DI1RE', 'DI2AD', 'DI2AL', 'DICO2AD', 'DICO2AL', 'GDLAD', 'GDLAL', 'GDLRE', 'GDLVTA',
+      'IMPAD', 'LAT CERRITOS PRODUCCION', 'LAT CERRITOS TRAXCABO', 'LAT NORTE', 'LATSNL',
+      'LCCCAL', 'LCCPRD', 'LCGAD', 'LCGADM', 'LCGDIS', 'LCGPRD', 'LCGTRX', 'LCGVTA', 'LCNPRD',
+      'LCSAD', 'LCSBOM', 'LCSDIS', 'LCSPBOM', 'LCSPRD', 'LCSPTRAX', 'LCSPTX', 'LCSVTA',
+      'MATAD', 'MATAL', 'MATRE', 'MATVTA', 'MTYAD', 'MTYAL', 'MTYRE', 'MTYVTA',
+      'QROAD', 'QROAL', 'QROALMECEN', 'QRORE', 'QROREPARTO', 'QROVTA',
+      'RVAD', 'RVAL', 'RVRE', 'RVVTA', 'SLPAD', 'SLPAL', 'SLPRE', 'SLPVTA',
+      'TRAAD', 'TRADI', 'TRAMA', 'TRAMAD', 'TRAMT', 'TRAMTO', 'TRAOP',
+      'VLLAD', 'VLLAL', 'VLLRE', 'VLLVTA'
+    ],
+    tiposNomina: ['QUINCENAL', 'SEMANAL'],
+    tiposContrato: ['INDETERMINADO', 'DETERMINADO', 'ASIMILABLE', 'IAS SEMANAL'],
+    periodicidadesPago: ['QUINCENAL', 'SEMANAL', 'MENSUAL', 'CATORCENAL']
+  });
+
+  useEffect(() => {
+    async function fetchCatalogosLaborales() {
+      try {
+        const res = await api.getCatalogosLaborales();
+        if (res && res.centrosCostos) {
+          setCatalogosLaborales({
+            centrosCostos: res.centrosCostos && res.centrosCostos.length > 0 ? res.centrosCostos : catalogosLaborales.centrosCostos,
+            tiposNomina: res.tiposNomina && res.tiposNomina.length > 0 ? res.tiposNomina : ['QUINCENAL', 'SEMANAL'],
+            tiposContrato: res.tiposContrato && res.tiposContrato.length > 0 ? res.tiposContrato : ['INDETERMINADO', 'DETERMINADO', 'ASIMILABLE', 'IAS SEMANAL'],
+            periodicidadesPago: res.periodicidadesPago && res.periodicidadesPago.length > 0 ? res.periodicidadesPago : ['QUINCENAL', 'SEMANAL', 'MENSUAL', 'CATORCENAL']
+          });
+        }
+      } catch (err) {
+        console.warn('Usando catálogo estático de campos laborales:', err);
+      }
+    }
+    fetchCatalogosLaborales();
+  }, []);
+
   useEffect(() => {
     cargarColaboradores();
   }, [page, empresa, departamento, sucursal, estatus]);
@@ -1567,15 +1604,21 @@ export default function AdminColaboradoresPage({ currentUser }) {
                           <Building2 className="w-3.5 h-3.5 text-slate-500" />
                           <span>Centro de Costos</span>
                         </label>
-                        <input
-                          type="text"
+                        <select
                           name="centro_costos"
                           disabled={isReadOnly}
-                          value={formEditar.centroCostos}
+                          value={formEditar.centroCostos || ''}
                           onChange={(e) => setFormEditar({ ...formEditar, centroCostos: e.target.value })}
-                          placeholder="Ej. CTAD, IMPAD"
                           className="w-full px-3 py-2 bg-white disabled:bg-slate-100 disabled:text-slate-700 disabled:cursor-not-allowed border border-slate-300 rounded-xl text-xs font-mono uppercase focus:ring-2 focus:ring-indigo-600 outline-none"
-                        />
+                        >
+                          <option value="">-- Sin Centro de Costos --</option>
+                          {formEditar.centroCostos && !catalogosLaborales.centrosCostos.includes(formEditar.centroCostos) && (
+                            <option value={formEditar.centroCostos}>{formEditar.centroCostos}</option>
+                          )}
+                          {catalogosLaborales.centrosCostos.map((cc) => (
+                            <option key={cc} value={cc}>{cc}</option>
+                          ))}
+                        </select>
                       </div>
 
                       {/* Tipo de Nómina */}
@@ -1584,15 +1627,21 @@ export default function AdminColaboradoresPage({ currentUser }) {
                           <Shield className="w-3.5 h-3.5 text-slate-500" />
                           <span>Tipo de Nómina</span>
                         </label>
-                        <input
-                          type="text"
+                        <select
                           name="tipo_nomina"
                           disabled={isReadOnly}
-                          value={formEditar.tipoNomina}
+                          value={formEditar.tipoNomina || ''}
                           onChange={(e) => setFormEditar({ ...formEditar, tipoNomina: e.target.value })}
-                          placeholder="Ej. QUINCENAL, SEMANAL"
                           className="w-full px-3 py-2 bg-white disabled:bg-slate-100 disabled:text-slate-700 disabled:cursor-not-allowed border border-slate-300 rounded-xl text-xs uppercase focus:ring-2 focus:ring-indigo-600 outline-none"
-                        />
+                        >
+                          <option value="">-- Sin Especificar --</option>
+                          {formEditar.tipoNomina && !catalogosLaborales.tiposNomina.includes(formEditar.tipoNomina) && (
+                            <option value={formEditar.tipoNomina}>{formEditar.tipoNomina}</option>
+                          )}
+                          {catalogosLaborales.tiposNomina.map((tn) => (
+                            <option key={tn} value={tn}>{tn}</option>
+                          ))}
+                        </select>
                       </div>
 
                       {/* Tipo de Contrato */}
@@ -1601,15 +1650,21 @@ export default function AdminColaboradoresPage({ currentUser }) {
                           <Briefcase className="w-3.5 h-3.5 text-slate-500" />
                           <span>Tipo de Contrato</span>
                         </label>
-                        <input
-                          type="text"
+                        <select
                           name="tipo_contrato"
                           disabled={isReadOnly}
-                          value={formEditar.tipoContrato}
+                          value={formEditar.tipoContrato || ''}
                           onChange={(e) => setFormEditar({ ...formEditar, tipoContrato: e.target.value })}
-                          placeholder="Ej. INDETERMINADO, DETERMINADO"
                           className="w-full px-3 py-2 bg-white disabled:bg-slate-100 disabled:text-slate-700 disabled:cursor-not-allowed border border-slate-300 rounded-xl text-xs uppercase focus:ring-2 focus:ring-indigo-600 outline-none"
-                        />
+                        >
+                          <option value="">-- Sin Especificar --</option>
+                          {formEditar.tipoContrato && !catalogosLaborales.tiposContrato.includes(formEditar.tipoContrato) && (
+                            <option value={formEditar.tipoContrato}>{formEditar.tipoContrato}</option>
+                          )}
+                          {catalogosLaborales.tiposContrato.map((tc) => (
+                            <option key={tc} value={tc}>{tc}</option>
+                          ))}
+                        </select>
                       </div>
 
                       {/* Periodicidad de Pago */}
@@ -1618,15 +1673,21 @@ export default function AdminColaboradoresPage({ currentUser }) {
                           <CreditCard className="w-3.5 h-3.5 text-slate-500" />
                           <span>Periodicidad de Pago</span>
                         </label>
-                        <input
-                          type="text"
+                        <select
                           name="periodicidad_pago"
                           disabled={isReadOnly}
-                          value={formEditar.periodicidadPago}
+                          value={formEditar.periodicidadPago || ''}
                           onChange={(e) => setFormEditar({ ...formEditar, periodicidadPago: e.target.value })}
-                          placeholder="Ej. QUINCENAL, SEMANAL"
                           className="w-full px-3 py-2 bg-white disabled:bg-slate-100 disabled:text-slate-700 disabled:cursor-not-allowed border border-slate-300 rounded-xl text-xs uppercase focus:ring-2 focus:ring-indigo-600 outline-none"
-                        />
+                        >
+                          <option value="">-- Sin Especificar --</option>
+                          {formEditar.periodicidadPago && !catalogosLaborales.periodicidadesPago.includes(formEditar.periodicidadPago) && (
+                            <option value={formEditar.periodicidadPago}>{formEditar.periodicidadPago}</option>
+                          )}
+                          {catalogosLaborales.periodicidadesPago.map((pp) => (
+                            <option key={pp} value={pp}>{pp}</option>
+                          ))}
+                        </select>
                       </div>
 
                       {/* Fecha Alta IMSS */}

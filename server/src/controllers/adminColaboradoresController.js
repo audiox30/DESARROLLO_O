@@ -882,6 +882,59 @@ const adminColaboradoresController = {
         message: error.message || 'Error al revocar rol ADMIN_DO.'
       });
     }
+  },
+
+  /**
+   * GET /api/admin/colaboradores/catalogos-laborales
+   * Retorna listas de valores posibles para Centro de Costos, Tipo de Nómina, Tipo de Contrato y Periodicidad
+   */
+  getCatalogosLaborales: async (req, res) => {
+    try {
+      const pool = await getLocalPool();
+      if (!pool || isUsingMock()) {
+        return res.json({
+          centrosCostos: ['CTAD', 'IMPAD', 'CMSLPAD', 'SLPAL', 'GDLAD', 'GDLRE', 'LCSDIS'],
+          tiposNomina: ['QUINCENAL', 'SEMANAL'],
+          tiposContrato: ['INDETERMINADO', 'DETERMINADO', 'ASIMILABLE', 'IAS SEMANAL'],
+          periodicidadesPago: ['QUINCENAL', 'SEMANAL', 'MENSUAL', 'CATORCENAL']
+        });
+      }
+
+      const qCentros = await pool.request().query(`
+        SELECT DISTINCT RTRIM(LTRIM(CentroCostos)) AS val 
+        FROM dbo.Colaboradores 
+        WHERE CentroCostos IS NOT NULL AND RTRIM(LTRIM(CentroCostos)) <> '' 
+        ORDER BY val ASC;
+      `);
+      const qNomina = await pool.request().query(`
+        SELECT DISTINCT RTRIM(LTRIM(TipoNomina)) AS val 
+        FROM dbo.Colaboradores 
+        WHERE TipoNomina IS NOT NULL AND RTRIM(LTRIM(TipoNomina)) <> '' AND RTRIM(LTRIM(TipoNomina)) <> '0'
+        ORDER BY val ASC;
+      `);
+      const qContrato = await pool.request().query(`
+        SELECT DISTINCT RTRIM(LTRIM(TipoContrato)) AS val 
+        FROM dbo.Colaboradores 
+        WHERE TipoContrato IS NOT NULL AND RTRIM(LTRIM(TipoContrato)) <> '' AND RTRIM(LTRIM(TipoContrato)) <> '0'
+        ORDER BY val ASC;
+      `);
+      const qPeriodicidad = await pool.request().query(`
+        SELECT DISTINCT RTRIM(LTRIM(PeriodicidadPago)) AS val 
+        FROM dbo.Colaboradores 
+        WHERE PeriodicidadPago IS NOT NULL AND RTRIM(LTRIM(PeriodicidadPago)) <> '' AND RTRIM(LTRIM(PeriodicidadPago)) <> '0'
+        ORDER BY val ASC;
+      `);
+
+      return res.json({
+        centrosCostos: qCentros.recordset.map(r => r.val).filter(Boolean),
+        tiposNomina: qNomina.recordset.map(r => r.val).filter(Boolean),
+        tiposContrato: qContrato.recordset.map(r => r.val).filter(Boolean),
+        periodicidadesPago: qPeriodicidad.recordset.map(r => r.val).filter(Boolean)
+      });
+    } catch (error) {
+      console.error('[adminColaboradores.getCatalogosLaborales]', error);
+      res.status(500).json({ error: 'Error al consultar catálogos laborales.' });
+    }
   }
 };
 
