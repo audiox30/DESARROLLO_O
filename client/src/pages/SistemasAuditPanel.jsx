@@ -2,13 +2,14 @@ import React, { useState, useEffect } from 'react';
 import { 
   ShieldCheck, Users, Activity, Key, Lock, RefreshCw, 
   Search, CheckCircle, XCircle, AlertTriangle, Database, 
-  Server, Cpu, Eye, Clock, Terminal, Filter
+  Server, Cpu, Eye, Clock, Terminal, Filter, Settings
 } from 'lucide-react';
 import { api } from '../api/client';
 import { formatearNombreColaborador, compararPorApellidos } from '../utils/formatters';
+import AdminConfiguracionPage from './AdminConfiguracionPage';
 
-export default function SistemasAuditPanel({ currentUser }) {
-  const [activeSubTab, setActiveSubTab] = useState('usuarios'); // 'usuarios', 'auditoria', 'diagnostico'
+export default function SistemasAuditPanel({ currentUser, initialSubTab = 'usuarios' }) {
+  const [activeSubTab, setActiveSubTab] = useState(initialSubTab); // 'usuarios', 'auditoria', 'diagnostico', 'configuracion'
   
   // Estado de Usuarios
   const [usuarios, setUsuarios] = useState([]);
@@ -181,7 +182,7 @@ export default function SistemasAuditPanel({ currentUser }) {
           </button>
           <button
             onClick={() => setActiveSubTab('diagnostico')}
-            className={`flex items-center gap-2 px-3.5 py-2 rounded-lg text-xs font-bold transition ${
+            className={`flex items-center gap-2 px-3.5 py-2 rounded-lg text-xs font-bold transition cursor-pointer ${
               activeSubTab === 'diagnostico'
                 ? 'bg-purple-600 text-white shadow-xs'
                 : 'text-slate-300 hover:text-white'
@@ -189,6 +190,17 @@ export default function SistemasAuditPanel({ currentUser }) {
           >
             <Server className="w-4 h-4" />
             Diagnóstico DB
+          </button>
+          <button
+            onClick={() => setActiveSubTab('configuracion')}
+            className={`flex items-center gap-2 px-3.5 py-2 rounded-lg text-xs font-bold transition cursor-pointer ${
+              activeSubTab === 'configuracion'
+                ? 'bg-purple-600 text-white shadow-xs'
+                : 'text-slate-300 hover:text-white'
+            }`}
+          >
+            <Settings className="w-4 h-4" />
+            Configuración Global
           </button>
         </div>
       </div>
@@ -528,6 +540,11 @@ export default function SistemasAuditPanel({ currentUser }) {
 
           </div>
         </div>
+      )}
+
+      {/* PESTAÑA 4: CONFIGURACIÓN GLOBAL DEL SISTEMA */}
+      {activeSubTab === 'configuracion' && (
+        <AdminConfiguracionPage currentUser={currentUser} />
       )}
 
     </div>

@@ -395,6 +395,42 @@ export default function Navbar({
               </button>
             )}
 
+            {/* [Panel TI] -> Enlace directo para SISTEMAS */}
+            {esSistemas && (
+              <button
+                onClick={() => {
+                  onTabChange('sistemas');
+                  cerrarTodosDropdowns();
+                }}
+                className={`flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold transition-all cursor-pointer whitespace-nowrap ${
+                  activeTab === 'sistemas'
+                    ? 'bg-purple-50 text-purple-900 font-bold shadow-2xs border border-purple-200/80'
+                    : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100/70'
+                }`}
+              >
+                <Terminal className={`w-4 h-4 ${activeTab === 'sistemas' ? 'text-purple-600' : 'text-slate-400'}`} />
+                <span>Panel TI</span>
+              </button>
+            )}
+
+            {/* [Configuración Global] -> Enlace directo para SISTEMAS y ADMIN_DO */}
+            {(esSistemas || esAdminDO) && (
+              <button
+                onClick={() => {
+                  onTabChange('configuracion');
+                  cerrarTodosDropdowns();
+                }}
+                className={`flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold transition-all cursor-pointer whitespace-nowrap ${
+                  activeTab === 'configuracion'
+                    ? 'bg-purple-100 text-purple-950 font-bold shadow-2xs border border-purple-300'
+                    : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100/70'
+                }`}
+              >
+                <Settings className={`w-4 h-4 ${activeTab === 'configuracion' ? 'text-purple-700' : 'text-slate-400'}`} />
+                <span>Configuración</span>
+              </button>
+            )}
+
           </nav>
 
           {/* 3. SECCIÓN DERECHA: Badge Vista Actual + Tarjeta de Usuario con Avatar */}

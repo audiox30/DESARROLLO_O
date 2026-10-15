@@ -77,7 +77,14 @@ export default function App() {
 
   function inicializarTabSegunRol(rol) {
     const rolNorm = String(rol || '').toUpperCase();
-    if (window.location.pathname === '/admin/configuracion' && (rolNorm === 'SUPERADMIN' || rolNorm === 'SISTEMAS' || rolNorm === 'ADMIN_DO')) {
+    const rawPath = (window.location.pathname || '').toLowerCase().replace(/\/$/, '');
+    const hash = (window.location.hash || '').toLowerCase().replace(/^#\/?/, '');
+    const search = new URLSearchParams(window.location.search);
+    const tabParam = (search.get('tab') || '').toLowerCase();
+
+    const quiereConfig = rawPath === '/admin/configuracion' || rawPath === '/configuracion' || hash === 'configuracion' || tabParam === 'configuracion';
+
+    if (quiereConfig && (rolNorm === 'SUPERADMIN' || rolNorm === 'SISTEMAS' || rolNorm === 'ADMIN_DO')) {
       setActiveTab('configuracion');
       return;
     }
