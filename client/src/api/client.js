@@ -127,6 +127,7 @@ export const api = {
   crearSolicitud: (data) => request('/solicitudes', { method: 'POST', body: JSON.stringify(data) }),
   getMisSolicitudes: () => request('/solicitudes/mis'),
   getBandejaLider: () => request('/solicitudes/bandeja-lider'),
+  getHistorialLider: () => request('/lider/historial-solicitudes'),
   getBandejaDO: (params = '') => request(`/solicitudes/bandeja-do${params ? '?' + params : ''}`),
   getSolicitudDetalle: (id) => request(`/solicitudes/${id}`),
   cancelarSolicitud: (id) => request(`/solicitudes/${id}/cancelar`, { method: 'POST' }),

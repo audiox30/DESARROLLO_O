@@ -138,6 +138,90 @@ const liderController = {
   },
 
   /**
+   * GET /api/lider/historial-solicitudes
+   * Historial completo de solicitudes del equipo a cargo (Aprobadas, Rechazadas, En trámite)
+   */
+  getHistorialSolicitudes: async (req, res) => {
+    try {
+      const idLider = req.user.id_colaborador || req.user.id;
+      const rol = req.user.rol || req.user.rolApp;
+
+      if (isUsingMock()) {
+        const historial = mockStore.solicitudes.filter(s => 
+          s.idJefeDirecto === Number(idLider) || 
+          s.idAprobadorSegundo === Number(idLider) || 
+          rol === 'LIDER' || 
+          rol === 'ADMIN_DO' || 
+          rol === 'SUPERADMIN' || 
+          rol === 'SISTEMAS'
+        );
+        return res.json({ 
+          success: true, 
+          total: historial.length, 
+          data: historial.map(formatearSolicitud) 
+        });
+      }
+
+      const pool = await getLocalPool();
+      const result = await pool.request()
+        .input('IdLider', idLider)
+        .input('Rol', rol)
+        .query(`
+          SELECT 
+            s.IdSolicitud, s.Folio, s.IdColaborador, 
+            CONVERT(VARCHAR(19), s.FechaCreacion, 120) AS FechaCreacion,
+            CONVERT(VARCHAR(10), s.FechaInicio, 23) AS FechaInicio, 
+            CONVERT(VARCHAR(10), s.FechaFin, 23) AS FechaFin, 
+            ISNULL(s.TotalDiasLaborables, 0) AS TotalDiasLaborables, 
+            s.MotivoComentarios,
+            s.Estado,
+            CONVERT(VARCHAR(19), s.FechaResolucion, 120) AS FechaResolucion,
+            s.MotivoRechazo,
+            c.CodigoEmpleado, c.Subfijo,
+            CASE 
+              WHEN c.ApellidoPaterno IS NOT NULL AND RTRIM(LTRIM(c.ApellidoPaterno)) <> ''
+                THEN RTRIM(LTRIM(c.ApellidoPaterno)) + 
+                     CASE WHEN c.ApellidoMaterno IS NOT NULL AND RTRIM(LTRIM(c.ApellidoMaterno)) <> '' 
+                          THEN ' ' + RTRIM(LTRIM(c.ApellidoMaterno)) ELSE '' END + 
+                     ', ' + RTRIM(LTRIM(ISNULL(c.Nombre, '')))
+              ELSE c.NombreCompleto
+            END AS NombreCompleto,
+            c.Email, c.Empresa, c.Sucursal,
+            p.Nombre AS Puesto, d.Nombre AS Departamento,
+            c.IdJefeDirecto,
+            c.IdAprobadorSegundo,
+            s.IdAprobadorLider,
+            s.FechaAprobacionLider,
+            s.IdAprobadorSegundo AS SolIdAprobadorSegundo,
+            s.FechaAprobacionSegundo,
+            s.IdAprobadorFinal
+          FROM dbo.SolicitudesVacaciones s
+          JOIN dbo.Colaboradores c ON c.IdColaborador = s.IdColaborador
+          LEFT JOIN dbo.Puestos p ON p.IdPuesto = c.IdPuesto
+          LEFT JOIN dbo.Departamentos d ON d.IdDepartamento = c.IdDepartamento
+          WHERE 
+            (@Rol IN ('ADMIN_DO', 'SUPERADMIN', 'SISTEMAS'))
+            OR (c.IdJefeDirecto = @IdLider)
+            OR (c.IdAprobadorSegundo = @IdLider)
+            OR (s.IdAprobadorLider = @IdLider)
+            OR (s.IdAprobadorSegundo = @IdLider)
+            OR (s.IdAprobadorFinal = @IdLider)
+          ORDER BY s.FechaCreacion DESC;
+        `);
+
+      const data = result.recordset.map(formatearSolicitud);
+      return res.json({
+        success: true,
+        total: data.length,
+        data
+      });
+    } catch (err) {
+      console.error('[lider.getHistorialSolicitudes]', err);
+      res.status(500).json({ error: 'Error al obtener historial de solicitudes del equipo.' });
+    }
+  },
+
+  /**
    * POST /api/lider/solicitud/:id/resolver
    * Permite al líder directo aprobar o rechazar con motivo la solicitud de su colaborador
    */
@@ -266,6 +350,8 @@ const liderController = {
       let mensaje = '';
       if (nuevoEstado === 'PENDIENTE_GERENTE') {
         mensaje = `Solicitud ${solicitud.Folio} de ${solicitud.NombreCompleto}: Visto Bueno Nivel 1 otorgado. Transferida a autorización gerencial.`;
+      } else if (nuevoEstado === 'PENDIENTE_DO') {
+        mensaje = `Solicitud ${solicitud.Folio} de ${solicitud.NombreCompleto}: Autorizada por Jefatura. Transferida a Vo.Bo. de Desarrollo Organizacional.`;
       } else if (nuevoEstado === 'APROBADA') {
         mensaje = `Solicitud ${solicitud.Folio} de ${solicitud.NombreCompleto} autorizada formalmente y saldos descontados conforme a LFT.`;
       } else {
@@ -339,6 +425,7 @@ const liderController = {
       const query = `
         SELECT 
             c.IdColaborador AS idColaborador,
+            c.IdColaborador AS id,
             c.CodigoEmpleado AS codigoEmpleado,
             CASE 
               WHEN c.ApellidoPaterno IS NOT NULL AND RTRIM(LTRIM(c.ApellidoPaterno)) <> ''
@@ -349,6 +436,8 @@ const liderController = {
               ELSE c.NombreCompleto
             END AS nombreCompleto,
             ISNULL(p.Nombre, 'Sin Puesto') AS puesto,
+            ISNULL(d.Nombre, 'General') AS departamento,
+            ISNULL(e.AliasEmpresa, c.Empresa) AS empresa,
             ISNULL(c.Sucursal, 'Matriz') AS sucursal,
             CONVERT(VARCHAR(10), c.FechaAlta, 120) AS fechaAlta,
             c.EstatusNomina AS estatusNomina,
@@ -356,14 +445,22 @@ const liderController = {
             c.Activo AS activo,
             ISNULL(c.Telefono, '—') AS telefono,
             ISNULL(c.Email, '—') AS email,
-            -- Saldo de vacaciones actual del período activo
-            ISNULL(sv.DiasPendientes, 0) AS diasDisponibles,
-            ISNULL(sv.DiasGozados, 0) AS diasGozados,
-            ISNULL(sv.DiasCorrespondientes, 0) AS diasCorrespondientes
+            -- Saldo de vacaciones consolidado de los períodos vigentes
+            ISNULL(sv.diasDisponibles, 0) AS diasDisponibles,
+            ISNULL(sv.diasGozados, 0) AS diasGozados,
+            ISNULL(sv.diasCorrespondientes, 0) AS diasCorrespondientes
         FROM dbo.Colaboradores c
         LEFT JOIN dbo.Puestos p ON p.IdPuesto = c.IdPuesto
-        LEFT JOIN dbo.SaldosVacaciones sv 
-            ON sv.IdColaborador = c.IdColaborador AND sv.EsCerrado = 0
+        LEFT JOIN dbo.Departamentos d ON d.IdDepartamento = c.IdDepartamento
+        LEFT JOIN dbo.EmpresasNomipaq e ON e.IdEmpresa = c.IdEmpresa
+        OUTER APPLY (
+          SELECT 
+            ISNULL(SUM(DiasPendientes), 0) AS diasDisponibles,
+            ISNULL(SUM(DiasGozados), 0) AS diasGozados,
+            ISNULL(SUM(DiasCorrespondientes), 0) AS diasCorrespondientes
+          FROM dbo.SaldosVacaciones sv_sub
+          WHERE sv_sub.IdColaborador = c.IdColaborador AND sv_sub.EsCerrado = 0
+        ) sv
         WHERE c.IdJefeDirecto = @CurrentUserId
           AND c.Activo = 1
         ORDER BY c.ApellidoPaterno ASC, c.ApellidoMaterno ASC, c.Nombre ASC;

@@ -108,9 +108,28 @@ const syncController = {
 
       if (poolLocal && !isUsingMock()) {
         const result = await poolLocal.request().query(`
-          SELECT TOP 30 * FROM dbo.BitacoraSincronizacionNomipaq ORDER BY FechaEjecucion DESC
+          SELECT TOP 50 
+            IdSync, FechaEjecucion, TipoEjecucion, IdEmpresa, NombreBaseDatos,
+            IdUsuarioEjecuto, RegistrosInsertados, RegistrosActualizados,
+            RegistrosDesactivados, DetalleLog, Exitoso
+          FROM dbo.BitacoraSincronizacionNomipaq 
+          ORDER BY FechaEjecucion DESC
         `);
-        return res.json({ success: true, total: result.recordset.length, data: result.recordset });
+        const rows = (result.recordset || []).map(r => ({
+          ...r,
+          idSync: r.IdSync,
+          fechaEjecucion: r.FechaEjecucion,
+          tipoEjecucion: r.TipoEjecucion,
+          idEmpresa: r.IdEmpresa,
+          nombreBaseDatos: r.NombreBaseDatos,
+          idUsuarioEjecuto: r.IdUsuarioEjecuto,
+          registrosInsertados: r.RegistrosInsertados ?? 0,
+          registrosActualizados: r.RegistrosActualizados ?? 0,
+          registrosDesactivados: r.RegistrosDesactivados ?? 0,
+          detalleLog: r.DetalleLog || '',
+          exitoso: r.Exitoso
+        }));
+        return res.json({ success: true, total: rows.length, data: rows });
       } else {
         return res.json({
           success: true,

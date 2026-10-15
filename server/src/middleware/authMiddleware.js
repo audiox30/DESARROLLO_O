@@ -50,11 +50,11 @@ function authMiddleware(req, res, next) {
     // Asegurar que si se simula ser LÍDER, COLABORADOR o ADMIN_DO, el sistema cargue un colaborador muestra activo del catálogo
     if (isSuperAdmin && simulateRole) {
       const usingMock = isUsingMock();
-      if (simulateRole === 'LIDER' && (!simulateColaborador || isNaN(Number(simulateColaborador)))) {
+      if (simulateRole === 'LIDER' && (!simulateColaborador || isNaN(Number(simulateColaborador)) || (!usingMock && simulateColaborador === '46'))) {
         simulateColaborador = usingMock ? '46' : '850'; // Ulises Garcés (Líder activo)
-      } else if (simulateRole === 'COLABORADOR' && (!simulateColaborador || isNaN(Number(simulateColaborador)))) {
-        simulateColaborador = usingMock ? '594' : '852'; // Colaborador activo con saldo
-      } else if (simulateRole === 'ADMIN_DO' && (!simulateColaborador || isNaN(Number(simulateColaborador)))) {
+      } else if (simulateRole === 'COLABORADOR' && (!simulateColaborador || isNaN(Number(simulateColaborador)) || (!usingMock && (simulateColaborador === '594' || simulateColaborador === '1077')))) {
+        simulateColaborador = usingMock ? '594' : '852'; // José Luis Campos Regino (Colaborador activo con saldo)
+      } else if (simulateRole === 'ADMIN_DO' && (!simulateColaborador || isNaN(Number(simulateColaborador)) || (!usingMock && simulateColaborador === '383'))) {
         simulateColaborador = usingMock ? '383' : '29'; // Tania Hurtado (Admin DO activa)
       }
     }

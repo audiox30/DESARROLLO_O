@@ -16,6 +16,8 @@ export default function AdminDOPanel({ currentUser }) {
   const [solicitudes, setSolicitudes] = useState([]);
   const [filtroEstado, setFiltroEstado] = useState('TODAS');
   const [filtroEmpresa, setFiltroEmpresa] = useState('');
+  const [busquedaSolicitudes, setBusquedaSolicitudes] = useState('');
+  const [ordenSolicitudes, setOrdenSolicitudes] = useState('recientes'); // 'recientes' | 'alfabetico'
   const [loadingSol, setLoadingSol] = useState(false);
   const [solicitudSeleccionada, setSolicitudSeleccionada] = useState(null);
   const [modalResolucion, setModalResolucion] = useState(false);
@@ -61,8 +63,7 @@ export default function AdminDOPanel({ currentUser }) {
       if (filtroEmpresa) params.append('empresa', filtroEmpresa);
       const res = await api.getBandejaDO(params.toString());
       if (res.success) {
-        const sorted = (res.data || []).sort((a, b) => compararPorApellidos(a.colaboradorNombre, b.colaboradorNombre, 'asc'));
-        setSolicitudes(sorted);
+        setSolicitudes(res.data || []);
       }
     } catch (err) {
       console.error(err);
@@ -71,31 +72,60 @@ export default function AdminDOPanel({ currentUser }) {
     }
   }
 
-  // Lógica de filtrado reactivo en frontend por Estado
+  // Lógica de filtrado reactivo en frontend por Estado, Búsqueda y Ordenamiento
   const solicitudesFiltradas = useMemo(() => {
     if (!solicitudes) return [];
-    if (filtroEstado === 'TODAS') return solicitudes;
+    let list = solicitudes;
 
-    return solicitudes.filter((item) => {
-      // Normalizar texto para evitar fallos por mayúsculas/minúsculas o guiones bajos
-      const estadoItem = (item.Estado || item.estado || '').toUpperCase();
-      
-      switch (filtroEstado) {
-        case 'VoBo DO Pendiente':
-          return estadoItem === 'PENDIENTE_DO' || estadoItem === 'VOBO DO PENDIENTE';
-        case 'Pendiente Líder':
-          return estadoItem === 'PENDIENTE_LIDER' || estadoItem === 'PENDIENTE LÍDER' || estadoItem === 'PENDIENTE LIDER';
-        case 'Pendiente Gerente':
-          return estadoItem === 'PENDIENTE_GERENTE' || estadoItem === 'PENDIENTE GERENTE';
-        case 'APROBADA':
-          return estadoItem === 'APROBADA' || estadoItem === 'AUTORIZADA';
-        case 'RECHAZADA':
-          return estadoItem === 'RECHAZADA';
-        default:
-          return true;
-      }
-    });
-  }, [solicitudes, filtroEstado]);
+    // 1. Filtro por Estado
+    if (filtroEstado !== 'TODAS') {
+      list = list.filter((item) => {
+        const estadoItem = (item.Estado || item.estado || '').toUpperCase();
+        switch (filtroEstado) {
+          case 'VoBo DO Pendiente':
+            return estadoItem === 'PENDIENTE_DO' || estadoItem === 'VOBO DO PENDIENTE';
+          case 'Pendiente Líder':
+            return estadoItem === 'PENDIENTE_LIDER' || estadoItem === 'PENDIENTE LÍDER' || estadoItem === 'PENDIENTE LIDER';
+          case 'Pendiente Gerente':
+            return estadoItem === 'PENDIENTE_GERENTE' || estadoItem === 'PENDIENTE GERENTE';
+          case 'APROBADA':
+            return estadoItem === 'APROBADA' || estadoItem === 'AUTORIZADA';
+          case 'RECHAZADA':
+            return estadoItem === 'RECHAZADA';
+          default:
+            return true;
+        }
+      });
+    }
+
+    // 2. Filtro por Búsqueda (Folio, Colaborador, Nómina, Puesto, Empresa)
+    if (busquedaSolicitudes.trim()) {
+      const q = busquedaSolicitudes.toLowerCase().trim();
+      list = list.filter((item) => {
+        const folio = (item.folio || item.Folio || '').toLowerCase();
+        const nombre = (item.colaboradorNombre || item.NombreCompleto || '').toLowerCase();
+        const nomina = (item.codigoEmpleado || item.CodigoEmpleado || '').toLowerCase();
+        const puesto = (item.colaboradorPuesto || item.Puesto || '').toLowerCase();
+        const empresa = (item.colaboradorEmpresa || item.Empresa || '').toLowerCase();
+        return folio.includes(q) || nombre.includes(q) || nomina.includes(q) || puesto.includes(q) || empresa.includes(q);
+      });
+    }
+
+    // 3. Ordenamiento
+    const sorted = [...list];
+    if (ordenSolicitudes === 'alfabetico') {
+      sorted.sort((a, b) => compararPorApellidos(a.colaboradorNombre, b.colaboradorNombre, 'asc'));
+    } else {
+      // Recientes primero por IdSolicitud / FechaCreacion descendente
+      sorted.sort((a, b) => {
+        const idA = Number(a.idSolicitud || a.IdSolicitud || 0);
+        const idB = Number(b.idSolicitud || b.IdSolicitud || 0);
+        return idB - idA;
+      });
+    }
+
+    return sorted;
+  }, [solicitudes, filtroEstado, busquedaSolicitudes, ordenSolicitudes]);
 
   // 2. Sync NOMIPAQ
   async function cargarSyncInfo() {
@@ -339,10 +369,10 @@ export default function AdminDOPanel({ currentUser }) {
         {/* 1. TAB: BANDEJA GLOBAL & VOBO DO */}
         {tab === 'solicitudes' && (
           <div className="p-6 space-y-4">
-            {/* Filtros Rápidos por Estado */}
-            <div className="flex flex-wrap items-center justify-between gap-3 pb-3 border-b border-slate-100">
-              <div className="flex flex-wrap items-center gap-2">
-                <span className="text-xs font-bold text-slate-500 uppercase tracking-wider flex items-center gap-1">
+            {/* Barra de Filtros Rápidos por Estado, Búsqueda y Ordenamiento */}
+            <div className="flex flex-col lg:flex-row items-stretch lg:items-center justify-between gap-3 pb-3 border-b border-slate-100">
+              <div className="flex flex-wrap items-center gap-1.5">
+                <span className="text-xs font-bold text-slate-500 uppercase tracking-wider flex items-center gap-1 mr-1">
                   <Filter className="w-3.5 h-3.5" /> Estado:
                 </span>
                 {['TODAS', 'VoBo DO Pendiente', 'Pendiente Líder', 'Pendiente Gerente', 'APROBADA', 'RECHAZADA'].map((st) => (
@@ -359,6 +389,40 @@ export default function AdminDOPanel({ currentUser }) {
                     {st}
                   </button>
                 ))}
+              </div>
+
+              <div className="flex items-center gap-2">
+                {/* Buscador de Folio / Colaborador */}
+                <div className="relative flex-1 sm:w-64">
+                  <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                  <input
+                    type="text"
+                    value={busquedaSolicitudes}
+                    onChange={(e) => setBusquedaSolicitudes(e.target.value)}
+                    placeholder="Buscar folio (ej. 00011), colaborador..."
+                    className="w-full pl-8 pr-7 py-1.5 rounded-xl border border-slate-200 text-xs focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
+                  />
+                  {busquedaSolicitudes && (
+                    <button
+                      type="button"
+                      onClick={() => setBusquedaSolicitudes('')}
+                      className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 text-xs font-bold"
+                    >
+                      ✕
+                    </button>
+                  )}
+                </div>
+
+                {/* Alternador de Ordenamiento */}
+                <button
+                  type="button"
+                  onClick={() => setOrdenSolicitudes(prev => prev === 'recientes' ? 'alfabetico' : 'recientes')}
+                  title={ordenSolicitudes === 'recientes' ? 'Orden actual: Más recientes primero' : 'Orden actual: Alfabético A - Z'}
+                  className="px-2.5 py-1.5 rounded-xl border border-slate-200 bg-slate-50 hover:bg-slate-100 text-slate-700 text-xs font-bold transition-all flex items-center gap-1.5 shrink-0 cursor-pointer"
+                >
+                  <ArrowUpRight className="w-3.5 h-3.5 text-blue-600" />
+                  <span>{ordenSolicitudes === 'recientes' ? 'Más recientes' : 'A - Z'}</span>
+                </button>
               </div>
             </div>
 
@@ -578,20 +642,56 @@ export default function AdminDOPanel({ currentUser }) {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100">
-                    {syncLogs.map((l, idx) => (
-                      <tr key={idx} className="hover:bg-slate-50/50">
-                        <td className="py-3 px-4 font-mono">{new Date(l.fechaEjecucion).toLocaleString('es-MX')}</td>
-                        <td className="py-3 px-4 font-semibold text-slate-700">{l.tipoEjecucion}</td>
-                        <td className="py-3 px-4 text-center font-bold text-emerald-700">+{l.registrosInsertados}</td>
-                        <td className="py-3 px-4 text-center font-bold text-blue-700">~{l.registrosActualizados}</td>
-                        <td className="py-3 px-4 text-slate-500 max-w-xs truncate">{l.detalleLog}</td>
-                        <td className="py-3 px-4 text-right">
-                          <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800">
-                            Exitoso
-                          </span>
+                    {syncLogs.length === 0 ? (
+                      <tr>
+                        <td colSpan="6" className="py-8 text-center text-slate-400">
+                          No se encontraron registros en la bitácora de sincronización.
                         </td>
                       </tr>
-                    ))}
+                    ) : (
+                      syncLogs.map((l, idx) => {
+                        const fechaRaw = l.fechaEjecucion || l.FechaEjecucion;
+                        let fechaFormateada = 'Sin fecha';
+                        if (fechaRaw) {
+                          try {
+                            const d = new Date(fechaRaw);
+                            fechaFormateada = isNaN(d.getTime()) ? String(fechaRaw) : d.toLocaleString('es-MX', {
+                              year: 'numeric',
+                              month: '2-digit',
+                              day: '2-digit',
+                              hour: '2-digit',
+                              minute: '2-digit',
+                              second: '2-digit'
+                            });
+                          } catch {
+                            fechaFormateada = String(fechaRaw);
+                          }
+                        }
+
+                        const tipo = l.tipoEjecucion || l.TipoEjecucion || 'MANUAL';
+                        const insertados = l.registrosInsertados ?? l.RegistrosInsertados ?? 0;
+                        const actualizados = l.registrosActualizados ?? l.RegistrosActualizados ?? 0;
+                        const detalle = l.detalleLog || l.DetalleLog || l.NombreBaseDatos || 'Sincronización completada';
+                        const esExitoso = l.exitoso !== false && l.Exitoso !== false;
+
+                        return (
+                          <tr key={l.idSync || l.IdSync || idx} className="hover:bg-slate-50/50">
+                            <td className="py-3 px-4 font-mono text-slate-700">{fechaFormateada}</td>
+                            <td className="py-3 px-4 font-semibold text-slate-700">{tipo}</td>
+                            <td className="py-3 px-4 text-center font-bold text-emerald-700">+{insertados}</td>
+                            <td className="py-3 px-4 text-center font-bold text-blue-700">~{actualizados}</td>
+                            <td className="py-3 px-4 text-slate-500 max-w-xs truncate" title={detalle}>{detalle}</td>
+                            <td className="py-3 px-4 text-right">
+                              <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
+                                esExitoso ? 'bg-emerald-100 text-emerald-800' : 'bg-rose-100 text-rose-800'
+                              }`}>
+                                {esExitoso ? 'Exitoso' : 'Error'}
+                              </span>
+                            </td>
+                          </tr>
+                        );
+                      })
+                    )}
                   </tbody>
                 </table>
               </div>

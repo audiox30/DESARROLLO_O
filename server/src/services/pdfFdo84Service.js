@@ -266,45 +266,57 @@ async function recopilarDatosFdo84(idSolicitud) {
   const diasCorrespondientes = Number(saldoRow.DiasCorrespondientes || 12);
   const totalDias = Number(row.TotalDiasLaborables || 0);
 
-  return {
-    solicitud: {
-      idSolicitud: row.IdSolicitud,
-      folio: row.Folio || (row.IdSolicitud ? `VAC-${row.IdSolicitud}` : '—'),
-      fechaCreacion: row.FechaCreacion || new Date().toISOString(),
-      fechaInicio: row.FechaInicio || '',
-      fechaFin: row.FechaFin || '',
-      totalDiasLaborables: totalDias,
-      motivoComentarios: row.MotivoComentarios || '',
-      estado: row.Estado || 'PENDIENTE_LIDER',
-      fechaResolucion: row.FechaResolucion,
-      motivoRechazo: row.MotivoRechazo,
-      fechaAprobacionLider: row.FechaAprobacionLider,
-      fechaAprobacionSegundo: row.FechaAprobacionSegundo
-    },
-    colaborador: {
-      idColaborador: row.IdColaborador,
-      codigoEmpleado: row.CodigoEmpleado,
-      nombreCompleto: row.ColaboradorNombre,
-      fechaAlta: row.FechaAlta,
-      empresa: row.Empresa || 'Grupo JAMA',
-      sucursal: row.Sucursal || 'Matriz',
-      puesto: row.PuestoNombre || 'General',
-      departamento: row.DeptoNombre || 'General',
-      diasDescanso: row.DiasDescanso || 'DOMINGO'
-    },
-    jefe: {
-      nombreCompleto: row.JefeNombre || 'LÍDER DE ÁREA',
-      codigoEmpleado: row.JefeCodigo || '—',
-      puesto: row.JefePuesto || 'Jefe Directo',
-      fechaAprobacion: row.FechaAprobacionLider
-    },
-    segundoAprobador: row.IdSegundo ? {
-      nombreCompleto: row.SegundoNombre,
-      codigoEmpleado: row.SegundoCodigo || '—',
-      puesto: row.SegundoPuesto || 'Gerente de Sucursal',
-      fechaAprobacion: row.FechaAprobacionSegundo
-    } : null,
-    aprobadorDO: row.AprobadorDONombre || 'Lic. Desarrollo Organizacional',
+  const histDO = (histRes.recordset || []).find(h => h.NivelAprobacion === 'DESARROLLO_ORGANIZACIONAL' && h.Accion === 'APROBADA');
+    let nombreAprobadorDO = 'Lic. Desarrollo Organizacional';
+    if (row.Estado === 'APROBADA') {
+      if (histDO && histDO.AprobadorNombre) {
+        nombreAprobadorDO = histDO.AprobadorNombre;
+      } else if (row.AprobadorDONombre && row.AprobadorDONombre !== row.JefeNombre) {
+        nombreAprobadorDO = row.AprobadorDONombre;
+      } else {
+        nombreAprobadorDO = 'Lic. Desarrollo Organizacional';
+      }
+    }
+
+    return {
+      solicitud: {
+        idSolicitud: row.IdSolicitud,
+        folio: row.Folio || (row.IdSolicitud ? `VAC-${row.IdSolicitud}` : '—'),
+        fechaCreacion: row.FechaCreacion || new Date().toISOString(),
+        fechaInicio: row.FechaInicio || '',
+        fechaFin: row.FechaFin || '',
+        totalDiasLaborables: totalDias,
+        motivoComentarios: row.MotivoComentarios || '',
+        estado: row.Estado || 'PENDIENTE_LIDER',
+        fechaResolucion: row.FechaResolucion,
+        motivoRechazo: row.MotivoRechazo,
+        fechaAprobacionLider: row.FechaAprobacionLider,
+        fechaAprobacionSegundo: row.FechaAprobacionSegundo
+      },
+      colaborador: {
+        idColaborador: row.IdColaborador,
+        codigoEmpleado: row.CodigoEmpleado,
+        nombreCompleto: row.ColaboradorNombre,
+        fechaAlta: row.FechaAlta,
+        empresa: row.Empresa || 'Grupo JAMA',
+        sucursal: row.Sucursal || 'Matriz',
+        puesto: row.PuestoNombre || 'General',
+        departamento: row.DeptoNombre || 'General',
+        diasDescanso: row.DiasDescanso || 'DOMINGO'
+      },
+      jefe: {
+        nombreCompleto: row.JefeNombre || 'LÍDER DE ÁREA',
+        codigoEmpleado: row.JefeCodigo || '—',
+        puesto: row.JefePuesto || 'Jefe Directo',
+        fechaAprobacion: row.FechaAprobacionLider
+      },
+      segundoAprobador: row.IdSegundo ? {
+        nombreCompleto: row.SegundoNombre,
+        codigoEmpleado: row.SegundoCodigo || '—',
+        puesto: row.SegundoPuesto || 'Gerente de Sucursal',
+        fechaAprobacion: row.FechaAprobacionSegundo
+      } : null,
+      aprobadorDO: nombreAprobadorDO,
     ejercicio: {
       anioPeriodo: `${anio} - ${anio + 1}`,
       diasCorrespondientes: Number(saldoRow.DiasCorrespondientes),

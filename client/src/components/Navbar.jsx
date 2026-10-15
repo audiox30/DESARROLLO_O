@@ -466,9 +466,9 @@ export default function Navbar({
                         type="button"
                         onClick={() => {
                           onRoleViewChange('ADMIN_DO', {
-                            idColaborador: 383,
-                            id: 383,
-                            codigoEmpleado: 'CONT-906',
+                            idColaborador: 29,
+                            id: 29,
+                            codigoEmpleado: '0906',
                             nombreCompleto: 'HURTADO AVALOS, TANIA DEL CARMEN',
                             empresa: 'CONTROLADORA JAMA, S.C.',
                             rolApp: 'ADMIN_DO',
@@ -488,7 +488,7 @@ export default function Navbar({
                               <span className="text-[10px] font-semibold text-blue-700 bg-blue-50 px-1.5 py-0.5 rounded border border-blue-200">[Desarrollo Organizacional]</span>
                               {activeRoleView === 'ADMIN_DO' && <Check className="w-3.5 h-3.5 text-blue-700" />}
                             </div>
-                            <p className="text-[11px] text-slate-500 mt-0.5">Gestión global de 8 empresas, VoBo DO, saldos y catálogos</p>
+                            <p className="text-[11px] text-slate-500 mt-0.5">HURTADO AVALOS, TANIA (0906): Gestión global de 8 empresas, VoBo DO y saldos</p>
                           </div>
                         </div>
                       </button>
@@ -498,9 +498,9 @@ export default function Navbar({
                         type="button"
                         onClick={() => {
                           onRoleViewChange('LIDER', {
-                            idColaborador: 46,
-                            id: 46,
-                            codigoEmpleado: 'LAT-155',
+                            idColaborador: 850,
+                            id: 850,
+                            codigoEmpleado: '0155',
                             nombreCompleto: 'GARCES RODRIGUEZ, ULISES ANTONIO',
                             empresa: 'LATINO CONCRETOS, S.A. DE C.V.',
                             rolApp: 'LIDER',
@@ -520,7 +520,7 @@ export default function Navbar({
                               <span className="text-[10px] font-semibold text-amber-800 bg-amber-50 px-1.5 py-0.5 rounded border border-amber-200">[Aprobaciones y Mi Equipo]</span>
                               {activeRoleView === 'LIDER' && <Check className="w-3.5 h-3.5 text-amber-700" />}
                             </div>
-                            <p className="text-[11px] text-slate-500 mt-0.5">GARCES RODRIGUEZ, ULISES ANTONIO (LAT-155): Bandeja de aprobación y equipo a cargo</p>
+                            <p className="text-[11px] text-slate-500 mt-0.5">GARCES RODRIGUEZ, ULISES ANTONIO (0155): Bandeja de aprobación y equipo a cargo</p>
                           </div>
                         </div>
                       </button>
@@ -530,10 +530,10 @@ export default function Navbar({
                         type="button"
                         onClick={() => {
                           onRoleViewChange('COLABORADOR', {
-                            idColaborador: 594,
-                            id: 594,
-                            codigoEmpleado: 'LAT-1077',
-                            nombreCompleto: 'RAMIREZ GALLARDO, GONZALO',
+                            idColaborador: 852,
+                            id: 852,
+                            codigoEmpleado: '0157',
+                            nombreCompleto: 'CAMPOS REGINO, JOSE LUIS',
                             empresa: 'LATINO CONCRETOS, S.A. DE C.V.',
                             rolApp: 'COLABORADOR',
                             rol: 'COLABORADOR'
@@ -552,7 +552,7 @@ export default function Navbar({
                               <span className="text-[10px] font-semibold text-emerald-800 bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-200">[Portal Colaborador]</span>
                               {activeRoleView === 'COLABORADOR' && <Check className="w-3.5 h-3.5 text-emerald-700" />}
                             </div>
-                            <p className="text-[11px] text-slate-500 mt-0.5">RAMIREZ GALLARDO, GONZALO (LAT-1077): Saldo LFT individual y solicitudes</p>
+                            <p className="text-[11px] text-slate-500 mt-0.5">CAMPOS REGINO, JOSE LUIS (0157): Saldo LFT individual y solicitudes</p>
                           </div>
                         </div>
                       </button>

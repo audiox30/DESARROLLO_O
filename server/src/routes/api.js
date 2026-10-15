@@ -97,9 +97,11 @@ router.post('/colaboradores/:id/bajas', authMiddleware, requireRole('ADMIN_DO'),
 // 3. MÓDULO DE LÍDER (RBAC: LIDER / ADMIN_DO / SISTEMAS)
 // =========================================================================
 router.get('/lider/solicitudes-pendientes', authMiddleware, requireRole('LIDER', 'ADMIN_DO', 'SUPERADMIN', 'SISTEMAS'), liderController.getSolicitudesPendientes);
+router.get('/lider/historial-solicitudes', authMiddleware, requireRole('LIDER', 'ADMIN_DO', 'SUPERADMIN', 'SISTEMAS'), liderController.getHistorialSolicitudes);
 router.post('/lider/solicitud/:id/resolver', authMiddleware, requireRole('LIDER', 'ADMIN_DO', 'SUPERADMIN', 'SISTEMAS'), liderController.resolverSolicitud);
 router.get('/lider/mi-equipo', authMiddleware, requireRole('LIDER', 'ADMIN_DO', 'SUPERADMIN', 'SISTEMAS'), liderController.getMiEquipo);
 router.get('/lider/colaborador/:id/solicitudes', authMiddleware, requireRole('LIDER', 'ADMIN_DO', 'SUPERADMIN', 'SISTEMAS'), liderController.getSolicitudesColaborador);
+router.get('/solicitudes/historial-lider', authMiddleware, requireRole('LIDER', 'ADMIN_DO', 'SUPERADMIN', 'SISTEMAS'), liderController.getHistorialSolicitudes);
 
 // =========================================================================
 // 4. MÓDULO DE SOLICITUDES DE VACACIONES (COLABORADOR / LÍDER / ADMIN_DO)

@@ -588,7 +588,10 @@ const colaboradoresController = {
           .input('IdLider', idLider)
           .query(`
             SELECT 
-              c.IdColaborador AS id, c.CodigoEmpleado,
+              c.IdColaborador AS id, 
+              c.IdColaborador AS idColaborador,
+              c.CodigoEmpleado,
+              c.CodigoEmpleado AS codigoEmpleado,
               CASE 
                 WHEN c.ApellidoPaterno IS NOT NULL AND RTRIM(LTRIM(c.ApellidoPaterno)) <> ''
                   THEN RTRIM(LTRIM(c.ApellidoPaterno)) + 
@@ -597,12 +600,41 @@ const colaboradoresController = {
                        ', ' + RTRIM(LTRIM(ISNULL(c.Nombre, '')))
                 ELSE c.NombreCompleto
               END AS NombreCompleto,
-              p.Nombre AS Puesto, d.Nombre AS Departamento, e.AliasEmpresa AS Empresa,
-              c.FechaAlta, c.Email
+              CASE 
+                WHEN c.ApellidoPaterno IS NOT NULL AND RTRIM(LTRIM(c.ApellidoPaterno)) <> ''
+                  THEN RTRIM(LTRIM(c.ApellidoPaterno)) + 
+                       CASE WHEN c.ApellidoMaterno IS NOT NULL AND RTRIM(LTRIM(c.ApellidoMaterno)) <> '' 
+                            THEN ' ' + RTRIM(LTRIM(c.ApellidoMaterno)) ELSE '' END + 
+                       ', ' + RTRIM(LTRIM(ISNULL(c.Nombre, '')))
+                ELSE c.NombreCompleto
+              END AS nombreCompleto,
+              ISNULL(p.Nombre, 'Sin Puesto') AS Puesto,
+              ISNULL(p.Nombre, 'Sin Puesto') AS puesto,
+              ISNULL(d.Nombre, 'General') AS Departamento,
+              ISNULL(d.Nombre, 'General') AS departamento,
+              ISNULL(e.AliasEmpresa, c.Empresa) AS Empresa,
+              ISNULL(e.AliasEmpresa, c.Empresa) AS empresa,
+              ISNULL(c.Sucursal, 'Matriz') AS Sucursal,
+              ISNULL(c.Sucursal, 'Matriz') AS sucursal,
+              CONVERT(VARCHAR(10), c.FechaAlta, 120) AS FechaAlta,
+              CONVERT(VARCHAR(10), c.FechaAlta, 120) AS fechaAlta,
+              c.Email,
+              c.Email AS email,
+              ISNULL(sv.diasDisponibles, 0) AS diasDisponibles,
+              ISNULL(sv.diasGozados, 0) AS diasGozados,
+              ISNULL(sv.diasCorrespondientes, 0) AS diasCorrespondientes
             FROM dbo.Colaboradores c
             LEFT JOIN dbo.Puestos p ON p.IdPuesto = c.IdPuesto
             LEFT JOIN dbo.Departamentos d ON d.IdDepartamento = c.IdDepartamento
             LEFT JOIN dbo.EmpresasNomipaq e ON e.IdEmpresa = c.IdEmpresa
+            OUTER APPLY (
+              SELECT 
+                ISNULL(SUM(DiasPendientes), 0) AS diasDisponibles,
+                ISNULL(SUM(DiasGozados), 0) AS diasGozados,
+                ISNULL(SUM(DiasCorrespondientes), 0) AS diasCorrespondientes
+              FROM dbo.SaldosVacaciones sv_sub
+              WHERE sv_sub.IdColaborador = c.IdColaborador AND sv_sub.EsCerrado = 0
+            ) sv
             WHERE c.IdJefeDirecto = @IdLider AND c.Activo = 1
             ORDER BY c.ApellidoPaterno ASC, c.ApellidoMaterno ASC, c.Nombre ASC;
           `);

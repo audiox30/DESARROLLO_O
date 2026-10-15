@@ -1580,20 +1580,26 @@ const emailService = {
                 <td style="padding:8px 12px; border-bottom:1px solid #e2e8f0;">Acción</td>
                 <td style="padding:8px 12px; border-bottom:1px solid #e2e8f0;">Fecha / Hora</td>
               </tr>
-              ${historial.map(h => `
+              ${historial.map(h => {
+                const nombre = h.AprobadorNombre || h.aprobadorNombre || h.NivelAprobacion || h.nivelAprobacion || 'Sistema';
+                const nivel = h.NivelAprobacion || h.nivelAprobacion || 'Vo.Bo.';
+                const accionItem = h.Accion || h.accion || 'APROBADA';
+                const fechaItem = h.FechaAccion || h.fechaAccion;
+                return `
                 <tr>
                   <td style="padding:8px 12px; border-bottom:1px solid #f1f5f9; color:#0f172a;">
-                    <strong>${h.aprobadorNombre || h.nivelAprobacion || 'Sistema'}</strong>
-                    <span style="display:block; font-size:10px; color:#64748b;">${h.nivelAprobacion || 'Vo.Bo.'}</span>
+                    <strong>${nombre}</strong>
+                    <span style="display:block; font-size:10px; color:#64748b;">${nivel}</span>
                   </td>
-                  <td style="padding:8px 12px; border-bottom:1px solid #f1f5f9; color:${h.accion === 'APROBADA' || h.accion === 'ENVIADA' ? '#059669' : '#dc2626'}; font-weight:bold;">
-                    ${h.accion}
+                  <td style="padding:8px 12px; border-bottom:1px solid #f1f5f9; color:${accionItem === 'APROBADA' || accionItem === 'ENVIADA' ? '#059669' : '#dc2626'}; font-weight:bold;">
+                    ${accionItem}
                   </td>
                   <td style="padding:8px 12px; border-bottom:1px solid #f1f5f9; color:#64748b;">
-                    ${formatFecha(h.fechaAccion)} ${h.fechaAccion ? String(h.fechaAccion).substring(11, 16) : ''}
+                    ${formatFecha(fechaItem)} ${fechaItem ? String(fechaItem).substring(11, 16) : ''}
                   </td>
                 </tr>
-              `).join('')}
+              `;
+              }).join('')}
             </table>
           </div>
         `;
@@ -1742,8 +1748,6 @@ const emailService = {
               </tr>
             </table>
 
-            ${tablaHistorialHtml}
-
             <p style="margin:16px 0; font-size:12px; color:#475569; background-color:#f8fafc; border:1px dashed #cbd5e1; padding:10px 14px; border-radius:8px;">
               📎 <strong>Archivo Adjunto:</strong> Se anexa el formato oficial <code>FDO-84_Solicitud_${String(folio || idSolicitud).trim().replace(/[^a-zA-Z0-9_-]/g, '_')}.pdf</code> con todas las firmas y sellos institucionales completos para tu control y archivo del departamento.
             </p>
@@ -1833,8 +1837,6 @@ const emailService = {
                 </td>
               </tr>
             </table>
-
-            ${tablaHistorialHtml}
 
             <p style="margin:16px 0; font-size:12px; color:#475569; background-color:#f0fdf4; border:1px solid #bbf7d0; padding:12px 16px; border-radius:8px;">
               📎 <strong>Archivo Adjunto:</strong> Se anexa el formato institucional <code>FDO-84_Solicitud_${String(folio || idSolicitud).trim().replace(/[^a-zA-Z0-9_-]/g, '_')}.pdf</code> con todas las firmas y sellos digitales completos para el archivo y kardex del área.

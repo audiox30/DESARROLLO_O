@@ -63,6 +63,8 @@ const aprobacionesController = {
 
         const msg = estadoFinal === 'PENDIENTE_GERENTE'
           ? 'Visto Bueno Nivel 1 (Jefe Directo) registrado con éxito. Solicitud transferida a Autorización Gerencial (Nivel 2).'
+          : estadoFinal === 'PENDIENTE_DO'
+          ? 'Solicitud autorizada por Jefatura. Transferida a Vo.Bo. de Desarrollo Organizacional.'
           : '¡Solicitud aprobada exitosamente y saldo de vacaciones descontado!';
 
         return res.json({

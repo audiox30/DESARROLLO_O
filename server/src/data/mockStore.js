@@ -660,6 +660,8 @@ class MockStore {
     if (solicitud.estado === 'PENDIENTE_LIDER' && !esDO) {
       if (idSegundo) {
         solicitud.estado = 'PENDIENTE_GERENTE';
+        solicitud.idAprobadorLider = aprobador ? aprobador.id : null;
+        solicitud.fechaAprobacionLider = new Date().toISOString();
         this.historialAprobaciones.push({
           idAprobacion: this.historialAprobaciones.length + 1,
           idSolicitud: solicitud.idSolicitud,
@@ -672,9 +674,9 @@ class MockStore {
           fechaAccion: new Date().toISOString()
         });
       } else {
-        solicitud.estado = 'APROBADA';
-        solicitud.fechaResolucion = new Date().toISOString();
-        solicitud.idAprobadorFinal = aprobador ? aprobador.id : null;
+        solicitud.estado = 'PENDIENTE_DO';
+        solicitud.idAprobadorLider = aprobador ? aprobador.id : null;
+        solicitud.fechaAprobacionLider = new Date().toISOString();
         this.historialAprobaciones.push({
           idAprobacion: this.historialAprobaciones.length + 1,
           idSolicitud: solicitud.idSolicitud,
@@ -682,11 +684,26 @@ class MockStore {
           aprobadorNombre: aprobador ? aprobador.nombreCompleto : 'LÍDER DIRECTO',
           nivelAprobacion: 'LIDER_DIRECTO',
           accion: 'APROBADA',
-          comentarios: comentarios || 'Autorizada por Líder Directo. Enviada a validación de DO.',
+          comentarios: comentarios || 'Visto Bueno Nivel 1 (Jefe Directo). Transferida a Vo.Bo. de Desarrollo Organizacional.',
           metodoAutorizacion: metodo,
           fechaAccion: new Date().toISOString()
         });
       }
+    } else if (solicitud.estado === 'PENDIENTE_GERENTE' && !esDO) {
+      solicitud.estado = 'PENDIENTE_DO';
+      solicitud.idAprobadorSegundo = aprobador ? aprobador.id : null;
+      solicitud.fechaAprobacionSegundo = new Date().toISOString();
+      this.historialAprobaciones.push({
+        idAprobacion: this.historialAprobaciones.length + 1,
+        idSolicitud: solicitud.idSolicitud,
+        idAprobador: aprobador ? aprobador.id : 0,
+        aprobadorNombre: aprobador ? aprobador.nombreCompleto : 'GERENTE DE SUCURSAL',
+        nivelAprobacion: 'GERENTE_SUCURSAL',
+        accion: 'APROBADA',
+        comentarios: comentarios || 'Autorización Nivel 2 (Gerencia). Transferida a Vo.Bo. de Desarrollo Organizacional.',
+        metodoAutorizacion: metodo,
+        fechaAccion: new Date().toISOString()
+      });
     } else {
       solicitud.estado = 'APROBADA';
       solicitud.fechaResolucion = new Date().toISOString();
