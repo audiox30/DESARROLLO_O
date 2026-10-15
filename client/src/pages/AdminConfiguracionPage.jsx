@@ -5,7 +5,7 @@ import {
   Eye, EyeOff, ShieldAlert, Check, Server, Clock, 
   Layers, Lock, AlertTriangle, Terminal, Cpu,
   Search, Filter, X, ExternalLink, ShieldCheck, MailCheck,
-  FileText, ArrowRight, RefreshCw, XCircle, Bell
+  FileText, ArrowRight, RefreshCw, XCircle, Bell, Sparkles
 } from 'lucide-react';
 import { api } from '../api/client';
 
