@@ -259,6 +259,7 @@ const colaboradoresController = {
         numero_hijo, 
         nombre, 
         nombreCompleto, 
+        parentesco,
         fechaNacimiento, 
         fecha_nacimiento, 
         sexo 
@@ -267,17 +268,19 @@ const colaboradoresController = {
       const num = numeroHijo || numero_hijo;
       const nom = (nombre || nombreCompleto || '').trim();
       const fn = fechaNacimiento || fecha_nacimiento || null;
+      const par = (parentesco || 'Hijo(a)').trim();
 
       const resultado = await ColaboradorModel.agregarHijo(Number(id), { 
         idHijo,
         numeroHijo: num, 
         nombre: nom, 
+        parentesco: par,
         fechaNacimiento: fn, 
         sexo 
       });
 
       const hijos = await ColaboradorModel.obtenerHijos(Number(id));
-      return res.json({ success: true, message: 'Hijo registrado con éxito.', data: hijos, resultado });
+      return res.json({ success: true, message: 'Familiar registrado con éxito.', data: hijos, resultado });
     } catch (err) {
       console.error('[colaboradores.agregarHijo]', err);
       res.status(500).json({ error: err.message });

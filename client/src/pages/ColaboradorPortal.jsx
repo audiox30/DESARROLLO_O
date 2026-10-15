@@ -30,10 +30,34 @@ function formatFechaUI(fecha) {
 }
 
 function calcularEdad(fechaNacimiento) {
-  if (!fechaNacimiento) return 'No especificada';
+  if (!fechaNacimiento) return '—';
   try {
+    const parts = String(fechaNacimiento).substring(0, 10).split('-');
+    if (parts.length === 3) {
+      const y = Number(parts[0]);
+      const m = Number(parts[1]);
+      const d = Number(parts[2]);
+      if (isNaN(y) || isNaN(m) || isNaN(d) || y < 1900) return 'Fecha inválida';
+      const nac = new Date(Date.UTC(y, m - 1, d, 12, 0, 0));
+      if (isNaN(nac.getTime())) return 'Fecha inválida';
+      const hoy = new Date();
+      let edad = hoy.getUTCFullYear() - nac.getUTCFullYear();
+      const mesDiff = hoy.getUTCMonth() - nac.getUTCMonth();
+      const diaDiff = hoy.getUTCDate() - nac.getUTCDate();
+      if (mesDiff < 0 || (mesDiff === 0 && diaDiff < 0)) {
+        edad--;
+      }
+      if (edad < 0) return 'Fecha futura';
+      if (edad === 0) {
+        let meses = (hoy.getUTCFullYear() - nac.getUTCFullYear()) * 12 + (hoy.getUTCMonth() - nac.getUTCMonth());
+        if (diaDiff < 0) meses--;
+        meses = Math.max(0, meses);
+        return meses === 1 ? '1 mes' : `${meses} meses`;
+      }
+      return `${edad} ${edad === 1 ? 'año' : 'años'}`;
+    }
     const nacimiento = new Date(fechaNacimiento);
-    if (isNaN(nacimiento.getTime())) return 'No especificada';
+    if (isNaN(nacimiento.getTime())) return '—';
     const hoy = new Date();
     let edad = hoy.getFullYear() - nacimiento.getFullYear();
     const m = hoy.getMonth() - nacimiento.getMonth();
@@ -46,7 +70,7 @@ function calcularEdad(fechaNacimiento) {
     }
     return `${edad} ${edad === 1 ? 'año' : 'años'}`;
   } catch (e) {
-    return 'No especificada';
+    return '—';
   }
 }
 
@@ -65,7 +89,7 @@ export default function ColaboradorPortal({ currentUser }) {
   // Datos del perfil y dependientes
   const [perfilColab, setPerfilColab] = useState(null);
   const [loadingPerfil, setLoadingPerfil] = useState(false);
-  const [formNuevoHijo, setFormNuevoHijo] = useState({ nombre: '', fechaNacimiento: '', sexo: 'M' });
+  const [formNuevoHijo, setFormNuevoHijo] = useState({ nombre: '', parentesco: 'Hijo(a)', fechaNacimiento: '', sexo: 'M' });
   const [guardandoHijo, setGuardandoHijo] = useState(false);
   const [toastMsg, setToastMsg] = useState('');
 
@@ -101,22 +125,23 @@ export default function ColaboradorPortal({ currentUser }) {
     const colabId = currentUser?.id || currentUser?.id_colaborador || currentUser?.idColaborador || currentUser?.IdColaborador;
     if (!colabId) return;
     if (!formNuevoHijo.nombre || !formNuevoHijo.nombre.trim()) {
-      alert('Debe ingresar el nombre completo del hijo o dependiente.');
+      alert('Debe ingresar el nombre completo del familiar o dependiente.');
       return;
     }
     try {
       setGuardandoHijo(true);
       const res = await api.agregarHijo(colabId, {
         ...formNuevoHijo,
-        nombre: formNuevoHijo.nombre.trim()
+        nombre: formNuevoHijo.nombre.trim(),
+        parentesco: (formNuevoHijo.parentesco || 'Hijo(a)').trim()
       });
       if (res.success) {
-        mostrarToast('Hijo/dependiente registrado exitosamente.');
-        setFormNuevoHijo({ nombre: '', fechaNacimiento: '', sexo: 'M' });
+        mostrarToast('Familiar o dependiente registrado exitosamente.');
+        setFormNuevoHijo({ nombre: '', parentesco: 'Hijo(a)', fechaNacimiento: '', sexo: 'M' });
         cargarPerfil();
       }
     } catch (err) {
-      alert('Error registrando hijo: ' + err.message);
+      alert('Error registrando familiar: ' + err.message);
     } finally {
       setGuardandoHijo(false);
     }
@@ -125,15 +150,15 @@ export default function ColaboradorPortal({ currentUser }) {
   async function handleEliminarHijoColaborador(idHijo) {
     const colabId = currentUser?.id || currentUser?.id_colaborador || currentUser?.idColaborador || currentUser?.IdColaborador;
     if (!colabId) return;
-    if (!window.confirm('¿Confirmas la eliminación de este registro de hijo/dependiente?')) return;
+    if (!window.confirm('¿Confirmas la eliminación de este registro de familiar o dependiente?')) return;
     try {
       const res = await api.eliminarHijo(colabId, idHijo);
       if (res.success) {
-        mostrarToast('Registro de hijo/dependiente eliminado.');
+        mostrarToast('Registro de familiar o dependiente eliminado.');
         cargarPerfil();
       }
     } catch (err) {
-      alert('Error eliminando hijo: ' + err.message);
+      alert('Error eliminando familiar: ' + err.message);
     }
   }
 
@@ -568,35 +593,35 @@ export default function ColaboradorPortal({ currentUser }) {
                     </div>
                   </div>
 
-                  {/* Sección Hijos / Dependientes Familiares */}
+                  {/* Sección Familiares & Dependientes */}
                   <div className="bg-white border-2 border-indigo-100 rounded-3xl p-5 shadow-xs">
                     <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 pb-4 border-b border-slate-100">
                       <div className="flex items-center gap-3">
-                        <div className="w-10 h-10 rounded-2xl bg-pink-100 text-pink-700 flex items-center justify-center">
-                          <Baby className="w-5 h-5" />
+                        <div className="w-10 h-10 rounded-2xl bg-purple-100 text-purple-700 flex items-center justify-center">
+                          <Users className="w-5 h-5" />
                         </div>
                         <div>
                           <h4 className="text-sm font-black text-slate-900">
-                            Mis Hijos & Dependientes Familiares
+                            Mis Familiares & Dependientes
                           </h4>
                           <p className="text-xs text-slate-500">
                             Registro en nómina (<code className="font-mono bg-slate-100 px-1 py-0.5 rounded text-[11px]">dbo.ColaboradorHijos</code>) para prestaciones y eventos familiares.
                           </p>
                         </div>
                       </div>
-                      <span className="px-3 py-1 bg-pink-50 text-pink-700 font-bold rounded-full text-xs border border-pink-200">
-                        {(perfilColab?.hijos || []).length} {((perfilColab?.hijos || []).length === 1) ? 'hijo registrado' : 'hijos registrados'}
+                      <span className="px-3 py-1 bg-purple-50 text-purple-700 font-bold rounded-full text-xs border border-purple-200">
+                        {(perfilColab?.hijos || []).length} {((perfilColab?.hijos || []).length === 1) ? 'familiar registrado' : 'familiares registrados'}
                       </span>
                     </div>
 
-                    {/* Grid de Hijos */}
+                    {/* Grid de Familiares */}
                     <div className="mt-4">
                       {(!perfilColab?.hijos || perfilColab.hijos.length === 0) ? (
                         <div className="p-8 text-center bg-slate-50 border border-dashed border-slate-200 rounded-2xl">
-                          <Baby className="w-10 h-10 text-slate-300 mx-auto mb-2" />
-                          <p className="text-xs font-bold text-slate-700">Aún no tienes hijos registrados en tu expediente</p>
+                          <Users className="w-10 h-10 text-slate-300 mx-auto mb-2" />
+                          <p className="text-xs font-bold text-slate-700">Aún no tienes familiares registrados en tu expediente</p>
                           <p className="text-[11px] text-slate-400 mt-1 max-w-sm mx-auto">
-                            Puedes dar de alta a tus dependientes utilizando el formulario inferior para que sean contemplados en prestaciones institucionales.
+                            Puedes dar de alta a tus familiares o dependientes utilizando el formulario inferior para que sean contemplados en prestaciones institucionales.
                           </p>
                         </div>
                       ) : (
@@ -607,6 +632,7 @@ export default function ColaboradorPortal({ currentUser }) {
                             const num = h.NumeroHijo || h.numeroHijo || (i + 1);
                             const nom = (h.Nombre || h.nombre || '').trim();
                             const idH = h.IdHijo || h.idHijo;
+                            const parentesco = h.Parentesco || h.parentesco || 'Hijo(a)';
                             return (
                               <div key={idH || i} className="p-4 bg-slate-50/80 border border-slate-200 rounded-2xl flex items-start justify-between gap-3 shadow-2xs hover:border-slate-300 transition-colors">
                                 <div className="flex items-start gap-3 min-w-0">
@@ -616,12 +642,12 @@ export default function ColaboradorPortal({ currentUser }) {
                                   <div className="min-w-0">
                                     <div className="flex items-center gap-1.5 flex-wrap">
                                       <span className="text-xs font-black text-slate-900 truncate">
-                                        Hijo #{num}{nom ? ` • ${nom}` : ''}
+                                        {parentesco} #{num}{nom ? ` • ${nom}` : ''}
                                       </span>
                                       {sx === 'M' ? (
-                                        <span className="text-[10px] font-bold px-1.5 py-0.5 bg-blue-100 text-blue-800 rounded shrink-0">Niño</span>
+                                        <span className="text-[10px] font-bold px-1.5 py-0.5 bg-blue-100 text-blue-800 rounded shrink-0">Masc.</span>
                                       ) : sx === 'F' ? (
-                                        <span className="text-[10px] font-bold px-1.5 py-0.5 bg-pink-100 text-pink-800 rounded shrink-0">Niña</span>
+                                        <span className="text-[10px] font-bold px-1.5 py-0.5 bg-pink-100 text-pink-800 rounded shrink-0">Fem.</span>
                                       ) : (
                                         <span className="text-[10px] font-bold px-1.5 py-0.5 bg-slate-100 text-slate-600 rounded shrink-0">Indef.</span>
                                       )}
@@ -651,27 +677,44 @@ export default function ColaboradorPortal({ currentUser }) {
                       )}
                     </div>
 
-                    {/* Formulario para Registrar Nuevo Hijo */}
+                    {/* Formulario para Registrar Nuevo Familiar */}
                     <div className="mt-5 p-4 bg-slate-50 border border-slate-200 rounded-2xl">
                       <h5 className="text-xs font-bold text-slate-800 mb-2.5 flex items-center gap-1.5">
-                        <Plus className="w-4 h-4 text-blue-600" />
-                        <span>Registrar Nuevo Hijo o Dependiente</span>
+                        <Plus className="w-4 h-4 text-purple-700" />
+                        <span>Registrar Nuevo Familiar o Dependiente</span>
                       </h5>
                       <form onSubmit={handleAgregarHijoColaborador} className="grid grid-cols-1 md:grid-cols-12 gap-3 items-end">
-                        <div className="md:col-span-5">
+                        <div className="md:col-span-3">
                           <label className="block text-[11px] font-bold text-slate-600 mb-1">
-                            Nombre Completo del Hijo / Dependiente <span className="text-rose-500">*</span>
+                            Nombre Completo <span className="text-rose-500">*</span>
                           </label>
                           <input
                             type="text"
                             placeholder="Ej. Juan Pérez García"
                             value={formNuevoHijo.nombre}
                             onChange={(e) => setFormNuevoHijo({ ...formNuevoHijo, nombre: e.target.value })}
-                            className="w-full px-3 py-1.5 bg-white border border-slate-300 rounded-xl text-xs focus:ring-2 focus:ring-blue-600 outline-none"
+                            className="w-full px-3 py-1.5 bg-white border border-slate-300 rounded-xl text-xs focus:ring-2 focus:ring-purple-600 outline-none"
                             required
                           />
                         </div>
-                        <div className="md:col-span-3">
+                        <div className="md:col-span-2">
+                          <label className="block text-[11px] font-bold text-slate-600 mb-1">
+                            Parentesco <span className="text-rose-500">*</span>
+                          </label>
+                          <select
+                            value={formNuevoHijo.parentesco || 'Hijo(a)'}
+                            onChange={(e) => setFormNuevoHijo({ ...formNuevoHijo, parentesco: e.target.value })}
+                            className="w-full px-2 py-1.5 bg-white border border-slate-300 rounded-xl text-xs focus:ring-2 focus:ring-purple-600 outline-none"
+                          >
+                            <option value="Hijo(a)">Hijo(a)</option>
+                            <option value="Cónyuge">Cónyuge</option>
+                            <option value="Concubino(a)">Concubino(a)</option>
+                            <option value="Padre / Madre">Padre / Madre</option>
+                            <option value="Hermano(a)">Hermano(a)</option>
+                            <option value="Otro dependiente">Otro dependiente</option>
+                          </select>
+                        </div>
+                        <div className="md:col-span-2">
                           <label className="block text-[11px] font-bold text-slate-600 mb-1">
                             Fecha de Nacimiento <span className="text-rose-500">*</span>
                           </label>
@@ -679,31 +722,39 @@ export default function ColaboradorPortal({ currentUser }) {
                             type="date"
                             value={formNuevoHijo.fechaNacimiento}
                             onChange={(e) => setFormNuevoHijo({ ...formNuevoHijo, fechaNacimiento: e.target.value })}
-                            className="w-full px-3 py-1.5 bg-white border border-slate-300 rounded-xl text-xs focus:ring-2 focus:ring-blue-600 outline-none"
+                            className="w-full px-2 py-1.5 bg-white border border-slate-300 rounded-xl text-xs focus:ring-2 focus:ring-purple-600 outline-none"
                             required
                           />
                         </div>
                         <div className="md:col-span-2">
+                          <label className="block text-[11px] font-bold text-slate-600 mb-1">
+                            Edad Calculada
+                          </label>
+                          <div className="w-full px-2 py-1.5 bg-indigo-50/70 border border-indigo-200 rounded-xl text-xs font-bold text-indigo-700 flex items-center justify-center h-[34px] tracking-tight">
+                            {formNuevoHijo.fechaNacimiento ? calcularEdad(formNuevoHijo.fechaNacimiento) : '—'}
+                          </div>
+                        </div>
+                        <div className="md:col-span-1">
                           <label className="block text-[11px] font-bold text-slate-600 mb-1">
                             Sexo
                           </label>
                           <select
                             value={formNuevoHijo.sexo}
                             onChange={(e) => setFormNuevoHijo({ ...formNuevoHijo, sexo: e.target.value })}
-                            className="w-full px-3 py-1.5 bg-white border border-slate-300 rounded-xl text-xs focus:ring-2 focus:ring-blue-600 outline-none"
+                            className="w-full px-2 py-1.5 bg-white border border-slate-300 rounded-xl text-xs focus:ring-2 focus:ring-purple-600 outline-none"
                           >
-                            <option value="M">👦 Masculino</option>
-                            <option value="F">👧 Femenino</option>
+                            <option value="M">Masc.</option>
+                            <option value="F">Fem.</option>
                           </select>
                         </div>
                         <div className="md:col-span-2">
                           <button
                             type="submit"
                             disabled={guardandoHijo}
-                            className="w-full px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold transition shadow-xs cursor-pointer disabled:opacity-50 flex items-center justify-center gap-1.5"
+                            className="w-full px-4 py-2 bg-purple-700 hover:bg-purple-800 text-white rounded-xl text-xs font-bold transition shadow-xs cursor-pointer disabled:opacity-50 flex items-center justify-center gap-1.5"
                           >
                             <Plus className="w-3.5 h-3.5" />
-                            <span>{guardandoHijo ? 'Registrando...' : 'Registrar Hijo'}</span>
+                            <span>{guardandoHijo ? 'Registrando...' : 'Registrar Familiar'}</span>
                           </button>
                         </div>
                       </form>

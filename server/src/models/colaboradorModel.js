@@ -445,6 +445,7 @@ class ColaboradorModel {
     const result = await request.query(`
       SELECT 
         IdHijo, NumeroHijo, Nombre,
+        ISNULL(Parentesco, 'Hijo(a)') AS Parentesco,
         CONVERT(VARCHAR(10), FechaNacimiento, 120) AS FechaNacimiento, 
         Sexo, FechaRegistro,
         CASE 
@@ -463,8 +464,10 @@ class ColaboradorModel {
     return result.recordset;
   }
 
-  static async agregarHijo(idColaborador, { idHijo, numeroHijo, nombre, fechaNacimiento, sexo }) {
+  static async agregarHijo(idColaborador, { idHijo, numeroHijo, nombre, parentesco, fechaNacimiento, sexo }) {
     const pool = await getLocalPool();
+    const parentescoFinal = (parentesco && String(parentesco).trim()) ? String(parentesco).trim() : 'Hijo(a)';
+
     if (!pool || isUsingMock()) {
       if (!mockStore.colaboradorHijos) mockStore.colaboradorHijos = [];
       const colabId = Number(idColaborador);
@@ -482,6 +485,8 @@ class ColaboradorModel {
         numeroHijo: numFinal,
         Nombre: nombre ? String(nombre).trim() : null,
         nombre: nombre ? String(nombre).trim() : null,
+        Parentesco: parentescoFinal,
+        parentesco: parentescoFinal,
         FechaNacimiento: fechaNacimiento || null,
         fechaNacimiento: fechaNacimiento || null,
         Sexo: sexo ? String(sexo).trim().toUpperCase() : 'M',
@@ -496,6 +501,7 @@ class ColaboradorModel {
     request.input('IdColaborador', Number(idColaborador));
     request.input('NumeroHijo', (numeroHijo && Number(numeroHijo) > 0) ? Number(numeroHijo) : null);
     request.input('Nombre', nombre ? String(nombre).trim() : null);
+    request.input('Parentesco', parentescoFinal);
     request.input('FechaNacimiento', fechaNacimiento || null);
     request.input('Sexo', (sexo ? String(sexo).trim().toUpperCase().substring(0, 1) : null));
 
@@ -503,7 +509,11 @@ class ColaboradorModel {
       request.input('IdHijo', Number(idHijo));
       await request.query(`
         UPDATE dbo.ColaboradorHijos
-        SET Nombre = COALESCE(@Nombre, Nombre), FechaNacimiento = @FechaNacimiento, Sexo = @Sexo, FechaRegistro = SYSUTCDATETIME()
+        SET Nombre = COALESCE(@Nombre, Nombre),
+            Parentesco = COALESCE(@Parentesco, Parentesco),
+            FechaNacimiento = @FechaNacimiento,
+            Sexo = @Sexo,
+            FechaRegistro = SYSUTCDATETIME()
         WHERE IdHijo = @IdHijo AND IdColaborador = @IdColaborador;
       `);
       return { success: true, idHijo };
@@ -516,8 +526,8 @@ class ColaboradorModel {
         SELECT @NumFinal = ISNULL((SELECT MAX(NumeroHijo) FROM dbo.ColaboradorHijos WHERE IdColaborador = @IdColaborador), 0) + 1;
       END
 
-      INSERT INTO dbo.ColaboradorHijos (IdColaborador, NumeroHijo, Nombre, FechaNacimiento, Sexo, FechaRegistro)
-      VALUES (@IdColaborador, @NumFinal, @Nombre, @FechaNacimiento, @Sexo, SYSUTCDATETIME());
+      INSERT INTO dbo.ColaboradorHijos (IdColaborador, NumeroHijo, Nombre, Parentesco, FechaNacimiento, Sexo, FechaRegistro)
+      VALUES (@IdColaborador, @NumFinal, @Nombre, @Parentesco, @FechaNacimiento, @Sexo, SYSUTCDATETIME());
     `;
 
     await request.query(query);

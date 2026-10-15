@@ -365,6 +365,7 @@ export default function AdminColaboradoresPage({ currentUser }) {
   const [errorHijos, setErrorHijos] = useState('');
   const [nuevoHijo, setNuevoHijo] = useState({
     nombre: '',
+    parentesco: 'Hijo(a)',
     fechaNacimiento: '',
     sexo: 'M'
   });
@@ -685,13 +686,14 @@ export default function AdminColaboradoresPage({ currentUser }) {
         setHijosList(res.data || []);
         setNuevoHijo({
           nombre: '',
+          parentesco: 'Hijo(a)',
           fechaNacimiento: '',
           sexo: 'M'
         });
       }
     } catch (err) {
-      console.error('Error al cargar hijos del colaborador:', err);
-      setErrorHijos(err.message || 'Error cargando catálogo de hijos.');
+      console.error('Error al cargar familiares del colaborador:', err);
+      setErrorHijos(err.message || 'Error cargando catálogo de familiares.');
     } finally {
       setLoadingHijos(false);
     }
@@ -701,7 +703,7 @@ export default function AdminColaboradoresPage({ currentUser }) {
     e.preventDefault();
     if (!colabHijos) return;
     if (!nuevoHijo.nombre || !nuevoHijo.nombre.trim()) {
-      setErrorHijos('El nombre completo del hijo o dependiente es obligatorio.');
+      setErrorHijos('El nombre completo del familiar o dependiente es obligatorio.');
       return;
     }
     setErrorHijos('');
@@ -709,16 +711,18 @@ export default function AdminColaboradoresPage({ currentUser }) {
       setGuardandoHijo(true);
       const payload = {
         nombre: nuevoHijo.nombre.trim(),
+        parentesco: (nuevoHijo.parentesco || 'Hijo(a)').trim(),
         numeroHijo: (hijosList.length || 0) + 1,
         fechaNacimiento: nuevoHijo.fechaNacimiento || null,
         sexo: nuevoHijo.sexo || 'M'
       };
       const res = await api.agregarHijoColaborador(colabHijos.IdColaborador, payload);
       if (res.success) {
-        mostrarToast('Hijo registrado exitosamente.');
+        mostrarToast('Familiar registrado exitosamente.');
         setHijosList(res.data || []);
         setNuevoHijo({
           nombre: '',
+          parentesco: 'Hijo(a)',
           fechaNacimiento: '',
           sexo: 'M'
         });
@@ -737,21 +741,22 @@ export default function AdminColaboradoresPage({ currentUser }) {
         );
       }
     } catch (err) {
-      setErrorHijos(err.message || 'Error guardando hijo.');
+      setErrorHijos(err.message || 'Error guardando familiar.');
     } finally {
       setGuardandoHijo(false);
     }
   }
 
   async function handleEliminarHijo(idHijo) {
-    if (!window.confirm('¿Seguro que deseas eliminar este registro de hijo?')) return;
+    if (!window.confirm('¿Seguro que deseas eliminar este registro de familiar?')) return;
     try {
       const res = await api.eliminarHijoColaborador(colabHijos.IdColaborador, idHijo);
       if (res.success) {
-        mostrarToast('Hijo eliminado exitosamente.');
+        mostrarToast('Familiar eliminado exitosamente.');
         setHijosList(res.data || []);
         setNuevoHijo({
           nombre: '',
+          parentesco: 'Hijo(a)',
           fechaNacimiento: '',
           sexo: 'M'
         });
@@ -770,23 +775,39 @@ export default function AdminColaboradoresPage({ currentUser }) {
         );
       }
     } catch (err) {
-      alert('Error eliminando hijo: ' + err.message);
+      alert('Error eliminando familiar: ' + err.message);
     }
   }
 
   function calcularEdad(fechaNacStr) {
-    if (!fechaNacStr) return 'No registrada';
-    const parts = fechaNacStr.split('-');
-    if (parts.length !== 3) return fechaNacStr;
-    const nac = new Date(Date.UTC(Number(parts[0]), Number(parts[1]) - 1, Number(parts[2]), 12, 0, 0));
-    if (isNaN(nac.getTime())) return 'Fecha inválida';
-    const hoy = new Date();
-    let edad = hoy.getUTCFullYear() - nac.getUTCFullYear();
-    const m = hoy.getUTCMonth() - nac.getUTCMonth();
-    if (m < 0 || (m === 0 && hoy.getUTCDate() < nac.getUTCDate())) {
-      edad--;
+    if (!fechaNacStr) return '—';
+    try {
+      const parts = String(fechaNacStr).substring(0, 10).split('-');
+      if (parts.length !== 3) return fechaNacStr;
+      const y = Number(parts[0]);
+      const m = Number(parts[1]);
+      const d = Number(parts[2]);
+      if (isNaN(y) || isNaN(m) || isNaN(d) || y < 1900) return 'Fecha inválida';
+      const nac = new Date(Date.UTC(y, m - 1, d, 12, 0, 0));
+      if (isNaN(nac.getTime())) return 'Fecha inválida';
+      const hoy = new Date();
+      let edad = hoy.getUTCFullYear() - nac.getUTCFullYear();
+      const mesDiff = hoy.getUTCMonth() - nac.getUTCMonth();
+      const diaDiff = hoy.getUTCDate() - nac.getUTCDate();
+      if (mesDiff < 0 || (mesDiff === 0 && diaDiff < 0)) {
+        edad--;
+      }
+      if (edad < 0) return 'Fecha futura';
+      if (edad === 0) {
+        let meses = (hoy.getUTCFullYear() - nac.getUTCFullYear()) * 12 + (hoy.getUTCMonth() - nac.getUTCMonth());
+        if (diaDiff < 0) meses--;
+        meses = Math.max(0, meses);
+        return meses === 1 ? '1 mes' : `${meses} meses`;
+      }
+      return `${edad} ${edad === 1 ? 'año' : 'años'}`;
+    } catch (e) {
+      return '—';
     }
-    return edad >= 0 ? `${edad} ${edad === 1 ? 'año' : 'años'}` : '—';
   }
 
   return (
@@ -1635,18 +1656,18 @@ export default function AdminColaboradoresPage({ currentUser }) {
                     />
                   </div>
 
-                  {/* Hijos / Dependientes Familiares */}
+                  {/* Familiares / Dependientes */}
                   <div className="sm:col-span-2 p-3.5 bg-purple-50/70 border border-purple-200 rounded-2xl flex items-center justify-between">
                     <div className="flex items-center gap-3">
                       <div className="p-2 bg-purple-100 text-purple-700 rounded-xl">
-                        <Baby className="w-5 h-5" />
+                        <Users className="w-5 h-5" />
                       </div>
                       <div>
-                        <span className="text-xs font-bold text-purple-900 block">Hijos y Dependientes Registrados</span>
+                        <span className="text-xs font-bold text-purple-900 block">Familiares y Dependientes Registrados</span>
                         <span className="text-[11px] text-purple-700">
                           {colabEditar.TotalHijos > 0 
-                            ? `${colabEditar.TotalHijos} ${colabEditar.TotalHijos === 1 ? 'hijo registrado' : 'hijos registrados'} en el sistema` 
-                            : 'Sin hijos registrados actualmente'}
+                            ? `${colabEditar.TotalHijos} ${colabEditar.TotalHijos === 1 ? 'familiar registrado' : 'familiares registrados'} en el sistema` 
+                            : 'Sin familiares registrados actualmente'}
                         </span>
                       </div>
                     </div>
@@ -1655,8 +1676,8 @@ export default function AdminColaboradoresPage({ currentUser }) {
                       onClick={() => abrirModalHijos(colabEditar)}
                       className="flex items-center gap-1.5 px-3 py-1.5 bg-purple-700 hover:bg-purple-800 text-white rounded-xl text-xs font-bold transition shadow-xs cursor-pointer"
                     >
-                      <Baby className="w-3.5 h-3.5" />
-                      <span>{isReadOnly ? 'Ver Hijos' : 'Ver / Gestionar Hijos'} ({colabEditar.TotalHijos || 0})</span>
+                      <Users className="w-3.5 h-3.5" />
+                      <span>{isReadOnly ? 'Ver Familia' : 'Ver / Gestionar Familia'} ({colabEditar.TotalHijos || 0})</span>
                     </button>
                   </div>
 
@@ -2030,16 +2051,16 @@ export default function AdminColaboradoresPage({ currentUser }) {
                   </div>
                 </div>
 
-                {/* 4. Hijos y Dependientes Familiares (dbo.ColaboradorHijos) */}
+                {/* 4. Familiares y Dependientes (dbo.ColaboradorHijos) */}
                 <div className="bg-white border-2 border-indigo-100 rounded-2xl p-5 shadow-xs">
                   <div className="flex items-center justify-between mb-4">
                     <div className="flex items-center gap-2">
-                      <div className="w-8 h-8 rounded-xl bg-pink-100 text-pink-700 flex items-center justify-center">
-                        <Baby className="w-4 h-4" />
+                      <div className="w-8 h-8 rounded-xl bg-purple-100 text-purple-700 flex items-center justify-center">
+                        <Users className="w-4 h-4" />
                       </div>
                       <div>
                         <h4 className="text-xs font-black text-slate-900 uppercase tracking-wide">
-                          Hijos & Dependientes Familiares
+                          Familiares & Dependientes
                         </h4>
                         <p className="text-[11px] text-slate-500">Datos registrados en dbo.ColaboradorHijos para prestaciones y SGMM</p>
                       </div>
@@ -2049,28 +2070,28 @@ export default function AdminColaboradoresPage({ currentUser }) {
                         type="button"
                         onClick={() => abrirModalHijos(colabFicha)}
                         className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-purple-700 hover:bg-purple-800 text-white rounded-xl text-xs font-bold transition shadow-xs cursor-pointer"
-                        title="Ver / Gestionar Hijos"
+                        title="Ver / Gestionar Familia"
                       >
-                        <Baby className="w-3.5 h-3.5" />
-                        <span>Ver / Gestionar Hijos</span>
+                        <Users className="w-3.5 h-3.5" />
+                        <span>Ver / Gestionar Familia</span>
                       </button>
-                      <span className="text-xs font-bold px-2.5 py-1 bg-pink-50 text-pink-700 rounded-full border border-pink-200">
-                        {(fichaData?.hijos || []).length} {((fichaData?.hijos || []).length === 1) ? 'hijo registrado' : 'hijos registrados'}
+                      <span className="text-xs font-bold px-2.5 py-1 bg-purple-50 text-purple-700 rounded-full border border-purple-200">
+                        {(fichaData?.hijos || []).length} {((fichaData?.hijos || []).length === 1) ? 'familiar registrado' : 'familiares registrados'}
                       </span>
                     </div>
                   </div>
 
                   {(!fichaData?.hijos || fichaData.hijos.length === 0) ? (
                     <div className="p-6 text-center bg-slate-50 rounded-xl border border-dashed border-slate-200">
-                      <Baby className="w-8 h-8 text-slate-300 mx-auto mb-1" />
-                      <p className="text-xs font-bold text-slate-600">No cuenta con hijos o dependientes registrados</p>
+                      <Users className="w-8 h-8 text-slate-300 mx-auto mb-1" />
+                      <p className="text-xs font-bold text-slate-600">No cuenta con familiares o dependientes registrados</p>
                       <button
                         type="button"
                         onClick={() => abrirModalHijos(colabFicha)}
                         className="mt-2 inline-flex items-center gap-1.5 px-3 py-1.5 bg-purple-700 hover:bg-purple-800 text-white rounded-xl text-xs font-bold transition shadow-xs cursor-pointer"
                       >
                         <Plus className="w-3.5 h-3.5" />
-                        <span>Registrar Hijos</span>
+                        <span>Registrar Familiares</span>
                       </button>
                     </div>
                   ) : (
@@ -2080,6 +2101,7 @@ export default function AdminColaboradoresPage({ currentUser }) {
                         const sx = (h.Sexo || h.sexo || '').toUpperCase();
                         const num = h.NumeroHijo || h.numeroHijo || (i + 1);
                         const nom = (h.Nombre || h.nombre || '').trim();
+                        const parentesco = h.Parentesco || h.parentesco || 'Hijo(a)';
                         return (
                           <div key={h.IdHijo || h.idHijo || i} className="p-3.5 bg-slate-50 border border-slate-200/80 rounded-xl flex items-start gap-3">
                             <div className="w-9 h-9 rounded-xl bg-white border border-slate-200 text-slate-700 font-black text-xs flex items-center justify-center shrink-0 shadow-xs">
@@ -2088,12 +2110,12 @@ export default function AdminColaboradoresPage({ currentUser }) {
                             <div className="flex-1 min-w-0">
                               <div className="flex items-center justify-between gap-1 flex-wrap">
                                 <span className="text-xs font-black text-slate-800">
-                                  Hijo #{num}{nom ? ` • ${nom}` : ''}
+                                  {parentesco} #{num}{nom ? ` • ${nom}` : ''}
                                 </span>
                                 {sx === 'M' ? (
-                                  <span className="text-[10px] font-bold px-1.5 py-0.5 bg-blue-100 text-blue-800 rounded">Niño</span>
+                                  <span className="text-[10px] font-bold px-1.5 py-0.5 bg-blue-100 text-blue-800 rounded">Masc.</span>
                                 ) : sx === 'F' ? (
-                                  <span className="text-[10px] font-bold px-1.5 py-0.5 bg-pink-100 text-pink-800 rounded">Niña</span>
+                                  <span className="text-[10px] font-bold px-1.5 py-0.5 bg-pink-100 text-pink-800 rounded">Fem.</span>
                                 ) : (
                                   <span className="text-[10px] font-bold px-1.5 py-0.5 bg-slate-100 text-slate-600 rounded">Indef.</span>
                                 )}
@@ -2131,7 +2153,7 @@ export default function AdminColaboradoresPage({ currentUser }) {
         </div>
       )}
 
-      {/* MODAL 3: GESTIÓN Y CONSULTA DE HIJOS / DEPENDIENTES (dbo.ColaboradorHijos) */}
+      {/* MODAL 3: GESTIÓN Y CONSULTA DE FAMILIARES / DEPENDIENTES (dbo.ColaboradorHijos) */}
       {colabHijos && typeof document !== 'undefined' && createPortal(
         <div className="fixed inset-0 z-[60] overflow-y-auto">
           {/* Overlay Semitransparente Independiente */}
@@ -2142,18 +2164,18 @@ export default function AdminColaboradoresPage({ currentUser }) {
 
           {/* Diálogo Centrado en Capa Superior */}
           <div className="fixed inset-0 flex items-center justify-center z-[70] p-4 overflow-y-auto pointer-events-none">
-            <div className="bg-white rounded-3xl max-w-2xl w-full p-6 shadow-2xl border border-slate-100 my-8 animate-in fade-in zoom-in duration-100 pointer-events-auto relative z-[70] max-h-[90vh] overflow-y-auto">
+            <div className="bg-white rounded-3xl max-w-4xl w-full p-6 shadow-2xl border border-slate-100 my-8 animate-in fade-in zoom-in duration-100 pointer-events-auto relative z-[70] max-h-[90vh] overflow-y-auto">
               {/* Modal Header */}
               <div className="flex items-center justify-between pb-3 border-b border-slate-100">
                 <div className="flex items-center gap-3">
                   <div className="p-2.5 bg-purple-100 text-purple-700 rounded-2xl">
-                    <Baby className="w-6 h-6" />
+                    <Users className="w-6 h-6" />
                   </div>
                   <div>
                     <div className="flex items-center gap-2">
-                      <h3 className="font-black text-slate-900 text-base">Hijos y Dependientes Registrados</h3>
+                      <h3 className="font-black text-slate-900 text-base">Familiares y Dependientes Registrados</h3>
                       <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-purple-100 text-purple-800">
-                        {hijosList.length} {hijosList.length === 1 ? 'hijo' : 'hijos'}
+                        {hijosList.length} {hijosList.length === 1 ? 'familiar' : 'familiares'}
                       </span>
                     </div>
                     <p className="text-xs text-slate-500 font-medium">
@@ -2177,21 +2199,21 @@ export default function AdminColaboradoresPage({ currentUser }) {
                 </div>
               )}
 
-              {/* Listado de Hijos */}
+              {/* Listado de Familiares */}
               <div className="mt-4 space-y-3">
                 <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block">
-                  Descendientes Registrados en Base de Datos (dbo.ColaboradorHijos)
+                  Familiares Registrados en Base de Datos (dbo.ColaboradorHijos)
                 </span>
 
                 {loadingHijos ? (
                   <div className="py-8 text-center text-slate-400 text-xs">
                     <RefreshCw className="w-5 h-5 animate-spin mx-auto mb-2 text-purple-600" />
-                    Cargando información de hijos...
+                    Cargando información de familiares...
                   </div>
                 ) : hijosList.length === 0 ? (
                   <div className="p-6 bg-slate-50 rounded-2xl border border-dashed border-slate-200 text-center text-slate-400 text-xs">
-                    <Baby className="w-8 h-8 mx-auto mb-1.5 text-slate-300" />
-                    Este colaborador no tiene hijos registrados actualmente en el sistema.
+                    <Users className="w-8 h-8 mx-auto mb-1.5 text-slate-300" />
+                    Este colaborador no tiene familiares registrados actualmente en el sistema.
                   </div>
                 ) : (
                   <div className="border border-slate-200 rounded-2xl overflow-hidden shadow-xs">
@@ -2201,6 +2223,7 @@ export default function AdminColaboradoresPage({ currentUser }) {
                           <tr>
                             <th className="py-2.5 px-3 w-12 text-center">#</th>
                             <th className="py-2.5 px-3">Nombre Completo</th>
+                            <th className="py-2.5 px-3">Parentesco</th>
                             <th className="py-2.5 px-3">Fecha de Nacimiento</th>
                             <th className="py-2.5 px-3">Edad Actual</th>
                             <th className="py-2.5 px-3">Sexo</th>
@@ -2228,6 +2251,11 @@ export default function AdminColaboradoresPage({ currentUser }) {
                                 <td className="py-2.5 px-3 font-semibold text-slate-900">
                                   {hijo.Nombre || <span className="text-slate-400 italic font-normal">Sin nombre registrado</span>}
                                 </td>
+                                <td className="py-2.5 px-3">
+                                  <span className="px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-purple-50 text-purple-700 border border-purple-200">
+                                    {hijo.Parentesco || 'Hijo(a)'}
+                                  </span>
+                                </td>
                                 <td className="py-2.5 px-3 text-slate-600 font-mono text-[11px]">
                                   {hijo.FechaNacimiento || <span className="text-slate-400">No registrada</span>}
                                 </td>
@@ -2247,7 +2275,7 @@ export default function AdminColaboradoresPage({ currentUser }) {
                                   <button
                                     type="button"
                                     onClick={() => handleEliminarHijo(hijo.IdHijo)}
-                                    title="Eliminar registro de hijo"
+                                    title="Eliminar registro de familiar"
                                     className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition cursor-pointer"
                                   >
                                     <Trash2 className="w-4 h-4" />
@@ -2263,24 +2291,24 @@ export default function AdminColaboradoresPage({ currentUser }) {
                 )}
               </div>
 
-              {/* Formulario para Agregar Nuevo Hijo */}
+              {/* Formulario para Agregar Nuevo Familiar */}
               <form onSubmit={handleAgregarHijo} className="mt-5 p-4 rounded-2xl bg-purple-50/50 border border-purple-100 space-y-3">
                 <div className="flex items-center gap-1.5 text-purple-900 font-bold text-xs">
                   <Plus className="w-4 h-4 text-purple-700" />
-                  <span>Registrar Nuevo Hijo para este Colaborador</span>
+                  <span>Registrar Nuevo Familiar para este Colaborador</span>
                 </div>
 
                 <div className="grid grid-cols-1 sm:grid-cols-12 gap-3 items-end">
-                  <div className="sm:col-span-2">
+                  <div className="sm:col-span-1">
                     <label className="block text-[11px] font-bold text-slate-600 mb-1">
-                      No. de Hijo
+                      No.
                     </label>
-                    <div className="w-full px-3 py-1.5 bg-slate-100 border border-slate-300 rounded-xl text-xs font-bold text-purple-800 flex items-center justify-center h-[34px]">
-                      #{hijosList.length + 1} (Auto)
+                    <div className="w-full px-2 py-1.5 bg-slate-100 border border-slate-300 rounded-xl text-xs font-bold text-purple-800 flex items-center justify-center h-[34px]">
+                      #{hijosList.length + 1}
                     </div>
                   </div>
 
-                  <div className="sm:col-span-4">
+                  <div className="sm:col-span-3">
                     <label className="block text-[11px] font-bold text-slate-600 mb-1">
                       Nombre Completo <span className="text-rose-500">*</span>
                     </label>
@@ -2294,7 +2322,25 @@ export default function AdminColaboradoresPage({ currentUser }) {
                     />
                   </div>
 
-                  <div className="sm:col-span-3">
+                  <div className="sm:col-span-2">
+                    <label className="block text-[11px] font-bold text-slate-600 mb-1">
+                      Parentesco <span className="text-rose-500">*</span>
+                    </label>
+                    <select
+                      value={nuevoHijo.parentesco || 'Hijo(a)'}
+                      onChange={(e) => setNuevoHijo({ ...nuevoHijo, parentesco: e.target.value })}
+                      className="w-full px-2 py-1.5 bg-white border border-slate-300 rounded-xl text-xs font-semibold text-slate-900 focus:ring-2 focus:ring-purple-600 outline-none h-[34px]"
+                    >
+                      <option value="Hijo(a)">Hijo(a)</option>
+                      <option value="Cónyuge">Cónyuge</option>
+                      <option value="Concubino(a)">Concubino(a)</option>
+                      <option value="Padre / Madre">Padre / Madre</option>
+                      <option value="Hermano(a)">Hermano(a)</option>
+                      <option value="Otro dependiente">Otro dependiente</option>
+                    </select>
+                  </div>
+
+                  <div className="sm:col-span-2">
                     <label className="block text-[11px] font-bold text-slate-600 mb-1">
                       Fecha de Nacimiento
                     </label>
@@ -2302,18 +2348,27 @@ export default function AdminColaboradoresPage({ currentUser }) {
                       type="date"
                       value={nuevoHijo.fechaNacimiento || ''}
                       onChange={(e) => setNuevoHijo({ ...nuevoHijo, fechaNacimiento: e.target.value })}
-                      className="w-full px-3 py-1.5 bg-white border border-slate-300 rounded-xl text-xs text-slate-900 focus:ring-2 focus:ring-purple-600 outline-none h-[34px]"
+                      className="w-full px-2 py-1.5 bg-white border border-slate-300 rounded-xl text-xs text-slate-900 focus:ring-2 focus:ring-purple-600 outline-none h-[34px]"
                     />
                   </div>
 
-                  <div className="sm:col-span-3">
+                  <div className="sm:col-span-2">
+                    <label className="block text-[11px] font-bold text-slate-600 mb-1">
+                      Edad Calculada
+                    </label>
+                    <div className="w-full px-2 py-1.5 bg-indigo-50/70 border border-indigo-200 rounded-xl text-xs font-bold text-indigo-700 flex items-center justify-center h-[34px] tracking-tight">
+                      {nuevoHijo.fechaNacimiento ? calcularEdad(nuevoHijo.fechaNacimiento) : '—'}
+                    </div>
+                  </div>
+
+                  <div className="sm:col-span-2">
                     <label className="block text-[11px] font-bold text-slate-600 mb-1">
                       Sexo
                     </label>
                     <select
                       value={nuevoHijo.sexo || 'M'}
                       onChange={(e) => setNuevoHijo({ ...nuevoHijo, sexo: e.target.value })}
-                      className="w-full px-3 py-1.5 bg-white border border-slate-300 rounded-xl text-xs font-semibold text-slate-900 focus:ring-2 focus:ring-purple-600 outline-none h-[34px]"
+                      className="w-full px-2 py-1.5 bg-white border border-slate-300 rounded-xl text-xs font-semibold text-slate-900 focus:ring-2 focus:ring-purple-600 outline-none h-[34px]"
                     >
                       <option value="M">Masculino (M)</option>
                       <option value="F">Femenino (F)</option>
@@ -2329,7 +2384,7 @@ export default function AdminColaboradoresPage({ currentUser }) {
                     className="flex items-center gap-1.5 px-4 py-2 bg-purple-700 hover:bg-purple-800 disabled:opacity-50 text-white rounded-xl text-xs font-bold transition shadow-xs cursor-pointer"
                   >
                     <Plus className="w-3.5 h-3.5" />
-                    <span>{guardandoHijo ? 'Registrando...' : 'Agregar Hijo a Expediente'}</span>
+                    <span>{guardandoHijo ? 'Registrando...' : 'Agregar Familiar a Expediente'}</span>
                   </button>
                 </div>
               </form>
