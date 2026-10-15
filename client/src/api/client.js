@@ -130,7 +130,7 @@ export const api = {
   getHistorialLider: () => request('/lider/historial-solicitudes'),
   getBandejaDO: (params = '') => request(`/solicitudes/bandeja-do${params ? '?' + params : ''}`),
   getSolicitudDetalle: (id) => request(`/solicitudes/${id}`),
-  cancelarSolicitud: (id) => request(`/solicitudes/${id}/cancelar`, { method: 'POST' }),
+  cancelarSolicitud: (id, data = {}) => request(`/solicitudes/${id}/cancelar`, { method: 'POST', body: JSON.stringify(data) }),
   descargarPdfFdo84: async (idSolicitud, folio = '') => {
     if (!idSolicitud) {
       throw new Error('Identificador de solicitud no válido para generar el formato FDO-84.');

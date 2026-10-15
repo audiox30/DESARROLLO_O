@@ -773,22 +773,44 @@ class MockStore {
     return solicitud;
   }
 
-  cancelarSolicitud(idSolicitud, idColaborador) {
+  cancelarSolicitud(idSolicitud, idColaborador, motivo = 'Cancelada por el colaborador', esAdmin = false) {
     const solicitud = this.solicitudes.find(s => s.idSolicitud === Number(idSolicitud));
     if (!solicitud) throw new Error('Solicitud no encontrada.');
 
-    if (solicitud.idColaborador !== Number(idColaborador)) {
+    if (solicitud.idColaborador !== Number(idColaborador) && !esAdmin) {
       throw new Error('No está autorizado a cancelar esta solicitud.');
     }
 
-    if (!['PENDIENTE_LIDER', 'PENDIENTE_DO'].includes(solicitud.estado)) {
-      throw new Error('Solo se pueden cancelar solicitudes que se encuentren en estado pendiente.');
+    if (!['PENDIENTE_LIDER', 'PENDIENTE_DO', 'PENDIENTE_GERENTE', 'PENDIENTE', 'APROBADA'].includes(solicitud.estado)) {
+      throw new Error(`Solo se pueden cancelar solicitudes pendientes o aprobadas (Estado actual: ${solicitud.estado}).`);
     }
 
+    const estadoAnterior = solicitud.estado;
+    solicitud.estadoAnterior = estadoAnterior;
     solicitud.estado = 'CANCELADA';
     solicitud.fechaResolucion = new Date().toISOString();
+    solicitud.motivoRechazo = motivo;
 
-    const colab = this.colaboradores.find(c => c.id === Number(idColaborador));
+    const colab = this.colaboradores.find(c => c.id === Number(idColaborador) || c.idColaborador === Number(idColaborador));
+
+    // Si ya estaba aprobada, revertir los días gozados en mockStore
+    if (estadoAnterior === 'APROBADA' && colab) {
+      colab.diasGozados = Math.max(0, (colab.diasGozados || 0) - solicitud.totalDiasLaborables);
+      colab.diasDisponibles = Math.max(0, (colab.diasCorrespondientes || 0) - colab.diasGozados);
+      let diasRestaurar = solicitud.totalDiasLaborables;
+      if (colab.saldos && Array.isArray(colab.saldos)) {
+        for (let i = colab.saldos.length - 1; i >= 0; i--) {
+          const s = colab.saldos[i];
+          if ((s.diasGozados || 0) > 0 && diasRestaurar > 0) {
+            const restaurar = Math.min(s.diasGozados, diasRestaurar);
+            s.diasGozados -= restaurar;
+            s.diasPendientes = (s.diasPendientes || 0) + restaurar;
+            diasRestaurar -= restaurar;
+            s.esCerrado = false;
+          }
+        }
+      }
+    }
 
     this.historialAprobaciones.push({
       idAprobacion: this.historialAprobaciones.length + 1,
@@ -797,7 +819,7 @@ class MockStore {
       aprobadorNombre: colab ? colab.nombreCompleto : 'COLABORADOR',
       nivelAprobacion: 'COLABORADOR',
       accion: 'CANCELADA',
-      comentarios: 'Solicitud cancelada por el colaborador',
+      comentarios: motivo || 'Solicitud cancelada por el colaborador',
       metodoAutorizacion: 'WEB',
       fechaAccion: new Date().toISOString()
     });

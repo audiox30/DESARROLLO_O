@@ -1459,33 +1459,54 @@ const emailService = {
 
   /**
    * Cancelación de la solicitud por parte del colaborador
+   * Notifica a los autorizadores, y si ya estaba aprobada, también notifica formalmente a Admin_DO
+   * @param {number|string} idSolicitud
+   * @param {Object} opciones { estadoAnterior: 'APROBADA'|'PENDIENTE_LIDER', motivoCancelacion: string }
    */
-  notificarSolicitudCancelada: async (idSolicitud) => {
+  notificarSolicitudCancelada: async (idSolicitud, opciones = {}) => {
     try {
+      const { estadoAnterior = 'PENDIENTE_LIDER', motivoCancelacion = null } = opciones;
       const data = await obtenerDatosSolicitud(idSolicitud);
       if (!data) return;
 
       const { colaborador, jefe, segundoAprobador, folio, fechaInicio, fechaFin, totalDiasLaborables } = data;
+      const config = await obtenerConfiguracionEmail();
       const correoAuditoria = (process.env.CORREO_AUDITORIA || 'soporte@grupojama.com').trim();
       const emailJefe = (jefe && jefe.email) ? jefe.email : correoAuditoria;
       const ccSegundo = (segundoAprobador && segundoAprobador.email) ? segundoAprobador.email : null;
-
       const nombreJefe = (jefe && jefe.nombre) ? jefe.nombre : 'Líder Asignado';
-      const asunto = `[Vacaciones Grupo JAMA] Solicitud cancelada por el colaborador - ${colaborador.nombre} (Folio ${folio})`;
 
-      const cuerpoHtml = `
+      const yaEstabaAprobada = estadoAnterior === 'APROBADA';
+
+      // 1. Notificación a Autorizadores (Jefe Directo y Segundo Aprobador en CC)
+      const asuntoAutorizadores = yaEstabaAprobada
+        ? `[Vacaciones Grupo JAMA] Cancelación de Solicitud Previamente Aprobada - ${colaborador.nombre} (Folio ${folio})`
+        : `[Vacaciones Grupo JAMA] Solicitud cancelada por el colaborador - ${colaborador.nombre} (Folio ${folio})`;
+
+      const badgeTexto = yaEstabaAprobada ? 'Solicitud Aprobada Cancelada' : 'Cancelada por Colaborador';
+      const badgeColor = yaEstabaAprobada ? '#991b1b' : '#475569';
+      const badgeBg = yaEstabaAprobada ? '#fee2e2' : '#f1f5f9';
+      const badgeBorder = yaEstabaAprobada ? '#fca5a5' : '#cbd5e1';
+
+      const cuerpoAutorizadores = `
         <p style="margin:0 0 16px 0;">
           Estimado(a) <strong>${nombreJefe}</strong>,
         </p>
         <p style="margin:0 0 16px 0;">
-          Te notificamos que el colaborador <strong>${colaborador.nombre}</strong> (Nómina: ${colaborador.codigo || '—'}) ha <strong>cancelado</strong> su solicitud de vacaciones previamente registrada:
+          Te notificamos que el colaborador <strong>${colaborador.nombre}</strong> (Nómina: ${colaborador.codigo || '—'}, Puesto: ${colaborador.puesto}) ha <strong>cancelado</strong> su solicitud de vacaciones <strong>${yaEstabaAprobada ? 'que se encontraba previamente aprobada' : 'previamente registrada en trámite'}</strong>:
         </p>
 
         <!-- Detalle de la Solicitud Cancelada -->
         <table width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color:#f8fafc; border:1px solid #e2e8f0; border-radius:10px; margin:16px 0; overflow:hidden;">
           <tr>
             <td style="padding:10px 14px; border-bottom:1px solid #e2e8f0; color:#64748b; font-size:12px; font-weight:600; width:35%;">Folio Cancelado:</td>
-            <td style="padding:10px 14px; border-bottom:1px solid #e2e8f0; color:#0f172a; font-size:13px; font-weight:bold;">${folio}</td>
+            <td style="padding:10px 14px; border-bottom:1px solid #e2e8f0; color:#002D62; font-size:13px; font-weight:bold;">${folio}</td>
+          </tr>
+          <tr>
+            <td style="padding:10px 14px; border-bottom:1px solid #e2e8f0; color:#64748b; font-size:12px; font-weight:600;">Estado Previo:</td>
+            <td style="padding:10px 14px; border-bottom:1px solid #e2e8f0; color:${yaEstabaAprobada ? '#059669' : '#b45309'}; font-size:12px; font-weight:bold;">
+              ${yaEstabaAprobada ? '✓ Aprobada Formalmente' : '⏳ Pendiente de Aprobación'}
+            </td>
           </tr>
           <tr>
             <td style="padding:10px 14px; border-bottom:1px solid #e2e8f0; color:#64748b; font-size:12px; font-weight:600;">Período Descartado:</td>
@@ -1494,37 +1515,123 @@ const emailService = {
             </td>
           </tr>
           <tr>
-            <td style="padding:10px 14px; color:#64748b; font-size:12px; font-weight:600;">Días Liberados:</td>
-            <td style="padding:10px 14px; color:#0f172a; font-size:13px; font-weight:bold;">
-              ${totalDiasLaborables} días
+            <td style="padding:10px 14px; border-bottom:1px solid #e2e8f0; color:#64748b; font-size:12px; font-weight:600;">Días Reintegrados al Saldo:</td>
+            <td style="padding:10px 14px; border-bottom:1px solid #e2e8f0; color:#059669; font-size:14px; font-weight:bold;">
+              +${totalDiasLaborables} días
             </td>
           </tr>
+          ${motivoCancelacion ? `
+            <tr>
+              <td style="padding:10px 14px; color:#64748b; font-size:12px; font-weight:600;">Motivo de Cancelación:</td>
+              <td style="padding:10px 14px; color:#334155; font-size:12px; font-style:italic;">
+                "${motivoCancelacion}"
+              </td>
+            </tr>
+          ` : ''}
         </table>
 
-        <p style="margin:16px 0 0 0;">
-          Esta solicitud ya no se encuentra pendiente en tu bandeja de aprobación y los días en trámite han sido reintegrados al saldo disponible del colaborador.
+        <p style="margin:16px 0 0 0; font-size:13px; color:#475569;">
+          ${yaEstabaAprobada 
+            ? 'Los días gozados asociados a este trámite han sido revertidos en el sistema y reintegrados a los períodos correspondientes del saldo disponible del colaborador.' 
+            : 'Esta solicitud ha sido descartada de tu bandeja de autorizaciones pendientes y los días en trámite han sido liberados.'}
         </p>
       `;
 
-      const html = generarPlantillaHtml({
-        titulo: 'Solicitud Cancelada por el Colaborador',
-        badgeTexto: 'Cancelada por Colaborador',
-        badgeColor: '#475569',
-        badgeBg: '#f1f5f9',
-        badgeBorder: '#cbd5e1',
-        cuerpoHtml,
-        ctaTexto: 'Revisar Bandeja del Líder',
+      const htmlAutorizadores = generarPlantillaHtml({
+        titulo: yaEstabaAprobada ? 'Cancelación de Solicitud Previamente Aprobada' : 'Solicitud Cancelada por el Colaborador',
+        badgeTexto,
+        badgeColor,
+        badgeBg,
+        badgeBorder,
+        cuerpoHtml: cuerpoAutorizadores,
+        ctaTexto: 'Revisar Bandeja de Solicitudes',
         ctaUrl: '/lider/aprobaciones'
       });
 
       await enviarEmail({
         to: emailJefe,
         cc: ccSegundo,
-        subject: asunto,
-        html,
-        tipoEvento: 'CANCELADA_COLABORADOR',
+        subject: asuntoAutorizadores,
+        html: htmlAutorizadores,
+        tipoEvento: yaEstabaAprobada ? 'CANCELACION_APROBADA_LIDER' : 'CANCELADA_COLABORADOR',
         folioSolicitud: folio
       });
+
+      // 2. Si la solicitud ya estaba APROBADA, enviar aviso especial a Admin_DO
+      if (yaEstabaAprobada) {
+        const emailAdminDO = config.adminDoEmail || ADMIN_DO_DEFECTO.email;
+        const nombreAdminDO = config.adminDoNombre || ADMIN_DO_DEFECTO.nombre;
+
+        const asuntoDO = `[Vacaciones Grupo JAMA] AVISO DO: Solicitud Aprobada Cancelada - ${colaborador.nombre} (Folio ${folio})`;
+
+        const cuerpoDO = `
+          <p style="margin:0 0 16px 0;">
+            Estimada <strong>${nombreAdminDO}</strong> (Desarrollo Organizacional),
+          </p>
+          <p style="margin:0 0 16px 0;">
+            Te notificamos que el colaborador <strong>${colaborador.nombre}</strong> (Nómina: ${colaborador.codigo || '—'}, Puesto: ${colaborador.puesto}, Empresa: ${colaborador.empresa}) ha <strong>cancelado una solicitud que ya se encontraba validada y aprobada formalmente</strong>:
+          </p>
+
+          <!-- Tabla de Datos para DO -->
+          <table width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color:#f8fafc; border:1px solid #e2e8f0; border-radius:10px; margin:16px 0; overflow:hidden;">
+            <tr>
+              <td style="padding:10px 14px; border-bottom:1px solid #e2e8f0; color:#64748b; font-size:12px; font-weight:600; width:35%;">Folio Cancelado:</td>
+              <td style="padding:10px 14px; border-bottom:1px solid #e2e8f0; color:#002D62; font-size:13px; font-weight:bold;">${folio}</td>
+            </tr>
+            <tr>
+              <td style="padding:10px 14px; border-bottom:1px solid #e2e8f0; color:#64748b; font-size:12px; font-weight:600;">Colaborador:</td>
+              <td style="padding:10px 14px; border-bottom:1px solid #e2e8f0; color:#0f172a; font-size:13px; font-weight:bold;">${colaborador.nombre}</td>
+            </tr>
+            <tr>
+              <td style="padding:10px 14px; border-bottom:1px solid #e2e8f0; color:#64748b; font-size:12px; font-weight:600;">Empresa / Sucursal:</td>
+              <td style="padding:10px 14px; border-bottom:1px solid #e2e8f0; color:#0f172a; font-size:12px;">${colaborador.empresa} (${colaborador.sucursal})</td>
+            </tr>
+            <tr>
+              <td style="padding:10px 14px; border-bottom:1px solid #e2e8f0; color:#64748b; font-size:12px; font-weight:600;">Período Cancelado:</td>
+              <td style="padding:10px 14px; border-bottom:1px solid #e2e8f0; color:#0f172a; font-size:13px; font-weight:bold;">
+                Desde ${formatFecha(fechaInicio)} hasta ${formatFecha(fechaFin)}
+              </td>
+            </tr>
+            <tr>
+              <td style="padding:10px 14px; border-bottom:1px solid #e2e8f0; color:#64748b; font-size:12px; font-weight:600;">Días Revertidos:</td>
+              <td style="padding:10px 14px; border-bottom:1px solid #e2e8f0; color:#15803d; font-size:13px; font-weight:bold;">
+                +${totalDiasLaborables} días reintegrados a saldo
+              </td>
+            </tr>
+            ${motivoCancelacion ? `
+              <tr>
+                <td style="padding:10px 14px; color:#64748b; font-size:12px; font-weight:600;">Motivo Declarado:</td>
+                <td style="padding:10px 14px; color:#334155; font-size:12px; font-style:italic;">
+                  "${motivoCancelacion}"
+                </td>
+              </tr>
+            ` : ''}
+          </table>
+
+          <div style="background-color:#eff6ff; border:1px solid #bfdbfe; border-left:4px solid #2563eb; padding:12px 14px; border-radius:6px; margin:16px 0; font-size:12px; color:#1e40af;">
+            <strong>Ajuste Automático Realizado:</strong> El sistema ha ejecutado el ajuste automático restando los días de <code>DiasGozados</code> y restaurando el saldo disponible en los períodos correspondientes del kárdex del colaborador. Por favor verifica si se requiere ajustar alguna incidencia en el sistema de nómina CONTPAQi®.
+          </div>
+        `;
+
+        const htmlDO = generarPlantillaHtml({
+          titulo: 'Cancelación de Solicitud Aprobada • Ajuste de Saldo',
+          badgeTexto: 'Aviso DO • Saldo Reintegrado',
+          badgeColor: '#1e40af',
+          badgeBg: '#eff6ff',
+          badgeBorder: '#bfdbfe',
+          cuerpoHtml: cuerpoDO,
+          ctaTexto: 'Abrir Panel de Desarrollo Organizacional',
+          ctaUrl: '/admin/solicitudes'
+        });
+
+        await enviarEmail({
+          to: emailAdminDO,
+          subject: asuntoDO,
+          html: htmlDO,
+          tipoEvento: 'CANCELACION_APROBADA_DO',
+          folioSolicitud: folio
+        });
+      }
     } catch (err) {
       console.error('[NOTIFICACIONES EMAIL] Error en notificarSolicitudCancelada:', err.message);
     }

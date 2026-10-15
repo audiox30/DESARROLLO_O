@@ -58,6 +58,7 @@ export default function ColaboradorPortal({ currentUser }) {
   const [modalDesgloseAbierto, setModalDesgloseAbierto] = useState(false);
   const [subTab, setSubTab] = useState('solicitudes'); // 'solicitudes', 'kardex', 'perfil'
   const [descargandoId, setDescargandoId] = useState(null);
+  const [cancelandoId, setCancelandoId] = useState(null);
   const [toastError, setToastError] = useState('');
   const [toastSuccess, setToastSuccess] = useState('');
 
@@ -174,15 +175,42 @@ export default function ColaboradorPortal({ currentUser }) {
     }
   }
 
-  async function handleCancelar(id) {
-    if (!window.confirm('¿Seguro que deseas cancelar esta solicitud de vacaciones?')) return;
+  async function handleCancelar(s) {
+    const id = s.idSolicitud || s.IdSolicitud || s.id;
+    const folio = s.folio || s.Folio || `VAC-${id}`;
+    const estado = s.estado || s.Estado || 'PENDIENTE_LIDER';
+    const totalDias = s.totalDiasLaborables ?? s.TotalDiasLaborables ?? s.diasHabiles ?? s.total_dias ?? 0;
+    const yaAprobada = estado === 'APROBADA';
+
+    const confirmMsg = yaAprobada
+      ? `⚠️ CANCELACIÓN DE SOLICITUD APROBADA\n\nLa solicitud ${folio} ya se encuentra formalmente APROBADA (${totalDias} días).\n\nAl cancelarla ocurrirá lo siguiente:\n• Se reintegrarán ${totalDias} días inmediatamente a tu saldo disponible.\n• Se notificará a tus autorizadores (jefatura) y a Desarrollo Organizacional (DO) para su ajuste en nómina.\n\n¿Deseas confirmar la cancelación definitiva?`
+      : `¿Seguro que deseas cancelar la solicitud ${folio} en trámite (${totalDias} días)?\n\nSe liberarán los días reservados y se notificará a tus autorizadores.`;
+
+    if (!window.confirm(confirmMsg)) return;
+
+    const motivo = window.prompt(
+      'Ingresa brevemente el motivo de la cancelación:',
+      yaAprobada ? 'Cancelación de período aprobado a petición del colaborador' : 'Cancelación a petición del colaborador'
+    );
+    if (motivo === null) return; // Si el colaborador presiona cancelar en el diálogo
+
     try {
-      const res = await api.cancelarSolicitud(id);
-      if (res.success) {
+      setCancelandoId(id);
+      setToastError('');
+      setToastSuccess('');
+      const res = await api.cancelarSolicitud(id, { motivo: motivo.trim() || 'Cancelada por el colaborador' });
+      if (res && res.success) {
+        setToastSuccess(res.message || 'Solicitud cancelada con éxito.');
+        setTimeout(() => setToastSuccess(''), 7000);
         cargarDatos();
+      } else {
+        setToastError(res.error || 'No se pudo cancelar la solicitud.');
       }
     } catch (err) {
-      alert('Error cancelando: ' + err.message);
+      console.error('Error cancelando solicitud:', err);
+      setToastError('Error al cancelar solicitud: ' + (err.message || 'Error en servidor'));
+    } finally {
+      setCancelandoId(null);
     }
   }
 
@@ -320,6 +348,21 @@ export default function ColaboradorPortal({ currentUser }) {
             </div>
           )}
 
+          {/* Toast / Alerta de Éxito en Cancelación u Operación */}
+          {toastSuccess && (
+            <div className="mb-4 flex items-start gap-2.5 p-3.5 rounded-2xl bg-emerald-50 border border-emerald-200 text-emerald-900 text-xs shadow-xs animate-in fade-in duration-200">
+              <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
+              <div className="flex-1 font-medium">{toastSuccess}</div>
+              <button 
+                type="button" 
+                onClick={() => setToastSuccess('')}
+                className="text-emerald-500 hover:text-emerald-700 font-bold ml-2 text-sm leading-none"
+              >
+                ×
+              </button>
+            </div>
+          )}
+
           {subTab === 'solicitudes' ? (
             <div>
               {solicitudes.length === 0 ? (
@@ -360,7 +403,7 @@ export default function ColaboradorPortal({ currentUser }) {
                         const estado = s.estado || s.Estado || 'PENDIENTE_LIDER';
                         const badge = estadoBadge[estado] || estadoBadge['PENDIENTE_LIDER'];
                         const Icon = badge.icon;
-                        const esCancelable = ['PENDIENTE_LIDER', 'PENDIENTE_DO'].includes(estado);
+                        const esCancelable = ['PENDIENTE_LIDER', 'PENDIENTE_GERENTE', 'PENDIENTE_DO', 'PENDIENTE', 'APROBADA'].includes(estado);
                         const motivoRechazo = s.motivoRechazo || s.MotivoRechazo;
                         const motivoComentarios = s.motivoComentarios || s.MotivoComentarios;
 
@@ -417,10 +460,21 @@ export default function ColaboradorPortal({ currentUser }) {
                                 {esCancelable && (
                                   <button
                                     type="button"
-                                    onClick={() => handleCancelar(idSol)}
-                                    className="text-slate-400 hover:text-rose-600 text-xs font-semibold px-2 py-1 rounded-lg hover:bg-rose-50 transition-colors cursor-pointer"
+                                    onClick={() => handleCancelar(s)}
+                                    disabled={cancelandoId === idSol}
+                                    title={estado === 'APROBADA' ? 'Cancelar solicitud aprobada y reintegrar días al saldo' : 'Cancelar solicitud en trámite'}
+                                    className={`inline-flex items-center gap-1 text-xs font-bold px-2.5 py-1 rounded-lg border transition-all cursor-pointer shadow-2xs disabled:opacity-50 ${
+                                      estado === 'APROBADA'
+                                        ? 'text-rose-700 bg-rose-50 hover:bg-rose-100 border-rose-200 hover:border-rose-300'
+                                        : 'text-slate-600 bg-slate-50 hover:bg-rose-50 hover:text-rose-700 border-slate-200 hover:border-rose-200'
+                                    }`}
                                   >
-                                    Cancelar
+                                    {cancelandoId === idSol ? (
+                                      <RefreshCw className="w-3.5 h-3.5 animate-spin text-rose-600" />
+                                    ) : (
+                                      <Ban className="w-3.5 h-3.5" />
+                                    )}
+                                    <span>{cancelandoId === idSol ? 'Cancelando...' : 'Cancelar'}</span>
                                   </button>
                                 )}
                               </div>

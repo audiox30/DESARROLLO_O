@@ -456,41 +456,178 @@ const solicitudesController = {
   cancelar: async (req, res) => {
     try {
       const { id } = req.params;
-      const idColaborador = req.user.id;
+      const idColaborador = req.user.id_colaborador || req.user.id;
+      const { motivo = 'Cancelada por el colaborador' } = req.body || {};
+      const esAdmin = ['SUPERADMIN', 'SISTEMAS', 'ADMIN_DO'].includes(req.user.rolApp);
 
       if (isUsingMock()) {
-        const cancelada = mockStore.cancelarSolicitud(id, idColaborador);
+        const cancelada = mockStore.cancelarSolicitud(id, idColaborador, motivo, esAdmin);
 
-        // Notificación por correo al líder (Evento D)
+        // Notificación por correo al líder y DO (si estaba aprobada)
         setImmediate(() => {
-          emailService.notificarSolicitudCancelada(id).catch(err => {
+          emailService.notificarSolicitudCancelada(id, {
+            estadoAnterior: cancelada.estadoAnterior,
+            motivoCancelacion: motivo
+          }).catch(err => {
             console.error('[EMAIL NOTIFICACION ERROR]', err);
           });
         });
 
-        return res.json({ success: true, message: 'Solicitud cancelada con éxito', solicitud: cancelada });
+        return res.json({ 
+          success: true, 
+          message: cancelada.estadoAnterior === 'APROBADA'
+            ? 'Solicitud aprobada cancelada con éxito. Se restableció tu saldo disponible y se notificó a tus autorizadores y a Desarrollo Organizacional.'
+            : 'Solicitud cancelada con éxito. Se liberaron los días en trámite y se notificó a tus autorizadores.',
+          solicitud: cancelada 
+        });
       } else {
         const pool = await getPool();
-        await pool.request()
-          .input('Id', id)
-          .input('IdColaborador', idColaborador)
+
+        // 1. Obtener la solicitud actual
+        const solRes = await pool.request()
+          .input('Id', Number(id))
           .query(`
-            UPDATE dbo.SolicitudesVacaciones
-            SET Estado = 'CANCELADA', FechaResolucion = SYSDATETIME()
-            WHERE IdSolicitud = @Id AND IdColaborador = @IdColaborador AND Estado IN ('PENDIENTE_LIDER', 'PENDIENTE_DO')
+            SELECT IdSolicitud, IdColaborador, Folio, Estado, TotalDiasLaborables, FechaInicio, FechaFin
+            FROM dbo.SolicitudesVacaciones
+            WHERE IdSolicitud = @Id
           `);
 
-        // Notificación por correo al líder (Evento D)
+        const sol = solRes.recordset[0];
+        if (!sol) {
+          return res.status(404).json({ error: 'Solicitud no encontrada.' });
+        }
+
+        // Validar que pertenezca al colaborador autenticado (a menos que sea Administrador)
+        if (sol.IdColaborador !== Number(idColaborador) && !esAdmin) {
+          return res.status(403).json({ error: 'No tienes autorización para cancelar esta solicitud.' });
+        }
+
+        const estadoActual = (sol.Estado || '').toUpperCase();
+        if (estadoActual === 'CANCELADA') {
+          return res.status(400).json({ error: 'La solicitud ya se encuentra cancelada.' });
+        }
+
+        if (estadoActual === 'RECHAZADA') {
+          return res.status(400).json({ error: 'No es posible cancelar una solicitud que ya fue rechazada.' });
+        }
+
+        if (!['PENDIENTE_LIDER', 'PENDIENTE_GERENTE', 'PENDIENTE_DO', 'PENDIENTE', 'APROBADA'].includes(estadoActual)) {
+          return res.status(400).json({ error: `No se puede cancelar una solicitud con estado '${estadoActual}'.` });
+        }
+
+        const transaction = pool.transaction();
+        await transaction.begin();
+
+        try {
+          // 2. Marcar solicitud como CANCELADA
+          await transaction.request()
+            .input('Id', Number(id))
+            .input('Motivo', motivo || 'Cancelada a petición del colaborador')
+            .query(`
+              UPDATE dbo.SolicitudesVacaciones
+              SET Estado = 'CANCELADA', 
+                  FechaResolucion = SYSDATETIME(),
+                  MotivoRechazo = @Motivo
+              WHERE IdSolicitud = @Id;
+            `);
+
+          // 3. Registrar en Historial de Aprobaciones
+          await transaction.request()
+            .input('IdSolicitud', Number(id))
+            .input('IdAprobador', Number(idColaborador))
+            .input('Comentarios', motivo || 'Solicitud cancelada por el colaborador')
+            .input('IP', req.ip || null)
+            .query(`
+              INSERT INTO dbo.HistorialAprobaciones (
+                IdSolicitud, IdAprobador, NivelAprobacion, Accion, Comentarios, FechaAccion, MetodoAutorizacion, DireccionIP
+              ) VALUES (
+                @IdSolicitud, @IdAprobador, 'COLABORADOR', 'CANCELADA',
+                @Comentarios, SYSDATETIME(), 'WEB_PORTAL', @IP
+              );
+            `);
+
+          // 4. Si la solicitud ya estaba APROBADA, revertir los días gozados en dbo.SaldosVacaciones
+          if (estadoActual === 'APROBADA') {
+            const diasRevertir = Number(sol.TotalDiasLaborables || 0);
+            if (diasRevertir > 0) {
+              await transaction.request()
+                .input('IdColaborador', sol.IdColaborador)
+                .input('DiasRevertir', diasRevertir)
+                .query(`
+                  DECLARE @DiasPendientesRevertir DECIMAL(5,1) = @DiasRevertir;
+                  DECLARE @IdSaldoCur INT, @GozadosCur DECIMAL(5,1);
+
+                  -- Revertir de los períodos con días gozados en orden LIFO (más recientes primero)
+                  DECLARE curRevertir CURSOR LOCAL FAST_FORWARD FOR
+                  SELECT IdSaldo, DiasGozados
+                  FROM dbo.SaldosVacaciones
+                  WHERE IdColaborador = @IdColaborador AND DiasGozados > 0
+                  ORDER BY FechaFinVigencia DESC, AnioPeriodo DESC;
+
+                  OPEN curRevertir;
+                  FETCH NEXT FROM curRevertir INTO @IdSaldoCur, @GozadosCur;
+
+                  WHILE @@FETCH_STATUS = 0 AND @DiasPendientesRevertir > 0
+                  BEGIN
+                      IF @GozadosCur >= @DiasPendientesRevertir
+                      BEGIN
+                          UPDATE dbo.SaldosVacaciones
+                          SET DiasGozados = DiasGozados - @DiasPendientesRevertir,
+                              EsCerrado = CASE WHEN FechaFinVigencia < CAST(SYSDATETIME() AS DATE) THEN 1 ELSE 0 END,
+                              FechaUltimoCalculo = SYSDATETIME()
+                          WHERE IdSaldo = @IdSaldoCur;
+                          SET @DiasPendientesRevertir = 0;
+                      END
+                      ELSE
+                      BEGIN
+                          UPDATE dbo.SaldosVacaciones
+                          SET DiasGozados = 0,
+                              EsCerrado = CASE WHEN FechaFinVigencia < CAST(SYSDATETIME() AS DATE) THEN 1 ELSE 0 END,
+                              FechaUltimoCalculo = SYSDATETIME()
+                          WHERE IdSaldo = @IdSaldoCur;
+                          SET @DiasPendientesRevertir = @DiasPendientesRevertir - @GozadosCur;
+                      END
+
+                      FETCH NEXT FROM curRevertir INTO @IdSaldoCur, @GozadosCur;
+                  END
+
+                  CLOSE curRevertir;
+                  DEALLOCATE curRevertir;
+                `);
+            }
+          }
+
+          // 5. Recalcular saldos del colaborador (rebalancea DiasEnTramite, EsCerrado y sincroniza vigencias)
+          await transaction.request()
+            .input('IdColaborador', sol.IdColaborador)
+            .query(`EXEC dbo.sp_CalcularSaldosVacaciones @IdColaborador;`);
+
+          await transaction.commit();
+        } catch (trxErr) {
+          await transaction.rollback();
+          throw trxErr;
+        }
+
+        // 6. Notificación por correo asíncrona a los autorizadores y si estaba aprobada a Admin_DO
         setImmediate(() => {
-          emailService.notificarSolicitudCancelada(id).catch(err => {
+          emailService.notificarSolicitudCancelada(id, {
+            estadoAnterior: estadoActual,
+            motivoCancelacion: motivo
+          }).catch(err => {
             console.error('[EMAIL NOTIFICACION ERROR]', err);
           });
         });
 
-        return res.json({ success: true, message: 'Solicitud cancelada correctamente' });
+        return res.json({ 
+          success: true, 
+          message: estadoActual === 'APROBADA'
+            ? 'Solicitud aprobada cancelada correctamente. Se restablecieron los días a tu saldo disponible y se notificó a tus autorizadores y a Desarrollo Organizacional.'
+            : 'Solicitud cancelada correctamente. Se liberaron los días en trámite y se notificó a tus autorizadores.' 
+        });
       }
     } catch (err) {
-      res.status(400).json({ error: err.message });
+      console.error('[solicitudes.cancelar]', err);
+      res.status(400).json({ error: err.message || 'Error al cancelar la solicitud.' });
     }
   },
 
