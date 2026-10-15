@@ -81,7 +81,7 @@ export default function ColaboradorPortal({ currentUser }) {
   async function cargarPerfil() {
     try {
       setLoadingPerfil(true);
-      const colabId = currentUser?.id || currentUser?.id_colaborador;
+      const colabId = currentUser?.id || currentUser?.id_colaborador || currentUser?.idColaborador || currentUser?.IdColaborador;
       if (colabId) {
         const res = await api.getColaborador(colabId);
         if (res.success) {
@@ -97,7 +97,7 @@ export default function ColaboradorPortal({ currentUser }) {
 
   async function handleAgregarHijoColaborador(e) {
     e.preventDefault();
-    const colabId = currentUser?.id || currentUser?.id_colaborador;
+    const colabId = currentUser?.id || currentUser?.id_colaborador || currentUser?.idColaborador || currentUser?.IdColaborador;
     if (!colabId) return;
     if (!formNuevoHijo.nombre || !formNuevoHijo.nombre.trim()) {
       alert('Debe ingresar el nombre completo del hijo o dependiente.');
@@ -122,7 +122,7 @@ export default function ColaboradorPortal({ currentUser }) {
   }
 
   async function handleEliminarHijoColaborador(idHijo) {
-    const colabId = currentUser?.id || currentUser?.id_colaborador;
+    const colabId = currentUser?.id || currentUser?.id_colaborador || currentUser?.idColaborador || currentUser?.IdColaborador;
     if (!colabId) return;
     if (!window.confirm('¿Confirmas la eliminación de este registro de hijo/dependiente?')) return;
     try {
@@ -228,7 +228,7 @@ export default function ColaboradorPortal({ currentUser }) {
             </span>
           </div>
           <p className="text-xs text-slate-500 mt-1">
-            {currentUser?.puesto} • {currentUser?.departamento} • {currentUser?.empresa}
+            {(perfilColab?.Puesto || currentUser?.puesto || 'Puesto')} • {(perfilColab?.Departamento || currentUser?.departamento || 'General')} • {(perfilColab?.Empresa || currentUser?.empresa || 'Grupo JAMA')}
           </p>
         </div>
 

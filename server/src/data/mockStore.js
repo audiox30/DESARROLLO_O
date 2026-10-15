@@ -213,6 +213,14 @@ class MockStore {
           tania.rol = 'ADMIN_DO';
         }
 
+        // Configurar Martha María Vera como ADMIN_DO
+        const mariaVera = this.colaboradores.find(c => c.id === 257 || c.codigoEmpleado === 'CONT-749' || (c.nombreCompleto && c.nombreCompleto.includes('VERA MARTINEZ')));
+        if (mariaVera) {
+          mariaVera.rolApp = 'ADMIN_DO';
+          mariaVera.rol = 'ADMIN_DO';
+          mariaVera.emailCorporativo = 'admin.rh@grupojama.com';
+        }
+
         // Resolución de Nombres de Jefes Directos y Sucursales para todo el catálogo
         const colabMap = new Map(this.colaboradores.map(c => [c.id, c]));
         this.colaboradores.forEach(c => {
@@ -638,19 +646,39 @@ class MockStore {
     const aprobador = this.colaboradores.find(c => c.id === Number(idAprobador));
     const esDO = aprobador && aprobador.rolApp === 'ADMIN_DO';
 
+    const colab = this.colaboradores.find(c => c.id === solicitud.idColaborador);
+    const idSegundo = solicitud.idAprobadorSegundo || (colab ? (colab.idAprobadorSegundo || colab.IdAprobadorSegundo) : null);
+
     if (solicitud.estado === 'PENDIENTE_LIDER' && !esDO) {
-      solicitud.estado = 'PENDIENTE_DO';
-      this.historialAprobaciones.push({
-        idAprobacion: this.historialAprobaciones.length + 1,
-        idSolicitud: solicitud.idSolicitud,
-        idAprobador: aprobador ? aprobador.id : 0,
-        aprobadorNombre: aprobador ? aprobador.nombreCompleto : 'LÍDER DIRECTO',
-        nivelAprobacion: 'LIDER_DIRECTO',
-        accion: 'APROBADA',
-        comentarios: comentarios || 'Aprobado por Líder Directo. Enviado a Desarrollo Organizacional.',
-        metodoAutorizacion: metodo,
-        fechaAccion: new Date().toISOString()
-      });
+      if (idSegundo) {
+        solicitud.estado = 'PENDIENTE_GERENTE';
+        this.historialAprobaciones.push({
+          idAprobacion: this.historialAprobaciones.length + 1,
+          idSolicitud: solicitud.idSolicitud,
+          idAprobador: aprobador ? aprobador.id : 0,
+          aprobadorNombre: aprobador ? aprobador.nombreCompleto : 'LÍDER DIRECTO',
+          nivelAprobacion: 'LIDER_DIRECTO',
+          accion: 'APROBADA',
+          comentarios: comentarios || 'Visto Bueno Nivel 1 (Jefe Directo). Transferida a autorización gerencial.',
+          metodoAutorizacion: metodo,
+          fechaAccion: new Date().toISOString()
+        });
+      } else {
+        solicitud.estado = 'APROBADA';
+        solicitud.fechaResolucion = new Date().toISOString();
+        solicitud.idAprobadorFinal = aprobador ? aprobador.id : null;
+        this.historialAprobaciones.push({
+          idAprobacion: this.historialAprobaciones.length + 1,
+          idSolicitud: solicitud.idSolicitud,
+          idAprobador: aprobador ? aprobador.id : 0,
+          aprobadorNombre: aprobador ? aprobador.nombreCompleto : 'LÍDER DIRECTO',
+          nivelAprobacion: 'LIDER_DIRECTO',
+          accion: 'APROBADA',
+          comentarios: comentarios || 'Autorizada por Líder Directo. Enviada a validación de DO.',
+          metodoAutorizacion: metodo,
+          fechaAccion: new Date().toISOString()
+        });
+      }
     } else {
       solicitud.estado = 'APROBADA';
       solicitud.fechaResolucion = new Date().toISOString();

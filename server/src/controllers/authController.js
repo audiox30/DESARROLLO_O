@@ -145,6 +145,8 @@ const authController = {
           rol: rolFinal,
           debeCambiarPassword: false,
           user: {
+            id: user.id,
+            id_colaborador: user.id,
             idUsuario: user.id,
             idColaborador: user.id,
             username: user.codigoEmpleado || user.username || uClean,
@@ -398,6 +400,8 @@ const authController = {
         rol: user.RolApp,
         debeCambiarPassword: debeCambiar,
         user: {
+          id: user.IdColaborador,
+          id_colaborador: user.IdColaborador,
           idUsuario: user.IdUsuario,
           idColaborador: user.IdColaborador,
           username: user.Username,

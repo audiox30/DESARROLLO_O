@@ -12,11 +12,17 @@ const aprobacionesController = {
       if (isUsingMock()) {
         const actualizada = mockStore.aprobarSolicitud(id, idAprobador, comentarios, metodoAutorizacion);
 
-        // Notificación por correo al colaborador (Evento B)
+        // Notificación por correo según estado resultante (Nivel 2 o Jefatura Completa)
         setImmediate(() => {
-          emailService.notificarSolicitudAprobada(id).catch(err => {
-            console.error('[EMAIL NOTIFICACION ERROR]', err);
-          });
+          if (actualizada.estado === 'PENDIENTE_GERENTE') {
+            emailService.notificarSolicitudPendienteGerente(id).catch(err => {
+              console.error('[EMAIL NOTIFICACION ERROR]', err);
+            });
+          } else {
+            emailService.notificarSolicitudAprobada(id).catch(err => {
+              console.error('[EMAIL NOTIFICACION ERROR]', err);
+            });
+          }
         });
 
         return res.json({

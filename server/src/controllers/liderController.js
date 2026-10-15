@@ -162,8 +162,24 @@ const liderController = {
         let sol = null;
         if (accionNorm === 'APROBAR') {
           sol = mockStore.aprobarSolicitud(id, idLider, comentarios || 'Aprobada por Líder Directo.', 'WEB');
+          setImmediate(() => {
+            if (sol.estado === 'PENDIENTE_GERENTE') {
+              emailService.notificarSolicitudPendienteGerente(id).catch(err => {
+                console.error('[EMAIL NOTIFICACION ERROR]', err);
+              });
+            } else {
+              emailService.notificarSolicitudAprobada(id).catch(err => {
+                console.error('[EMAIL NOTIFICACION ERROR]', err);
+              });
+            }
+          });
         } else {
           sol = mockStore.rechazarSolicitud(id, idLider, razon, 'WEB');
+          setImmediate(() => {
+            emailService.notificarSolicitudRechazada(id, razon).catch(err => {
+              console.error('[EMAIL NOTIFICACION ERROR]', err);
+            });
+          });
         }
         return res.json({
           success: true,
