@@ -231,6 +231,7 @@ const adminColaboradoresController = {
           c.RolApp, c.Activo, c.EstatusNomina, c.FechaAlta, c.FechaReingreso,
           c.DiasDescanso, c.CentroCostos, c.TipoNomina,
           c.TipoContrato, c.PeriodicidadPago, c.FechaAltaImss, c.FechaEvaluacion, c.FechaRealContratacion,
+          c.TipoBaja, c.TallaCamisa, c.TallaPantalon, c.TallaCalzado, c.TallaChamarra,
           c.FechaNacimiento, c.EstadoCivil, c.Nacionalidad, c.Escolaridad,
           c.AvisarEmergencia, c.AvisarEmergencia AS ContactoEmergenciaNombre,
           c.ParentescoEmergencia, c.ParentescoEmergencia AS ContactoEmergenciaParentesco,
@@ -301,6 +302,16 @@ const adminColaboradoresController = {
         FechaAltaImss,
         fechaEvaluacion,
         FechaEvaluacion,
+        tipoBaja,
+        TipoBaja,
+        tallaCamisa,
+        TallaCamisa,
+        tallaPantalon,
+        TallaPantalon,
+        tallaCalzado,
+        TallaCalzado,
+        tallaChamarra,
+        TallaChamarra,
         telefono,
         avisarEmergencia,
         parentescoEmergencia,
@@ -394,6 +405,31 @@ const adminColaboradoresController = {
         ? rawFechaEvaluacion.trim().substring(0, 10)
         : null;
 
+      const rawTipoBaja = tipoBaja !== undefined ? tipoBaja : TipoBaja;
+      const tipoBajaSanitizado = (rawTipoBaja && typeof rawTipoBaja === 'string' && rawTipoBaja.trim())
+        ? rawTipoBaja.trim()
+        : null;
+
+      const rawTallaCamisa = tallaCamisa !== undefined ? tallaCamisa : TallaCamisa;
+      const tallaCamisaSanitizado = (rawTallaCamisa && typeof rawTallaCamisa === 'string' && rawTallaCamisa.trim())
+        ? rawTallaCamisa.trim()
+        : null;
+
+      const rawTallaPantalon = tallaPantalon !== undefined ? tallaPantalon : TallaPantalon;
+      const tallaPantalonSanitizado = (rawTallaPantalon && typeof rawTallaPantalon === 'string' && rawTallaPantalon.trim())
+        ? rawTallaPantalon.trim()
+        : null;
+
+      const rawTallaCalzado = tallaCalzado !== undefined ? tallaCalzado : TallaCalzado;
+      const tallaCalzadoSanitizado = (rawTallaCalzado && typeof rawTallaCalzado === 'string' && rawTallaCalzado.trim())
+        ? rawTallaCalzado.trim()
+        : null;
+
+      const rawTallaChamarra = tallaChamarra !== undefined ? tallaChamarra : TallaChamarra;
+      const tallaChamarraSanitizado = (rawTallaChamarra && typeof rawTallaChamarra === 'string' && rawTallaChamarra.trim())
+        ? rawTallaChamarra.trim()
+        : null;
+
       const pool = await getLocalPool();
 
       // MODO FALLBACK (Motor Local / Mock)
@@ -437,6 +473,16 @@ const adminColaboradoresController = {
           fechaAltaImss: fechaAltaImssSanitizada,
           FechaEvaluacion: fechaEvaluacionSanitizada,
           fechaEvaluacion: fechaEvaluacionSanitizada,
+          TipoBaja: tipoBajaSanitizado,
+          tipoBaja: tipoBajaSanitizado,
+          TallaCamisa: tallaCamisaSanitizado,
+          tallaCamisa: tallaCamisaSanitizado,
+          TallaPantalon: tallaPantalonSanitizado,
+          tallaPantalon: tallaPantalonSanitizado,
+          TallaCalzado: tallaCalzadoSanitizado,
+          tallaCalzado: tallaCalzadoSanitizado,
+          TallaChamarra: tallaChamarraSanitizado,
+          tallaChamarra: tallaChamarraSanitizado,
           Telefono: telefonoSanitizado !== null ? telefonoSanitizado : colab.Telefono,
           telefono: telefonoSanitizado !== null ? telefonoSanitizado : colab.telefono,
           AvisarEmergencia: avisarEmergenciaSanitizado,
@@ -507,6 +553,11 @@ const adminColaboradoresController = {
       request.input('FechaAltaImss', fechaAltaImssSanitizada);
       request.input('FechaEvaluacion', fechaEvaluacionSanitizada);
       request.input('FechaRealContratacion', fechaRealSanitizada);
+      request.input('TipoBaja', tipoBajaSanitizado);
+      request.input('TallaCamisa', tallaCamisaSanitizado);
+      request.input('TallaPantalon', tallaPantalonSanitizado);
+      request.input('TallaCalzado', tallaCalzadoSanitizado);
+      request.input('TallaChamarra', tallaChamarraSanitizado);
       request.input('Telefono', telefonoSanitizado);
       request.input('AvisarEmergencia', avisarEmergenciaSanitizado);
       request.input('ParentescoEmergencia', parentescoEmergenciaSanitizado);
@@ -529,6 +580,11 @@ const adminColaboradoresController = {
           FechaAltaImss = @FechaAltaImss,
           FechaEvaluacion = @FechaEvaluacion,
           FechaRealContratacion = @FechaRealContratacion,
+          TipoBaja = @TipoBaja,
+          TallaCamisa = @TallaCamisa,
+          TallaPantalon = @TallaPantalon,
+          TallaCalzado = @TallaCalzado,
+          TallaChamarra = @TallaChamarra,
           Telefono = @Telefono,
           AvisarEmergencia = @AvisarEmergencia,
           ParentescoEmergencia = @ParentescoEmergencia,

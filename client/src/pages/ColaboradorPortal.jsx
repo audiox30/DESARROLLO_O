@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { 
   Plus, Calendar, Clock, CheckCircle2, XCircle, AlertCircle, 
-  FileText, Ban, Sparkles, RefreshCw, Baby, User, Heart, Phone, Shield, Briefcase, Trash2
+  FileText, Ban, Sparkles, RefreshCw, Baby, User, Heart, Phone, Shield, Briefcase, Trash2, Shirt, Sliders, CreditCard
 } from 'lucide-react';
 import { api } from '../api/client';
 import StatCards from '../components/StatCards';
@@ -630,6 +630,32 @@ export default function ColaboradorPortal({ currentUser }) {
                           <span className="text-slate-400">Alergias / Padecimientos:</span>
                           <span className="font-medium text-slate-700">{perfilColab?.AlergiasPadecimientos || 'Ninguna'}</span>
                         </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Dotación de Uniformes & Tallas */}
+                  <div className="bg-slate-50 border border-slate-200/80 rounded-2xl p-4">
+                    <h4 className="text-xs font-bold text-slate-800 uppercase tracking-wider mb-3 flex items-center gap-1.5">
+                      <Shirt className="w-4 h-4 text-emerald-600" />
+                      <span>Dotación de Uniformes & Tallas Registradas</span>
+                    </h4>
+                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs">
+                      <div className="bg-white p-2.5 rounded-xl border border-slate-200 text-center shadow-xs">
+                        <span className="text-[11px] text-slate-400 block mb-0.5">Camisa</span>
+                        <span className="font-black text-slate-800 text-sm">{perfilColab?.TallaCamisa || '—'}</span>
+                      </div>
+                      <div className="bg-white p-2.5 rounded-xl border border-slate-200 text-center shadow-xs">
+                        <span className="text-[11px] text-slate-400 block mb-0.5">Pantalón</span>
+                        <span className="font-black text-slate-800 text-sm">{perfilColab?.TallaPantalon || '—'}</span>
+                      </div>
+                      <div className="bg-white p-2.5 rounded-xl border border-slate-200 text-center shadow-xs">
+                        <span className="text-[11px] text-slate-400 block mb-0.5">Calzado</span>
+                        <span className="font-black text-slate-800 text-sm">{perfilColab?.TallaCalzado || '—'}</span>
+                      </div>
+                      <div className="bg-white p-2.5 rounded-xl border border-slate-200 text-center shadow-xs">
+                        <span className="text-[11px] text-slate-400 block mb-0.5">Chamarra</span>
+                        <span className="font-black text-slate-800 text-sm">{perfilColab?.TallaChamarra || '—'}</span>
                       </div>
                     </div>
                   </div>

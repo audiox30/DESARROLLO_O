@@ -5,7 +5,7 @@ import {
   ShieldCheck, AlertCircle, CheckCircle2, X, Phone, Heart, 
   Clock, Shield, ArrowUpDown, Copy, Check, Baby, Eye, Trash2, Plus, Calendar,
   ChevronDown, ChevronUp, Lock, Building2, User, CreditCard, Briefcase, Mail, MapPin,
-  Sliders, Upload
+  Sliders, Upload, Shirt
 } from 'lucide-react';
 import { api } from '../api/client';
 import ModalCargaMasivaSaldos from '../components/ModalCargaMasivaSaldos';
@@ -576,6 +576,11 @@ export default function AdminColaboradoresPage({ currentUser }) {
       fechaAltaImss: c.FechaAltaImss ? String(c.FechaAltaImss).substring(0, 10) : '',
       fechaEvaluacion: c.FechaEvaluacion ? String(c.FechaEvaluacion).substring(0, 10) : '',
       fechaRealContratacion: c.FechaRealContratacion ? String(c.FechaRealContratacion).substring(0, 10) : '',
+      tipoBaja: c.TipoBaja || '',
+      tallaCamisa: c.TallaCamisa || '',
+      tallaPantalon: c.TallaPantalon || '',
+      tallaCalzado: c.TallaCalzado || '',
+      tallaChamarra: c.TallaChamarra || '',
       telefono: c.Telefono || '',
       avisarEmergencia: c.AvisarEmergencia || '',
       parentescoEmergencia: c.ParentescoEmergencia || '',
@@ -661,6 +666,16 @@ export default function AdminColaboradoresPage({ currentUser }) {
         FechaEvaluacion: formEditar.fechaEvaluacion ? formEditar.fechaEvaluacion.substring(0, 10) : null,
         fechaRealContratacion: formEditar.fechaRealContratacion ? formEditar.fechaRealContratacion.substring(0, 10) : null,
         FechaRealContratacion: formEditar.fechaRealContratacion ? formEditar.fechaRealContratacion.substring(0, 10) : null,
+        tipoBaja: formEditar.tipoBaja ? formEditar.tipoBaja.trim() : null,
+        TipoBaja: formEditar.tipoBaja ? formEditar.tipoBaja.trim() : null,
+        tallaCamisa: formEditar.tallaCamisa ? formEditar.tallaCamisa.trim() : null,
+        TallaCamisa: formEditar.tallaCamisa ? formEditar.tallaCamisa.trim() : null,
+        tallaPantalon: formEditar.tallaPantalon ? formEditar.tallaPantalon.trim() : null,
+        TallaPantalon: formEditar.tallaPantalon ? formEditar.tallaPantalon.trim() : null,
+        tallaCalzado: formEditar.tallaCalzado ? formEditar.tallaCalzado.trim() : null,
+        TallaCalzado: formEditar.tallaCalzado ? formEditar.tallaCalzado.trim() : null,
+        tallaChamarra: formEditar.tallaChamarra ? formEditar.tallaChamarra.trim() : null,
+        TallaChamarra: formEditar.tallaChamarra ? formEditar.tallaChamarra.trim() : null,
         telefono: (formEditar.telefono && typeof formEditar.telefono === 'string' && formEditar.telefono.trim() !== '') ? formEditar.telefono.trim() : null,
         avisarEmergencia: (formEditar.avisarEmergencia && typeof formEditar.avisarEmergencia === 'string' && formEditar.avisarEmergencia.trim() !== '') ? formEditar.avisarEmergencia.trim() : null,
         parentescoEmergencia: (formEditar.parentescoEmergencia && typeof formEditar.parentescoEmergencia === 'string' && formEditar.parentescoEmergencia.trim() !== '') ? formEditar.parentescoEmergencia.trim() : null,
@@ -689,6 +704,11 @@ export default function AdminColaboradoresPage({ currentUser }) {
                 FechaAltaImss: payload.fechaAltaImss,
                 FechaEvaluacion: payload.fechaEvaluacion,
                 FechaRealContratacion: payload.fechaRealContratacion,
+                TipoBaja: payload.tipoBaja,
+                TallaCamisa: payload.tallaCamisa,
+                TallaPantalon: payload.tallaPantalon,
+                TallaCalzado: payload.tallaCalzado,
+                TallaChamarra: payload.tallaChamarra,
                 IdJefeDirecto: payload.idJefeDirecto,
                 JefeDirectoNombre: jefeSel ? jefeSel.NombreCompleto : null,
                 IdAprobadorSegundo: payload.idAprobadorSegundo,
@@ -1722,6 +1742,46 @@ export default function AdminColaboradoresPage({ currentUser }) {
                         />
                       </div>
 
+                      {/* Tipo de Baja */}
+                      <div>
+                        <label className="block text-xs font-bold text-slate-700 mb-1 flex items-center justify-between">
+                          <span className="flex items-center gap-1">
+                            <AlertCircle className="w-3.5 h-3.5 text-rose-500" />
+                            <span>Tipo de baja</span>
+                          </span>
+                        </label>
+                        <select
+                          name="tipo_baja"
+                          disabled={isReadOnly}
+                          value={formEditar.tipoBaja || ''}
+                          onChange={(e) => setFormEditar({ ...formEditar, tipoBaja: e.target.value })}
+                          className="w-full px-3 py-2 bg-white disabled:bg-slate-100 disabled:text-slate-700 disabled:cursor-not-allowed border border-slate-300 rounded-xl text-xs focus:ring-2 focus:ring-rose-500 outline-none"
+                        >
+                          <option value="">-- Sin baja / Activo --</option>
+                          <option value="Renuncia voluntaria">Renuncia voluntaria</option>
+                          <option value="Rescisión con causa justificada">Rescisión con causa justificada</option>
+                          <option value="Despido sin causa justificada">Despido sin causa justificada</option>
+                          <option value="Abandono / faltas injustificadas">Abandono / faltas injustificadas</option>
+                          <option value="Término de contrato">Término de contrato</option>
+                          <option value="Conclusión de obra o proyecto">Conclusión de obra o proyecto</option>
+                          <option value="Mutuo acuerdo">Mutuo acuerdo</option>
+                          <option value="Jubilación">Jubilación</option>
+                          <option value="Incapacidad permanente">Incapacidad permanente</option>
+                          <option value="Fallecimiento">Fallecimiento</option>
+                          <option value="Reestructura / eliminación de puesto">Reestructura / eliminación de puesto</option>
+                          <option value="Cierre de operaciones">Cierre de operaciones</option>
+                          <option value="Otro">Otro</option>
+                          {formEditar.tipoBaja && ![
+                            'Renuncia voluntaria', 'Rescisión con causa justificada', 'Despido sin causa justificada',
+                            'Abandono / faltas injustificadas', 'Término de contrato', 'Conclusión de obra o proyecto',
+                            'Mutuo acuerdo', 'Jubilación', 'Incapacidad permanente', 'Fallecimiento',
+                            'Reestructura / eliminación de puesto', 'Cierre de operaciones', 'Otro'
+                          ].includes(formEditar.tipoBaja) && (
+                            <option value={formEditar.tipoBaja}>{formEditar.tipoBaja}</option>
+                          )}
+                        </select>
+                      </div>
+
                       {/* Fecha Real Contratación */}
                       <div className="md:col-span-2 p-2.5 bg-indigo-50/60 border border-indigo-200/80 rounded-xl">
                         <label className="block text-xs font-bold text-indigo-950 mb-1 flex items-center justify-between">
@@ -1751,6 +1811,91 @@ export default function AdminColaboradoresPage({ currentUser }) {
                             </span>
                           </div>
                         </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* SECCIÓN: DOTACIÓN DE UNIFORMES Y TALLAS */}
+                  <div className="sm:col-span-2 p-4 bg-slate-50/90 border border-slate-200 rounded-2xl space-y-3">
+                    <div className="flex items-center justify-between pb-2 border-b border-slate-200">
+                      <div className="flex items-center gap-2">
+                        <Shirt className="w-4 h-4 text-emerald-700" />
+                        <h5 className="text-xs font-bold uppercase tracking-wider text-slate-800">
+                          Dotación de Uniformes & Tallas de Colaborador
+                        </h5>
+                      </div>
+                      <span className="text-[10px] font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-full">
+                        Captura de Tallas
+                      </span>
+                    </div>
+
+                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                      {/* Talla Camisa */}
+                      <div>
+                        <label className="block text-xs font-bold text-slate-700 mb-1 flex items-center gap-1">
+                          <Shirt className="w-3.5 h-3.5 text-slate-500" />
+                          <span>Talla Camisa</span>
+                        </label>
+                        <input
+                          type="text"
+                          name="talla_camisa"
+                          disabled={isReadOnly}
+                          value={formEditar.tallaCamisa || ''}
+                          onChange={(e) => setFormEditar({ ...formEditar, tallaCamisa: e.target.value.toUpperCase() })}
+                          placeholder="Ej. CH, M, G, XL, 38"
+                          className="w-full px-3 py-2 bg-white disabled:bg-slate-100 disabled:text-slate-700 disabled:cursor-not-allowed border border-slate-300 rounded-xl text-xs uppercase focus:ring-2 focus:ring-emerald-600 outline-none"
+                        />
+                      </div>
+
+                      {/* Talla Pantalón */}
+                      <div>
+                        <label className="block text-xs font-bold text-slate-700 mb-1 flex items-center gap-1">
+                          <Sliders className="w-3.5 h-3.5 text-slate-500" />
+                          <span>Talla Pantalón</span>
+                        </label>
+                        <input
+                          type="text"
+                          name="talla_pantalon"
+                          disabled={isReadOnly}
+                          value={formEditar.tallaPantalon || ''}
+                          onChange={(e) => setFormEditar({ ...formEditar, tallaPantalon: e.target.value.toUpperCase() })}
+                          placeholder="Ej. 28, 30, 32, 34, 36"
+                          className="w-full px-3 py-2 bg-white disabled:bg-slate-100 disabled:text-slate-700 disabled:cursor-not-allowed border border-slate-300 rounded-xl text-xs uppercase focus:ring-2 focus:ring-emerald-600 outline-none"
+                        />
+                      </div>
+
+                      {/* Talla Calzado */}
+                      <div>
+                        <label className="block text-xs font-bold text-slate-700 mb-1 flex items-center gap-1">
+                          <CreditCard className="w-3.5 h-3.5 text-slate-500" />
+                          <span>Talla Calzado</span>
+                        </label>
+                        <input
+                          type="text"
+                          name="talla_calzado"
+                          disabled={isReadOnly}
+                          value={formEditar.tallaCalzado || ''}
+                          onChange={(e) => setFormEditar({ ...formEditar, tallaCalzado: e.target.value.toUpperCase() })}
+                          placeholder="Ej. 25, 26.5, 27, 28"
+                          className="w-full px-3 py-2 bg-white disabled:bg-slate-100 disabled:text-slate-700 disabled:cursor-not-allowed border border-slate-300 rounded-xl text-xs uppercase focus:ring-2 focus:ring-emerald-600 outline-none"
+                        />
+                      </div>
+
+                      {/* Talla Chamarra */}
+                      <div>
+                        <label className="block text-xs font-bold text-slate-700 mb-1 flex items-center gap-1">
+                          <Shirt className="w-3.5 h-3.5 text-slate-500" />
+                          <span>Talla Chamarra</span>
+                        </label>
+                        <input
+                          type="text"
+                          name="talla_chamarra"
+                          disabled={isReadOnly}
+                          value={formEditar.tallaChamarra || ''}
+                          onChange={(e) => setFormEditar({ ...formEditar, tallaChamarra: e.target.value.toUpperCase() })}
+                          placeholder="Ej. CH, M, G, XL, XXL"
+                          className="w-full px-3 py-2 bg-white disabled:bg-slate-100 disabled:text-slate-700 disabled:cursor-not-allowed border border-slate-300 rounded-xl text-xs uppercase focus:ring-2 focus:ring-emerald-600 outline-none"
+                        />
                       </div>
                     </div>
                   </div>
@@ -2200,6 +2345,17 @@ export default function AdminColaboradoresPage({ currentUser }) {
                       <span className="text-[11px] text-slate-400 block">Rol en la App</span>
                       <span className="font-bold text-blue-700">{fichaData?.RolApp || colabFicha.RolApp || 'COLABORADOR'}</span>
                     </div>
+                    {(fichaData?.TipoBaja || colabFicha.TipoBaja || !colabFicha.Activo) && (
+                      <div className="col-span-2 sm:col-span-4 bg-rose-50 border border-rose-200 p-2.5 rounded-xl flex items-center justify-between mt-1">
+                        <div className="flex items-center gap-2">
+                          <AlertCircle className="w-4 h-4 text-rose-600 shrink-0" />
+                          <span className="text-xs font-bold text-rose-950">Tipo de baja registrada:</span>
+                        </div>
+                        <span className="text-xs font-black text-rose-800 bg-rose-100 border border-rose-300 px-2.5 py-0.5 rounded-full">
+                          {fichaData?.TipoBaja || colabFicha.TipoBaja || 'Sin especificar'}
+                        </span>
+                      </div>
+                    )}
                   </div>
                 </div>
 
@@ -2323,7 +2479,41 @@ export default function AdminColaboradoresPage({ currentUser }) {
                   </div>
                 </div>
 
-                {/* 4. Familiares y Dependientes (dbo.ColaboradorHijos) */}
+                {/* 5. Tallas & Dotación de Uniforme */}
+                <div className="bg-slate-50/70 border border-slate-200/80 rounded-2xl p-4">
+                  <h4 className="text-xs font-bold text-slate-800 uppercase tracking-wider mb-3 flex items-center gap-1.5">
+                    <Shirt className="w-4 h-4 text-emerald-600" />
+                    <span>Dotación de Uniformes & Tallas</span>
+                  </h4>
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs">
+                    <div>
+                      <span className="text-[11px] text-slate-400 block">Talla de Camisa</span>
+                      <span className="font-bold text-slate-800 bg-white px-2.5 py-1 rounded-lg border border-slate-200 inline-block min-w-[3.5rem] text-center shadow-xs">
+                        {fichaData?.TallaCamisa || colabFicha.TallaCamisa || '—'}
+                      </span>
+                    </div>
+                    <div>
+                      <span className="text-[11px] text-slate-400 block">Talla de Pantalón</span>
+                      <span className="font-bold text-slate-800 bg-white px-2.5 py-1 rounded-lg border border-slate-200 inline-block min-w-[3.5rem] text-center shadow-xs">
+                        {fichaData?.TallaPantalon || colabFicha.TallaPantalon || '—'}
+                      </span>
+                    </div>
+                    <div>
+                      <span className="text-[11px] text-slate-400 block">Talla de Calzado</span>
+                      <span className="font-bold text-slate-800 bg-white px-2.5 py-1 rounded-lg border border-slate-200 inline-block min-w-[3.5rem] text-center shadow-xs">
+                        {fichaData?.TallaCalzado || colabFicha.TallaCalzado || '—'}
+                      </span>
+                    </div>
+                    <div>
+                      <span className="text-[11px] text-slate-400 block">Talla de Chamarra</span>
+                      <span className="font-bold text-slate-800 bg-white px-2.5 py-1 rounded-lg border border-slate-200 inline-block min-w-[3.5rem] text-center shadow-xs">
+                        {fichaData?.TallaChamarra || colabFicha.TallaChamarra || '—'}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* 6. Familiares y Dependientes (dbo.ColaboradorHijos) */}
                 <div className="bg-white border-2 border-indigo-100 rounded-2xl p-5 shadow-xs">
                   <div className="flex items-center justify-between mb-4">
                     <div className="flex items-center gap-2">
