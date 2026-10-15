@@ -2,10 +2,12 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { 
   ShieldCheck, RefreshCw, Database, Download, Calendar, 
   Users, CheckCircle2, Clock, XCircle, Search, Filter, 
-  Plus, Trash2, AlertTriangle, ArrowUpRight, Sparkles, FileSpreadsheet, FileText
+  Plus, Trash2, AlertTriangle, ArrowUpRight, Sparkles, FileSpreadsheet, FileText,
+  AlertCircle, X, Eye
 } from 'lucide-react';
 import { api } from '../api/client';
 import ModalAprobacion from '../components/ModalAprobacion';
+import KardexVacaciones from '../components/KardexVacaciones';
 import RefreshButton from '../components/RefreshButton';
 import { formatearNombreColaborador, compararPorApellidos } from '../utils/formatters';
 
@@ -39,6 +41,9 @@ export default function AdminDOPanel({ currentUser }) {
   const [kardexList, setKardexList] = useState([]);
   const [busquedaKardex, setBusquedaKardex] = useState('');
   const [loadingKardex, setLoadingKardex] = useState(false);
+  const [modalKardexColab, setModalKardexColab] = useState(null);
+  const [kardexData, setKardexData] = useState(null);
+  const [loadingKardexDetalle, setLoadingKardexDetalle] = useState(false);
 
   // Mensaje Toast
   const [toast, setToast] = useState('');
@@ -253,6 +258,26 @@ export default function AdminDOPanel({ currentUser }) {
       console.error(err);
     } finally {
       setLoadingKardex(false);
+    }
+  }
+
+  async function abrirModalKardex(colab) {
+    setModalKardexColab(colab);
+    setLoadingKardexDetalle(true);
+    setKardexData(null);
+    try {
+      const id = colab.idColaborador || colab.id;
+      const res = await api.getKardexColaborador(id);
+      if (res.success) {
+        setKardexData(res);
+      } else {
+        alert('Error cargando kárdex: ' + (res.error || 'No se pudo obtener el desglose'));
+      }
+    } catch (err) {
+      console.error('Error cargando kárdex:', err);
+      alert('Error al consultar desglose de saldo del colaborador: ' + (err.message || 'Error de red'));
+    } finally {
+      setLoadingKardexDetalle(false);
     }
   }
 
@@ -825,7 +850,9 @@ export default function AdminDOPanel({ currentUser }) {
                     <th className="py-3 px-3 text-center">Antigüedad</th>
                     <th className="py-3 px-3 text-center">Días LFT</th>
                     <th className="py-3 px-3 text-center">Gozados</th>
-                    <th className="py-3 px-3 text-center">Disponibles</th>
+                    <th className="py-3 px-3 text-center" title="Haga clic en los días de cualquier colaborador para ver su desglose por período">
+                      Disponibles
+                    </th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
@@ -840,9 +867,15 @@ export default function AdminDOPanel({ currentUser }) {
                       <td className="py-2.5 px-3 text-center font-bold text-blue-700">{c.diasCorrespondientes}</td>
                       <td className="py-2.5 px-3 text-center text-slate-500">{c.diasGozados}</td>
                       <td className="py-2.5 px-3 text-center">
-                        <span className="font-black text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded">
-                          {c.diasDisponibles} d
-                        </span>
+                        <button
+                          type="button"
+                          onClick={() => abrirModalKardex(c)}
+                          title={`Ver cómo se compone el saldo de ${formatearNombreColaborador(c.nombreCompleto)} (Días LFT, Gozados y Disponibles por período)`}
+                          className="font-black text-emerald-700 bg-emerald-50 hover:bg-emerald-100 border border-emerald-300 hover:border-emerald-400 px-2.5 py-1 rounded-xl transition-all cursor-pointer inline-flex items-center gap-1.5 shadow-2xs hover:scale-105 active:scale-95 group"
+                        >
+                          <span>{c.diasDisponibles} d</span>
+                          <Eye className="w-3.5 h-3.5 text-emerald-600 opacity-60 group-hover:opacity-100 transition-opacity" />
+                        </button>
                       </td>
                     </tr>
                   ))}
@@ -910,6 +943,101 @@ export default function AdminDOPanel({ currentUser }) {
         esAdminDO={true}
         currentUser={currentUser}
       />
+
+      {/* Modal Desglose y Composición de Saldo (Kárdex por Período) */}
+      {modalKardexColab && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs animate-in fade-in">
+          <div className="bg-white rounded-3xl shadow-2xl border border-slate-200 w-full max-w-4xl overflow-hidden max-h-[92vh] flex flex-col animate-in zoom-in-95">
+            {/* Modal Header */}
+            <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between bg-slate-50/70">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-2xl bg-emerald-100 text-emerald-800 flex items-center justify-center font-bold">
+                  <FileText className="w-5 h-5 text-emerald-700" />
+                </div>
+                <div>
+                  <h3 className="text-sm font-black text-slate-900">
+                    Composición y Desglose de Saldo de Vacaciones
+                  </h3>
+                  <p className="text-xs text-slate-500 font-medium">
+                    {formatearNombreColaborador(modalKardexColab.nombreCompleto)} • Nómina: <span className="font-mono font-bold text-slate-700">{modalKardexColab.codigoEmpleado}</span>
+                  </p>
+                </div>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => setModalKardexColab(null)}
+                className="w-8 h-8 rounded-full bg-slate-200/60 hover:bg-slate-200 text-slate-500 flex items-center justify-center transition cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            {/* Modal Body */}
+            <div className="p-6 overflow-y-auto space-y-4">
+              {/* Ficha Resumen */}
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 bg-slate-50 p-4 rounded-2xl border border-slate-200/70 text-xs">
+                <div>
+                  <span className="text-[10px] text-slate-400 font-bold uppercase block">Empresa</span>
+                  <span className="font-bold text-slate-800 truncate block" title={modalKardexColab.empresa}>
+                    {modalKardexColab.empresa || 'Grupo JAMA'}
+                  </span>
+                </div>
+                <div>
+                  <span className="text-[10px] text-slate-400 font-bold uppercase block">Puesto</span>
+                  <span className="font-bold text-slate-800 truncate block" title={modalKardexColab.puesto}>
+                    {modalKardexColab.puesto || '—'}
+                  </span>
+                </div>
+                <div>
+                  <span className="text-[10px] text-slate-400 font-bold uppercase block">Fecha Ingreso</span>
+                  <span className="font-bold text-slate-800 font-mono">{modalKardexColab.fechaAlta || '—'}</span>
+                </div>
+                <div>
+                  <span className="text-[10px] text-slate-400 font-bold uppercase block">Saldo Total Disponible</span>
+                  <span className="font-black text-emerald-700 text-sm">
+                    {kardexData?.saldoTotalDisponible ?? modalKardexColab.diasDisponibles ?? 0} días
+                  </span>
+                </div>
+              </div>
+
+              {/* Tabla de Períodos Kárdex */}
+              {loadingKardexDetalle ? (
+                <div className="p-12 text-center text-slate-400">
+                  <RefreshCw className="w-6 h-6 animate-spin mx-auto mb-2 text-emerald-600" />
+                  <p className="text-xs font-semibold">Consultando composición de saldo por período LFT...</p>
+                </div>
+              ) : !kardexData?.periodos || kardexData.periodos.length === 0 ? (
+                <div className="p-8 text-center text-slate-400 bg-slate-50 rounded-2xl border border-dashed border-slate-200">
+                  <AlertCircle className="w-8 h-8 mx-auto mb-2 text-slate-300" />
+                  <p className="text-xs font-semibold text-slate-600">No se encontraron períodos acumulados para este colaborador.</p>
+                  <p className="text-[11px] text-slate-400 mt-1">Los períodos de vacaciones se generan conforme a los aniversarios cumplidos según LFT.</p>
+                </div>
+              ) : (
+                <KardexVacaciones 
+                  periodos={kardexData.periodos} 
+                  colaborador={kardexData.colaborador || modalKardexColab} 
+                  resumen={kardexData.resumen}
+                />
+              )}
+            </div>
+
+            {/* Modal Footer */}
+            <div className="px-6 py-3 border-t border-slate-100 bg-slate-50 flex items-center justify-between text-xs">
+              <span className="text-slate-400 text-[11px]">
+                Cálculos bajo la Reforma de Vacaciones Dignas (Art. 76, 81 y 516 LFT) • Vigencia de 18 meses
+              </span>
+              <button
+                type="button"
+                onClick={() => setModalKardexColab(null)}
+                className="px-4 py-2 bg-slate-200 hover:bg-slate-300 text-slate-700 rounded-xl font-bold transition cursor-pointer"
+              >
+                Cerrar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
