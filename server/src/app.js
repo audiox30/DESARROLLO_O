@@ -51,6 +51,41 @@ app.use((err, req, res, next) => {
   });
 });
 
+// Programador en segundo plano para Avisos Automáticos de Vigencia LFT
+let ultimaFechaEjecucionAvisos = '';
+function iniciarProgramadorAvisosVigencia() {
+  const vigenciaAlertasService = require('./services/vigenciaAlertasService');
+  const { getLocalPool, isUsingMock } = require('./config/database');
+
+  console.log('[CRON-VIGENCIA] Programador de alertas de vigencia y aniversarios iniciado.');
+
+  setInterval(async () => {
+    try {
+      const ahora = new Date();
+      const horaActual = ahora.toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit', hour12: false });
+      const fechaHoy = ahora.toISOString().split('T')[0];
+
+      if (ultimaFechaEjecucionAvisos === fechaHoy) return;
+
+      const pool = await getLocalPool();
+      if (!pool || isUsingMock()) return;
+
+      const res = await pool.request().query("SELECT Clave, Valor FROM dbo.ConfiguracionSistema WHERE Clave IN ('AVISOS_VIGENCIA_ENABLED', 'AVISOS_VIGENCIA_HORA')");
+      const config = {};
+      (res.recordset || []).forEach(r => { config[r.Clave] = r.Valor; });
+
+      if (config.AVISOS_VIGENCIA_ENABLED === 'true' && config.AVISOS_VIGENCIA_HORA === horaActual) {
+        ultimaFechaEjecucionAvisos = fechaHoy;
+        console.log(`[CRON-VIGENCIA] ⏰ Hora programada alcanzada (${horaActual}). Ejecutando barrido automático...`);
+        const resultado = await vigenciaAlertasService.evaluarYEnviarAvisos();
+        console.log(`[CRON-VIGENCIA] ✅ Resultado: ${resultado.mensaje}`);
+      }
+    } catch (err) {
+      console.warn('[CRON-VIGENCIA] Error en ciclo de evaluación:', err.message);
+    }
+  }, 60000);
+}
+
 // Inicialización de servidor y pool de base de datos
 async function startServer() {
   try {
@@ -64,6 +99,7 @@ async function startServer() {
       console.log(`  🌐 PORTAL WEB UNIFICADO: http://localhost:${PORT}`);
       console.log(`  📊 API REST: http://localhost:${PORT}/api/health`);
       console.log(`================================================================`);
+      iniciarProgramadorAvisosVigencia();
     });
   } catch (err) {
     console.error('Error al iniciar el servidor:', err);

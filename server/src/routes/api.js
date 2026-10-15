@@ -175,6 +175,8 @@ router.put('/admin/configuracion', authMiddleware, requireRole('SUPERADMIN', 'SI
 router.post('/admin/configuracion/probar-correo', authMiddleware, requireRole('SUPERADMIN', 'SISTEMAS'), configuracionController.probarCorreo);
 router.get('/admin/configuracion/log-correos', authMiddleware, requireRole('SUPERADMIN', 'SISTEMAS'), configuracionController.getLogCorreos);
 router.get('/sistemas/log-correos', authMiddleware, requireRole('SUPERADMIN', 'SISTEMAS'), configuracionController.getLogCorreos);
+router.post('/admin/configuracion/avisos-vigencia/ejecutar', authMiddleware, requireRole('SUPERADMIN', 'SISTEMAS', 'ADMIN_DO'), configuracionController.ejecutarAvisosVigencia);
+router.get('/admin/configuracion/avisos-vigencia/logs', authMiddleware, requireRole('SUPERADMIN', 'SISTEMAS', 'ADMIN_DO'), configuracionController.getLogsAvisosVigencia);
 
 // =========================================================================
 // 10. MÓDULO ADMINISTRATIVO DE COLABORADORES & ROLES (ADMIN_DO, SISTEMAS)

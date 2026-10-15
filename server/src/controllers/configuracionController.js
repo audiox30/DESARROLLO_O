@@ -1,6 +1,7 @@
 const nodemailer = require('nodemailer');
 const { getLocalPool, isUsingMock } = require('../config/database');
 const { crearTransportadorSmtp, registrarLogEnvio } = require('../services/emailService');
+const vigenciaAlertasService = require('../services/vigenciaAlertasService');
 
 const configuracionController = {
   /**
@@ -417,6 +418,35 @@ const configuracionController = {
     } catch (err) {
       console.error('[configuracion.getLogCorreos]', err);
       res.status(500).json({ error: 'Error al consultar log de auditoría de correos.' });
+    }
+  },
+
+  /**
+   * POST /api/admin/configuracion/avisos-vigencia/ejecutar
+   * Dispara el barrido manual o simulación de avisos de vigencia
+   */
+  ejecutarAvisosVigencia: async (req, res) => {
+    try {
+      const { simular = false, forzarEnvio = false } = req.body || {};
+      const resultado = await vigenciaAlertasService.evaluarYEnviarAvisos({ simular, forzarEnvio });
+      return res.json(resultado);
+    } catch (err) {
+      console.error('[configuracion.ejecutarAvisosVigencia]', err);
+      res.status(500).json({ error: err.message || 'Error al ejecutar barrido de avisos de vigencia.' });
+    }
+  },
+
+  /**
+   * GET /api/admin/configuracion/avisos-vigencia/logs
+   * Consulta la bitácora de dbo.LogAvisosVigenciaEnviados
+   */
+  getLogsAvisosVigencia: async (req, res) => {
+    try {
+      const resultado = await vigenciaAlertasService.getBitacoraAvisos(req.query);
+      return res.json(resultado);
+    } catch (err) {
+      console.error('[configuracion.getLogsAvisosVigencia]', err);
+      res.status(500).json({ error: 'Error al consultar bitácora de avisos de vigencia.' });
     }
   }
 };

@@ -261,5 +261,9 @@ export const api = {
 
   getReporteCalendarioAusencias: (params = '') => request(`/reportes/calendario-ausencias${params ? '?' + params : ''}`),
   descargarReporteCalendarioAusenciasExcel: (params = '') => 
-    api.descargarExcel(`/reportes/calendario-ausencias?format=xlsx${params ? '&' + params : ''}`, `CALENDARIO_AUSENCIAS_JAMA_${new Date().toISOString().split('T')[0]}.xlsx`)
+    api.descargarExcel(`/reportes/calendario-ausencias?format=xlsx${params ? '&' + params : ''}`, `CALENDARIO_AUSENCIAS_JAMA_${new Date().toISOString().split('T')[0]}.xlsx`),
+
+  // Avisos y Notificaciones de Vigencia LFT
+  ejecutarAvisosVigencia: (data = {}) => request('/admin/configuracion/avisos-vigencia/ejecutar', { method: 'POST', body: JSON.stringify(data) }),
+  getLogsAvisosVigencia: (params = '') => request(`/admin/configuracion/avisos-vigencia/logs${params ? '?' + params : ''}`)
 };

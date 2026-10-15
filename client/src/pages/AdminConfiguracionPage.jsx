@@ -5,7 +5,7 @@ import {
   Eye, EyeOff, ShieldAlert, Check, Server, Clock, 
   Layers, Lock, AlertTriangle, Terminal, Cpu,
   Search, Filter, X, ExternalLink, ShieldCheck, MailCheck,
-  FileText, ArrowRight, RefreshCw, XCircle
+  FileText, ArrowRight, RefreshCw, XCircle, Bell
 } from 'lucide-react';
 import { api } from '../api/client';
 
@@ -59,7 +59,16 @@ export default function AdminConfiguracionPage({ currentUser, onNavigateTab }) {
   const [busquedaLog, setBusquedaLog] = useState('');
   const [modalDetalleLog, setModalDetalleLog] = useState(null);
 
-  // Pestaña activa dentro del panel ('todas', 'contpaqi', 'email', 'log-correos', 'vacaciones', 'mantenimiento')
+  // Avisos de Vigencia LFT (dbo.LogAvisosVigenciaEnviados)
+  const [logsAvisosVigencia, setLogsAvisosVigencia] = useState([]);
+  const [loadingLogsAvisos, setLoadingLogsAvisos] = useState(false);
+  const [filtroTipoAviso, setFiltroTipoAviso] = useState('TODOS');
+  const [filtroEstatusAviso, setFiltroEstatusAviso] = useState('TODOS');
+  const [busquedaAviso, setBusquedaAviso] = useState('');
+  const [ejecutandoAvisos, setEjecutandoAvisos] = useState(false);
+  const [resultadoAvisos, setResultadoAvisos] = useState(null);
+
+  // Pestaña activa dentro del panel ('todas', 'contpaqi', 'email', 'avisos-vigencia', 'log-correos', 'vacaciones', 'mantenimiento')
   const [seccionActiva, setSeccionActiva] = useState('todas');
 
   // Valores de los formularios
@@ -78,6 +87,16 @@ export default function AdminConfiguracionPage({ currentUser, onNavigateTab }) {
     SMTP_SECURE: 'false',
     SMTP_FROM_NAME: 'Control de Vacaciones Grupo JAMA',
     SMTP_NOTIF_ENABLED: 'true',
+    // AVISOS DE VIGENCIA LFT
+    AVISOS_VIGENCIA_ENABLED: 'true',
+    AVISOS_VIGENCIA_HORA: '08:00',
+    AVISOS_VIGENCIA_ANIVERSARIO: 'true',
+    AVISOS_VIGENCIA_12_MESES: 'true',
+    AVISOS_VIGENCIA_15_MESES: 'true',
+    AVISOS_VIGENCIA_18_MESES: 'true',
+    AVISOS_VIGENCIA_COPIA_LIDER: 'true',
+    AVISOS_VIGENCIA_COPIA_DO: 'true',
+    AVISOS_VIGENCIA_EMAIL_DO: 'admin.rh@grupojama.com',
     // VACACIONES
     VAC_DIAS_AVISO_MINIMO: '15',
     VAC_MESES_CADUCIDAD_LFT: '18',
@@ -103,6 +122,7 @@ export default function AdminConfiguracionPage({ currentUser, onNavigateTab }) {
     if (esSistemas) {
       cargarConfiguracion();
       cargarLogsCorreo();
+      cargarLogsAvisosVigencia();
     }
   }, [esSistemas]);
 
@@ -125,6 +145,58 @@ export default function AdminConfiguracionPage({ currentUser, onNavigateTab }) {
       console.error('Error al cargar log de auditoría de correos:', err);
     } finally {
       setLoadingLogs(false);
+    }
+  }
+
+  async function cargarLogsAvisosVigencia(tipoOverride = null, estatusOverride = null, busquedaOverride = null) {
+    try {
+      setLoadingLogsAvisos(true);
+      const tipo = tipoOverride !== null ? tipoOverride : filtroTipoAviso;
+      const estatus = estatusOverride !== null ? estatusOverride : filtroEstatusAviso;
+      const busqueda = busquedaOverride !== null ? busquedaOverride : busquedaAviso;
+
+      const qParams = new URLSearchParams();
+      if (tipo && tipo !== 'TODOS') qParams.set('tipoAviso', tipo);
+      if (estatus && estatus !== 'TODOS') qParams.set('estatus', estatus);
+      if (busqueda && busqueda.trim()) qParams.set('busqueda', busqueda.trim());
+
+      const res = await api.getLogsAvisosVigencia(qParams.toString());
+      if (res && res.success) {
+        setLogsAvisosVigencia(res.data || []);
+      }
+    } catch (err) {
+      console.error('Error al cargar bitácora de avisos de vigencia:', err);
+    } finally {
+      setLoadingLogsAvisos(false);
+    }
+  }
+
+  async function handleEjecutarBarridoAvisos(simular = false) {
+    try {
+      setEjecutandoAvisos(true);
+      setResultadoAvisos(null);
+      setMensajeError('');
+      const res = await api.ejecutarAvisosVigencia({ simular, forzarEnvio: true });
+      if (res && res.success) {
+        setResultadoAvisos({
+          tipo: 'exito',
+          simulacion: simular,
+          mensaje: res.mensaje,
+          enviados: res.enviados,
+          evaluados: res.evaluados,
+          omitidos: res.omitidos,
+          detalles: res.detalles
+        });
+        setMensajeExito(res.mensaje);
+        cargarLogsAvisosVigencia();
+      } else {
+        setMensajeError(res.error || 'Error al ejecutar barrido de avisos de vigencia.');
+      }
+    } catch (err) {
+      console.error('Error al ejecutar barrido:', err);
+      setMensajeError('Error en servidor al procesar avisos: ' + err.message);
+    } finally {
+      setEjecutandoAvisos(false);
     }
   }
 
@@ -322,6 +394,7 @@ export default function AdminConfiguracionPage({ currentUser, onNavigateTab }) {
           { id: 'todas', label: 'Todas las Secciones', icono: Layers },
           { id: 'contpaqi', label: 'CONTPAQi® Nóminas', icono: Database },
           { id: 'email', label: 'Servidor Correo SMTP', icono: Mail },
+          { id: 'avisos-vigencia', label: 'Avisos de Vigencia LFT', icono: Bell },
           { id: 'log-correos', label: 'Log de Auditoría de Envíos', icono: ShieldAlert },
           { id: 'vacaciones', label: 'Parámetros Vacaciones LFT', icono: Calendar },
           { id: 'mantenimiento', label: 'Mantenimiento & NAS', icono: HardDrive }
@@ -331,9 +404,11 @@ export default function AdminConfiguracionPage({ currentUser, onNavigateTab }) {
           return (
             <button
               key={tab.id}
+              type="button"
               onClick={() => {
                 setSeccionActiva(tab.id);
                 if (tab.id === 'log-correos') cargarLogsCorreo();
+                if (tab.id === 'avisos-vigencia') cargarLogsAvisosVigencia();
               }}
               className={`px-3.5 py-2 rounded-xl font-bold transition flex items-center gap-2 whitespace-nowrap cursor-pointer ${
                 activa 
@@ -658,7 +733,405 @@ export default function AdminConfiguracionPage({ currentUser, onNavigateTab }) {
         )}
 
         {/* =========================================================================
-            TARJETA 3: PARÁMETROS GENERALES DE VACACIONES LFT
+            TARJETA 3: CONFIGURACIÓN DE AVISOS Y NOTIFICACIONES DE VIGENCIA LFT
+           ========================================================================= */}
+        {(seccionActiva === 'todas' || seccionActiva === 'avisos-vigencia') && (
+          <div className="bg-white rounded-2xl border border-slate-200/90 shadow-xs overflow-hidden">
+            <div className="px-6 py-4 bg-slate-50/80 border-b border-slate-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <div className="flex items-center gap-3">
+                <div className="w-9 h-9 rounded-xl bg-purple-100 text-purple-700 flex items-center justify-center font-bold">
+                  <Bell className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-sm font-bold text-slate-800">
+                    3. Configuración de Avisos y Notificaciones de Vigencia
+                  </h3>
+                  <p className="text-[11px] text-slate-500">
+                    Automatización de felicitaciones de aniversario y alertas preventivas de caducidad a los 12, 15 y 18 meses (Art. 81 y 516 LFT).
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <span className={`px-2.5 py-1 rounded-full text-[10px] font-bold border flex items-center gap-1.5 ${
+                  valores.AVISOS_VIGENCIA_ENABLED === 'true'
+                    ? 'bg-emerald-100 text-emerald-800 border-emerald-200'
+                    : 'bg-slate-100 text-slate-600 border-slate-200'
+                }`}>
+                  <span className={`w-2 h-2 rounded-full ${valores.AVISOS_VIGENCIA_ENABLED === 'true' ? 'bg-emerald-500 animate-pulse' : 'bg-slate-400'}`} />
+                  <span>{valores.AVISOS_VIGENCIA_ENABLED === 'true' ? 'Automatización Activa' : 'Pausada'}</span>
+                </span>
+              </div>
+            </div>
+
+            <div className="p-6 space-y-6">
+              {/* Controles Principales del Cron / Programador */}
+              <div className="p-4 rounded-xl border border-purple-100 bg-purple-50/40 flex flex-col md:flex-row md:items-center justify-between gap-4">
+                <div className="flex items-center gap-3">
+                  <div className="p-2.5 rounded-xl bg-purple-100 text-purple-700">
+                    <Clock className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <h4 className="text-xs font-bold text-slate-900">Envío Automático Diario de Avisos</h4>
+                    <p className="text-[11px] text-slate-500">
+                      Dispara la evaluación diaria en segundo plano de todos los colaboradores activos y envía los correos correspondientes.
+                    </p>
+                  </div>
+                </div>
+
+                <div className="flex flex-wrap items-center gap-4">
+                  <div className="flex items-center gap-2">
+                    <label className="text-xs font-semibold text-slate-600">Hora de Envío:</label>
+                    <input
+                      type="time"
+                      value={valores.AVISOS_VIGENCIA_HORA || '08:00'}
+                      onChange={(e) => handleInputChange('AVISOS_VIGENCIA_HORA', e.target.value)}
+                      className="px-2.5 py-1.5 bg-white border border-slate-200 rounded-lg text-xs font-mono font-bold text-slate-800 outline-none focus:ring-2 focus:ring-purple-600"
+                    />
+                  </div>
+
+                  <label className="relative inline-flex items-center cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={valores.AVISOS_VIGENCIA_ENABLED === 'true'}
+                      onChange={(e) => handleInputChange('AVISOS_VIGENCIA_ENABLED', e.target.checked ? 'true' : 'false')}
+                      className="sr-only peer"
+                    />
+                    <div className="w-11 h-6 bg-slate-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-purple-600"></div>
+                  </label>
+                </div>
+              </div>
+
+              {/* Matriz de los 4 Tipos de Avisos Parametrizables */}
+              <div>
+                <h4 className="text-xs font-bold text-slate-700 uppercase tracking-wider mb-3 flex items-center gap-2">
+                  <Sparkles className="w-3.5 h-3.5 text-purple-600" />
+                  Tipos de Avisos Parametrizables (Regla de Envío Único por Ciclo)
+                </h4>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {/* Aviso 1: Aniversario */}
+                  <div className="p-4 rounded-xl border border-slate-200 bg-white hover:border-emerald-300 transition-all shadow-2xs">
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="flex items-center gap-2.5">
+                        <span className="text-lg">🎉</span>
+                        <div>
+                          <h5 className="text-xs font-bold text-slate-900">1. Felicitación y Saldo de Nuevo Aniversario</h5>
+                          <span className="text-[10px] font-mono text-emerald-700 font-bold">Tipo: ANIVERSARIO_NUEVO</span>
+                        </div>
+                      </div>
+                      <label className="relative inline-flex items-center cursor-pointer shrink-0">
+                        <input
+                          type="checkbox"
+                          checked={valores.AVISOS_VIGENCIA_ANIVERSARIO === 'true'}
+                          onChange={(e) => handleInputChange('AVISOS_VIGENCIA_ANIVERSARIO', e.target.checked ? 'true' : 'false')}
+                          className="sr-only peer"
+                        />
+                        <div className="w-9 h-5 bg-slate-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-emerald-600"></div>
+                      </label>
+                    </div>
+                    <p className="text-[11px] text-slate-500 mt-2">
+                      Envía un correo de felicitación por aniversario cumplido notificando los nuevos días por ley acreditados (Art. 76 LFT) y el nuevo ciclo de vigencia.
+                    </p>
+                  </div>
+
+                  {/* Aviso 2: Alerta 12 Meses */}
+                  <div className="p-4 rounded-xl border border-slate-200 bg-white hover:border-blue-300 transition-all shadow-2xs">
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="flex items-center gap-2.5">
+                        <span className="text-lg">⏳</span>
+                        <div>
+                          <h5 className="text-xs font-bold text-slate-900">2. Alerta Preventiva a los 12 Meses</h5>
+                          <span className="text-[10px] font-mono text-blue-700 font-bold">Tipo: ALERTA_12_MESES (Restan 6 meses)</span>
+                        </div>
+                      </div>
+                      <label className="relative inline-flex items-center cursor-pointer shrink-0">
+                        <input
+                          type="checkbox"
+                          checked={valores.AVISOS_VIGENCIA_12_MESES === 'true'}
+                          onChange={(e) => handleInputChange('AVISOS_VIGENCIA_12_MESES', e.target.checked ? 'true' : 'false')}
+                          className="sr-only peer"
+                        />
+                        <div className="w-9 h-5 bg-slate-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-blue-600"></div>
+                      </label>
+                    </div>
+                    <p className="text-[11px] text-slate-500 mt-2">
+                      Avisa al colaborador que se cumplió 1 año del ciclo y le restan 6 meses conforme al Art. 81 LFT para disfrutar su saldo disponible.
+                    </p>
+                  </div>
+
+                  {/* Aviso 3: Alerta 15 Meses */}
+                  <div className="p-4 rounded-xl border border-slate-200 bg-white hover:border-amber-300 transition-all shadow-2xs">
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="flex items-center gap-2.5">
+                        <span className="text-lg">⚠️</span>
+                        <div>
+                          <h5 className="text-xs font-bold text-slate-900">3. Alerta Preventiva Urgente a los 15 Meses</h5>
+                          <span className="text-[10px] font-mono text-amber-700 font-bold">Tipo: ALERTA_15_MESES (Restan 3 meses)</span>
+                        </div>
+                      </div>
+                      <label className="relative inline-flex items-center cursor-pointer shrink-0">
+                        <input
+                          type="checkbox"
+                          checked={valores.AVISOS_VIGENCIA_15_MESES === 'true'}
+                          onChange={(e) => handleInputChange('AVISOS_VIGENCIA_15_MESES', e.target.checked ? 'true' : 'false')}
+                          className="sr-only peer"
+                        />
+                        <div className="w-9 h-5 bg-slate-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-amber-600"></div>
+                      </label>
+                    </div>
+                    <p className="text-[11px] text-slate-500 mt-2">
+                      Recordatorio con cuenta regresiva indicando que restan solo 90 días para que venza el período, instando a programar fechas inmediatas.
+                    </p>
+                  </div>
+
+                  {/* Aviso 4: Caducidad 18 Meses */}
+                  <div className="p-4 rounded-xl border border-slate-200 bg-white hover:border-rose-300 transition-all shadow-2xs">
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="flex items-center gap-2.5">
+                        <span className="text-lg">🛑</span>
+                        <div>
+                          <h5 className="text-xs font-bold text-slate-900">4. Notificación de Caducidad a los 18 Meses</h5>
+                          <span className="text-[10px] font-mono text-rose-700 font-bold">Tipo: CADUCIDAD_18_MESES (Término legal)</span>
+                        </div>
+                      </div>
+                      <label className="relative inline-flex items-center cursor-pointer shrink-0">
+                        <input
+                          type="checkbox"
+                          checked={valores.AVISOS_VIGENCIA_18_MESES === 'true'}
+                          onChange={(e) => handleInputChange('AVISOS_VIGENCIA_18_MESES', e.target.checked ? 'true' : 'false')}
+                          className="sr-only peer"
+                        />
+                        <div className="w-9 h-5 bg-slate-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-rose-600"></div>
+                      </label>
+                    </div>
+                    <p className="text-[11px] text-slate-500 mt-2">
+                      Notificación formal de conclusión de vigencia del período conforme a los Artículos 81 y 516 de la LFT.
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              {/* Copias Institucionales (Líder / DO) */}
+              <div className="p-4 rounded-xl border border-slate-200 bg-slate-50/50 space-y-3">
+                <h4 className="text-xs font-bold text-slate-700 uppercase tracking-wider">
+                  Enrutamiento de Copias Institucionales (CC)
+                </h4>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <label className="flex items-start gap-3 p-3 bg-white rounded-xl border border-slate-200 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={valores.AVISOS_VIGENCIA_COPIA_LIDER === 'true'}
+                      onChange={(e) => handleInputChange('AVISOS_VIGENCIA_COPIA_LIDER', e.target.checked ? 'true' : 'false')}
+                      className="mt-0.5 rounded text-purple-600"
+                    />
+                    <div>
+                      <span className="text-xs font-bold text-slate-900 block">Copiar al Líder / Jefe Directo</span>
+                      <span className="text-[11px] text-slate-500">
+                        Envía copia en las alertas de 12, 15 y 18 meses para coordinar los descansos de su equipo.
+                      </span>
+                    </div>
+                  </label>
+
+                  <div className="p-3 bg-white rounded-xl border border-slate-200 space-y-2">
+                    <label className="flex items-center gap-2 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={valores.AVISOS_VIGENCIA_COPIA_DO === 'true'}
+                        onChange={(e) => handleInputChange('AVISOS_VIGENCIA_COPIA_DO', e.target.checked ? 'true' : 'false')}
+                        className="rounded text-purple-600"
+                      />
+                      <span className="text-xs font-bold text-slate-900">Copiar a Desarrollo Organizacional</span>
+                    </label>
+                    <input
+                      type="email"
+                      value={valores.AVISOS_VIGENCIA_EMAIL_DO || ''}
+                      onChange={(e) => handleInputChange('AVISOS_VIGENCIA_EMAIL_DO', e.target.value)}
+                      placeholder="admin.rh@grupojama.com"
+                      className="w-full px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs font-medium text-slate-800 outline-none focus:ring-2 focus:ring-purple-600"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {/* Barra de Acciones Inmediatas (Simular / Ejecutar Manual) */}
+              <div className="pt-2 border-t border-slate-100 flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
+                <span className="text-[11px] text-slate-400">
+                  Bitácora activa: <code className="text-slate-600 font-bold">dbo.LogAvisosVigenciaEnviados</code> ({logsAvisosVigencia.length} registros auditados)
+                </span>
+
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => handleEjecutarBarridoAvisos(true)}
+                    disabled={ejecutandoAvisos}
+                    className="px-3 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-bold transition flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
+                    title="Evalúa cuántos avisos se enviarían hoy sin emitir correos reales"
+                  >
+                    <Search className={`w-3.5 h-3.5 ${ejecutandoAvisos ? 'animate-spin' : ''}`} />
+                    <span>Simular Detección</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => handleEjecutarBarridoAvisos(false)}
+                    disabled={ejecutandoAvisos}
+                    className="px-4 py-2 bg-purple-700 hover:bg-purple-800 text-white rounded-xl text-xs font-bold transition flex items-center gap-2 shadow-xs cursor-pointer disabled:opacity-50"
+                  >
+                    <Send className={`w-3.5 h-3.5 ${ejecutandoAvisos ? 'animate-spin' : ''}`} />
+                    <span>{ejecutandoAvisos ? 'Procesando Barrido...' : 'Ejecutar Barrido Manual Ahora'}</span>
+                  </button>
+                </div>
+              </div>
+
+              {/* Resultado del Barrido Manual / Simulación */}
+              {resultadoAvisos && (
+                <div className="p-4 rounded-xl border border-purple-200 bg-purple-50/60 text-xs text-purple-950 space-y-2 animate-in fade-in">
+                  <div className="flex items-center justify-between font-bold">
+                    <span className="flex items-center gap-2">
+                      <Sparkles className="w-4 h-4 text-purple-600" />
+                      {resultadoAvisos.simulacion ? 'Resultado de la Simulación:' : 'Resultado del Barrido en Vivo:'}
+                    </span>
+                    <button type="button" onClick={() => setResultadoAvisos(null)} className="text-slate-400 hover:text-slate-600">✕</button>
+                  </div>
+                  <p className="text-slate-700">{resultadoAvisos.mensaje}</p>
+                  <div className="grid grid-cols-3 gap-2 pt-1 font-mono text-[11px]">
+                    <div className="bg-white p-2 rounded-lg border border-purple-100">
+                      Evaluados: <strong>{resultadoAvisos.evaluados}</strong>
+                    </div>
+                    <div className="bg-white p-2 rounded-lg border border-purple-100 text-emerald-700">
+                      Por enviar / Enviados: <strong>{resultadoAvisos.enviados}</strong>
+                    </div>
+                    <div className="bg-white p-2 rounded-lg border border-purple-100 text-slate-500">
+                      Omitidos (ya enviados): <strong>{resultadoAvisos.omitidos}</strong>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Bitácora Integrada de dbo.LogAvisosVigenciaEnviados */}
+              <div className="pt-4 border-t border-slate-100 space-y-3">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                  <h4 className="text-xs font-bold text-slate-800 uppercase tracking-wider flex items-center gap-1.5">
+                    <ShieldAlert className="w-3.5 h-3.5 text-purple-600" />
+                    Auditoría de Avisos Registrados (dbo.LogAvisosVigenciaEnviados)
+                  </h4>
+
+                  {/* Filtro y Buscador */}
+                  <div className="flex items-center gap-2">
+                    <select
+                      value={filtroTipoAviso}
+                      onChange={(e) => {
+                        setFiltroTipoAviso(e.target.value);
+                        cargarLogsAvisosVigencia(e.target.value, null, null);
+                      }}
+                      className="text-xs px-2.5 py-1 bg-white border border-slate-200 rounded-lg outline-none text-slate-700"
+                    >
+                      <option value="TODOS">Todos los Tipos</option>
+                      <option value="ANIVERSARIO_NUEVO">Aniversario Nuevo</option>
+                      <option value="ALERTA_12_MESES">Alerta 12 Meses</option>
+                      <option value="ALERTA_15_MESES">Alerta 15 Meses</option>
+                      <option value="CADUCIDAD_18_MESES">Caducidad 18 Meses</option>
+                    </select>
+
+                    <button
+                      type="button"
+                      onClick={() => cargarLogsAvisosVigencia()}
+                      disabled={loadingLogsAvisos}
+                      className="p-1.5 rounded-lg border border-slate-200 text-slate-600 hover:bg-slate-50"
+                      title="Refrescar bitácora"
+                    >
+                      <RotateCw className={`w-3.5 h-3.5 ${loadingLogsAvisos ? 'animate-spin' : ''}`} />
+                    </button>
+                  </div>
+                </div>
+
+                {/* Tabla de Registros */}
+                <div className="overflow-x-auto rounded-xl border border-slate-200 max-h-60 overflow-y-auto">
+                  <table className="w-full text-left text-xs">
+                    <thead className="bg-slate-50 text-[10px] text-slate-400 uppercase sticky top-0 border-b border-slate-200 z-10">
+                      <tr>
+                        <th className="py-2.5 px-3">Fecha Envío</th>
+                        <th className="py-2.5 px-3">Colaborador</th>
+                        <th className="py-2.5 px-3">Período</th>
+                        <th className="py-2.5 px-3">Tipo Aviso</th>
+                        <th className="py-2.5 px-3 text-center">Días Restantes</th>
+                        <th className="py-2.5 px-3">Destinatario</th>
+                        <th className="py-2.5 px-3 text-right">Estatus</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100">
+                      {loadingLogsAvisos ? (
+                        <tr>
+                          <td colSpan="7" className="py-8 text-center text-slate-400">
+                            <RotateCw className="w-4 h-4 animate-spin mx-auto mb-1 text-purple-600" />
+                            Consultando bitácora de avisos...
+                          </td>
+                        </tr>
+                      ) : logsAvisosVigencia.length === 0 ? (
+                        <tr>
+                          <td colSpan="7" className="py-8 text-center text-slate-400">
+                            No se han registrado envíos de avisos de vigencia aún.
+                          </td>
+                        </tr>
+                      ) : (
+                        logsAvisosVigencia.map((l) => {
+                          const badge = l.TipoAviso === 'ANIVERSARIO_NUEVO'
+                            ? 'bg-emerald-100 text-emerald-800 border-emerald-200'
+                            : l.TipoAviso === 'ALERTA_15_MESES'
+                            ? 'bg-amber-100 text-amber-800 border-amber-200'
+                            : l.TipoAviso === 'CADUCIDAD_18_MESES'
+                            ? 'bg-rose-100 text-rose-800 border-rose-200'
+                            : 'bg-blue-100 text-blue-800 border-blue-200';
+
+                          return (
+                            <tr key={l.IdLogAviso} className="hover:bg-slate-50">
+                              <td className="py-2 px-3 font-mono text-[11px] text-slate-500 whitespace-nowrap">
+                                {formatearFechaHora(l.FechaEnvio)}
+                              </td>
+                              <td className="py-2 px-3">
+                                <span className="font-bold text-slate-900 block">{l.ColaboradorNombre}</span>
+                                <span className="text-[10px] text-slate-400 font-mono">{l.CodigoEmpleado} • {l.Empresa}</span>
+                              </td>
+                              <td className="py-2 px-3 font-mono font-semibold text-slate-700 whitespace-nowrap">
+                                {l.Periodo}
+                              </td>
+                              <td className="py-2 px-3 whitespace-nowrap">
+                                <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${badge}`}>
+                                  {l.TipoAviso}
+                                </span>
+                              </td>
+                              <td className="py-2 px-3 text-center font-bold text-slate-700">
+                                {l.DiasRestantesAlerta} d
+                              </td>
+                              <td className="py-2 px-3 text-slate-600 text-[11px] truncate max-w-[160px]" title={l.Destinatario}>
+                                {l.Destinatario}
+                              </td>
+                              <td className="py-2 px-3 text-right">
+                                <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
+                                  l.EstatusEnvio === 'ENVIADO'
+                                    ? 'bg-emerald-100 text-emerald-800'
+                                    : l.EstatusEnvio === 'SIMULADO'
+                                    ? 'bg-purple-100 text-purple-800'
+                                    : 'bg-rose-100 text-rose-800'
+                                }`}>
+                                  {l.EstatusEnvio}
+                                </span>
+                              </td>
+                            </tr>
+                          );
+                        })
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* =========================================================================
+            TARJETA 4: PARÁMETROS GENERALES DE VACACIONES LFT
            ========================================================================= */}
         {(seccionActiva === 'todas' || seccionActiva === 'vacaciones') && (
           <div className="bg-white rounded-2xl border border-slate-200/90 shadow-xs overflow-hidden">
@@ -668,7 +1141,7 @@ export default function AdminConfiguracionPage({ currentUser, onNavigateTab }) {
                   <Calendar className="w-5 h-5" />
                 </div>
                 <div>
-                  <h3 className="text-sm font-bold text-slate-800">3. Parámetros Generales de Vacaciones LFT</h3>
+                  <h3 className="text-sm font-bold text-slate-800">4. Parámetros Generales de Vacaciones LFT</h3>
                   <p className="text-[11px] text-slate-500">
                     Reglas operativas, anticipación obligatoria y políticas conforme a la Ley Federal del Trabajo (Vacaciones Dignas).
                   </p>
@@ -781,7 +1254,7 @@ export default function AdminConfiguracionPage({ currentUser, onNavigateTab }) {
                   <HardDrive className="w-5 h-5" />
                 </div>
                 <div>
-                  <h3 className="text-sm font-bold text-slate-800">4. Auditoría, Mantenimiento & Synology NAS</h3>
+                  <h3 className="text-sm font-bold text-slate-800">5. Auditoría, Mantenimiento & Synology NAS</h3>
                   <p className="text-[11px] text-slate-500">
                     Depuración de bitácoras, respaldo en red local NAS y políticas de sesiones.
                   </p>
