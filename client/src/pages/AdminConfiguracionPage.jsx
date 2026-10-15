@@ -66,6 +66,7 @@ export default function AdminConfiguracionPage({ currentUser, onNavigateTab }) {
   const [filtroEstatusAviso, setFiltroEstatusAviso] = useState('TODOS');
   const [busquedaAviso, setBusquedaAviso] = useState('');
   const [ejecutandoAvisos, setEjecutandoAvisos] = useState(false);
+  const [enviandoMuestras, setEnviandoMuestras] = useState(false);
   const [resultadoAvisos, setResultadoAvisos] = useState(null);
 
   // Pestaña activa dentro del panel ('todas', 'contpaqi', 'email', 'avisos-vigencia', 'log-correos', 'vacaciones', 'mantenimiento')
@@ -201,6 +202,39 @@ export default function AdminConfiguracionPage({ currentUser, onNavigateTab }) {
       setMensajeError('Error en servidor al procesar avisos: ' + err.message);
     } finally {
       setEjecutandoAvisos(false);
+    }
+  }
+
+  async function handleEnviarMuestrasAvisos() {
+    try {
+      setEnviandoMuestras(true);
+      setMensajeError('');
+      setMensajeExito('');
+      const destino = valores.AVISOS_VIGENCIA_EMAIL_DO || 'audiox30@hotmail.com';
+      const res = await api.enviarMuestrasAvisosVigencia({
+        destinatario: destino,
+        copiasCC: 'soporte@grupojama.com'
+      });
+      if (res && res.success) {
+        setResultadoAvisos({
+          tipo: 'exito',
+          simulacion: false,
+          mensaje: `Se despacharon con éxito las 4 muestras de avisos a ${destino} (con copia a soporte@grupojama.com).`,
+          enviados: res.enviados || 4,
+          evaluados: 4,
+          omitidos: 0,
+          detalles: res.resultados
+        });
+        setMensajeExito(`¡Se enviaron los 4 correos de aviso de vigencia a ${destino} exitosamente!`);
+        cargarLogsAvisosVigencia();
+      } else {
+        setMensajeError(res.error || 'No se pudieron enviar las muestras de avisos.');
+      }
+    } catch (err) {
+      console.error('Error enviando muestras:', err);
+      setMensajeError('Error al enviar muestras de avisos: ' + err.message);
+    } finally {
+      setEnviandoMuestras(false);
     }
   }
 
@@ -968,11 +1002,22 @@ export default function AdminConfiguracionPage({ currentUser, onNavigateTab }) {
                   Bitácora activa: <code className="text-slate-600 font-bold">dbo.LogAvisosVigenciaEnviados</code> ({logsAvisosVigencia.length} registros auditados)
                 </span>
 
-                <div className="flex items-center gap-2">
+                <div className="flex flex-wrap items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={handleEnviarMuestrasAvisos}
+                    disabled={enviandoMuestras || ejecutandoAvisos}
+                    className="px-3.5 py-2 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 text-emerald-800 rounded-xl text-xs font-bold transition flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
+                    title="Envía un correo de muestra con cada uno de los 4 tipos de avisos"
+                  >
+                    <MailCheck className={`w-3.5 h-3.5 ${enviandoMuestras ? 'animate-spin' : 'text-emerald-600'}`} />
+                    <span>{enviandoMuestras ? 'Enviando Muestras...' : 'Enviar Muestras (4 Avisos)'}</span>
+                  </button>
+
                   <button
                     type="button"
                     onClick={() => handleEjecutarBarridoAvisos(true)}
-                    disabled={ejecutandoAvisos}
+                    disabled={ejecutandoAvisos || enviandoMuestras}
                     className="px-3 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-bold transition flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
                     title="Evalúa cuántos avisos se enviarían hoy sin emitir correos reales"
                   >
@@ -983,7 +1028,7 @@ export default function AdminConfiguracionPage({ currentUser, onNavigateTab }) {
                   <button
                     type="button"
                     onClick={() => handleEjecutarBarridoAvisos(false)}
-                    disabled={ejecutandoAvisos}
+                    disabled={ejecutandoAvisos || enviandoMuestras}
                     className="px-4 py-2 bg-purple-700 hover:bg-purple-800 text-white rounded-xl text-xs font-bold transition flex items-center gap-2 shadow-xs cursor-pointer disabled:opacity-50"
                   >
                     <Send className={`w-3.5 h-3.5 ${ejecutandoAvisos ? 'animate-spin' : ''}`} />

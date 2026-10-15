@@ -448,6 +448,25 @@ const configuracionController = {
       console.error('[configuracion.getLogsAvisosVigencia]', err);
       res.status(500).json({ error: 'Error al consultar bitácora de avisos de vigencia.' });
     }
+  },
+
+  /**
+   * POST /api/admin/configuracion/avisos-vigencia/muestras
+   * Envía un correo con cada uno de los 4 tipos de avisos como prueba/muestra
+   */
+  enviarMuestrasAvisos: async (req, res) => {
+    try {
+      const { destinatario, copiasCC } = req.body || {};
+      const targetEmail = (destinatario && destinatario.trim()) ? destinatario.trim() : (req.user?.Email || 'audiox30@hotmail.com');
+      const resultado = await vigenciaAlertasService.enviarMuestrasPrueba({
+        destinatario: targetEmail,
+        copiasCC: copiasCC !== undefined ? copiasCC : 'soporte@grupojama.com'
+      });
+      return res.json(resultado);
+    } catch (err) {
+      console.error('[configuracion.enviarMuestrasAvisos]', err);
+      res.status(500).json({ error: err.message || 'Error al enviar muestras de avisos.' });
+    }
   }
 };
 

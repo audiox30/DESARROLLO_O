@@ -265,5 +265,6 @@ export const api = {
 
   // Avisos y Notificaciones de Vigencia LFT
   ejecutarAvisosVigencia: (data = {}) => request('/admin/configuracion/avisos-vigencia/ejecutar', { method: 'POST', body: JSON.stringify(data) }),
+  enviarMuestrasAvisosVigencia: (data = {}) => request('/admin/configuracion/avisos-vigencia/muestras', { method: 'POST', body: JSON.stringify(data) }),
   getLogsAvisosVigencia: (params = '') => request(`/admin/configuracion/avisos-vigencia/logs${params ? '?' + params : ''}`)
 };

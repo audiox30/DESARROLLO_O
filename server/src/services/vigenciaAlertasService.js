@@ -461,7 +461,174 @@ const vigenciaAlertasService = {
       total: res.recordset.length,
       data: res.recordset
     };
-  }
+  },
+
+  /**
+   * Envía un correo con cada uno de los 4 tipos de avisos (muestras de prueba)
+   */
+  enviarMuestrasPrueba: async ({
+    destinatario = 'audiox30@hotmail.com',
+    copiasCC = 'soporte@grupojama.com',
+    idColaborador = 1
+  } = {}) => {
+    const pool = await getLocalPool();
+    const transportador = crearTransportadorSmtp();
+
+    let colaborador = {
+      IdColaborador: 1,
+      NombreCompleto: 'ROCIO IMELDA GONZALEZ SALAS',
+      CodigoEmpleado: '0102',
+      Empresa: 'Controladora JAMA',
+      Puesto: 'GERENTE DE TESORERIA'
+    };
+
+    if (pool && !isUsingMock()) {
+      try {
+        const colRes = await pool.request()
+          .input('IdColaborador', idColaborador)
+          .query(`
+            SELECT TOP 1 c.IdColaborador, c.CodigoEmpleado, c.NombreCompleto, c.Empresa, ISNULL(p.Nombre, 'General') AS Puesto
+            FROM dbo.Colaboradores c
+            LEFT JOIN dbo.Puestos p ON p.IdPuesto = c.IdPuesto
+            WHERE c.IdColaborador = @IdColaborador
+          `);
+        if (colRes.recordset && colRes.recordset.length > 0) {
+          colaborador = colRes.recordset[0];
+        }
+      } catch (err) {
+        console.warn('[vigenciaAlertasService] Usando colaborador fallback para muestras:', err.message);
+      }
+    }
+
+    const muestras = [
+      {
+        tipoAviso: 'ANIVERSARIO_NUEVO',
+        periodo: '2025 - 2026',
+        antiguedadCumplida: 4,
+        diasCorrespondientes: 18,
+        diasPendientes: 18,
+        fechaAniversario: '15/10/2025',
+        fechaFinVigencia: '15/04/2027',
+        diasRestantesVigencia: 548,
+        asunto: `🎉 [MUESTRA 1/4] ¡Feliz Aniversario Laboral en Grupo JAMA! • ${colaborador.NombreCompleto} (Ciclo 2025 - 2026)`
+      },
+      {
+        tipoAviso: 'ALERTA_12_MESES',
+        periodo: '2024 - 2025',
+        antiguedadCumplida: 3,
+        diasCorrespondientes: 16,
+        diasPendientes: 12,
+        fechaAniversario: '15/10/2024',
+        fechaFinVigencia: '15/04/2026',
+        diasRestantesVigencia: 180,
+        asunto: `⏳ [MUESTRA 2/4] Aviso Preventivo de Vacaciones (12 Meses Cumplidos) • ${colaborador.NombreCompleto} (Ciclo 2024 - 2025)`
+      },
+      {
+        tipoAviso: 'ALERTA_15_MESES',
+        periodo: '2024 - 2025',
+        antiguedadCumplida: 3,
+        diasCorrespondientes: 16,
+        diasPendientes: 8,
+        fechaAniversario: '15/10/2024',
+        fechaFinVigencia: '15/04/2026',
+        diasRestantesVigencia: 90,
+        asunto: `⚠️ [MUESTRA 3/4] Alerta Preventiva Urgente de Vacaciones (15 Meses) • ${colaborador.NombreCompleto} (Ciclo 2024 - 2025)`
+      },
+      {
+        tipoAviso: 'CADUCIDAD_18_MESES',
+        periodo: '2024 - 2025',
+        antiguedadCumplida: 3,
+        diasCorrespondientes: 16,
+        diasPendientes: 4,
+        fechaAniversario: '15/10/2024',
+        fechaFinVigencia: '15/04/2026',
+        diasRestantesVigencia: 0,
+        asunto: `🛑 [MUESTRA 4/4] Conclusión de Vigencia Legal de Vacaciones (18 Meses LFT) • ${colaborador.NombreCompleto} (Ciclo 2024 - 2025)`
+      }
+    ];
+
+    const resultados = [];
+
+    for (const m of muestras) {
+      const htmlContent = generarHtmlCorreoAviso({
+        tipoAviso: m.tipoAviso,
+        nombreColaborador: colaborador.NombreCompleto,
+        codigoEmpleado: colaborador.CodigoEmpleado,
+        empresa: colaborador.Empresa,
+        puesto: colaborador.Puesto,
+        periodo: m.periodo,
+        antiguedadCumplida: m.antiguedadCumplida,
+        diasCorrespondientes: m.diasCorrespondientes,
+        diasPendientes: m.diasPendientes,
+        fechaAniversario: m.fechaAniversario,
+        fechaFinVigencia: m.fechaFinVigencia,
+        diasRestantesVigencia: m.diasRestantesVigencia
+      });
+
+      let estatus = 'ENVIADO';
+      let errorMsg = null;
+      let messageId = null;
+
+      try {
+        const info = await transportador.sendMail({
+          from: `"Control de Vacaciones Grupo JAMA" <comprobante.fiscal@grupojamacfdi.com>`,
+          to: destinatario,
+          ...(copiasCC ? { cc: copiasCC } : {}),
+          subject: m.asunto,
+          html: htmlContent
+        });
+        messageId = info.messageId;
+        console.log(`[vigenciaAlertasService] Muestra ${m.tipoAviso} enviada con éxito a ${destinatario}:`, messageId);
+      } catch (sendErr) {
+        estatus = 'ERROR';
+        errorMsg = sendErr.message;
+        console.error(`[vigenciaAlertasService] Error enviando muestra ${m.tipoAviso}:`, sendErr.message);
+      }
+
+      // Registrar en dbo.LogAvisosVigenciaEnviados
+      if (pool && !isUsingMock()) {
+        try {
+          await pool.request()
+            .input('IdColaborador', colaborador.IdColaborador)
+            .input('Periodo', m.periodo)
+            .input('TipoAviso', m.tipoAviso)
+            .input('DiasRestantesAlerta', Math.max(0, m.diasRestantesVigencia))
+            .input('Destinatario', `${destinatario}${copiasCC ? ` [CC: ${copiasCC}]` : ''}`)
+            .input('EstatusEnvio', estatus)
+            .query(`
+              INSERT INTO dbo.LogAvisosVigenciaEnviados (
+                IdColaborador, Periodo, TipoAviso, DiasRestantesAlerta, FechaEnvio, Destinatario, EstatusEnvio
+              ) VALUES (
+                @IdColaborador, @Periodo, @TipoAviso, @DiasRestantesAlerta, SYSDATETIME(), @Destinatario, @EstatusEnvio
+              );
+            `);
+        } catch (dbErr) {
+          console.error('[vigenciaAlertasService] Error guardando log en BD:', dbErr.message);
+        }
+      }
+
+      resultados.push({
+        tipoAviso: m.tipoAviso,
+        asunto: m.asunto,
+        destinatario,
+        cc: copiasCC,
+        estatus,
+        messageId,
+        error: errorMsg
+      });
+    }
+
+    return {
+      success: true,
+      mensaje: `Se procesaron las 4 muestras de avisos institucionales para ${destinatario}`,
+      total: resultados.length,
+      enviados: resultados.filter(r => r.estatus === 'ENVIADO').length,
+      fallidos: resultados.filter(r => r.estatus === 'ERROR').length,
+      resultados
+    };
+  },
+
+  generarHtmlCorreoAviso
 };
 
 module.exports = vigenciaAlertasService;

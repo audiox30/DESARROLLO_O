@@ -176,6 +176,7 @@ router.post('/admin/configuracion/probar-correo', authMiddleware, requireRole('S
 router.get('/admin/configuracion/log-correos', authMiddleware, requireRole('SUPERADMIN', 'SISTEMAS', 'ADMIN_DO'), configuracionController.getLogCorreos);
 router.get('/sistemas/log-correos', authMiddleware, requireRole('SUPERADMIN', 'SISTEMAS', 'ADMIN_DO'), configuracionController.getLogCorreos);
 router.post('/admin/configuracion/avisos-vigencia/ejecutar', authMiddleware, requireRole('SUPERADMIN', 'SISTEMAS', 'ADMIN_DO'), configuracionController.ejecutarAvisosVigencia);
+router.post('/admin/configuracion/avisos-vigencia/muestras', authMiddleware, requireRole('SUPERADMIN', 'SISTEMAS', 'ADMIN_DO'), configuracionController.enviarMuestrasAvisos);
 router.get('/admin/configuracion/avisos-vigencia/logs', authMiddleware, requireRole('SUPERADMIN', 'SISTEMAS', 'ADMIN_DO'), configuracionController.getLogsAvisosVigencia);
 
 // =========================================================================
