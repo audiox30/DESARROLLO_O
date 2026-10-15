@@ -47,14 +47,15 @@ function authMiddleware(req, res, next) {
     let simulateRole = rawSimRole ? String(rawSimRole).split(',')[0].trim() : null;
     let simulateColaborador = rawSimColab ? String(rawSimColab).split(',')[0].trim() : null;
 
-    // Asegurar que si se simula ser LÍDER, COLABORADOR o ADMIN_DO, el sistema cargue un colaborador muestra del catálogo para poblar las tablas de prueba sin error 403
+    // Asegurar que si se simula ser LÍDER, COLABORADOR o ADMIN_DO, el sistema cargue un colaborador muestra activo del catálogo
     if (isSuperAdmin && simulateRole) {
+      const usingMock = isUsingMock();
       if (simulateRole === 'LIDER' && (!simulateColaborador || isNaN(Number(simulateColaborador)))) {
-        simulateColaborador = '46'; // Ulises Garcés (Líder en Latino Concretos)
+        simulateColaborador = usingMock ? '46' : '850'; // Ulises Garcés (Líder activo)
       } else if (simulateRole === 'COLABORADOR' && (!simulateColaborador || isNaN(Number(simulateColaborador)))) {
-        simulateColaborador = '594'; // Gonzalo Ramírez (Colaborador en Latino Concretos)
+        simulateColaborador = usingMock ? '594' : '852'; // Colaborador activo con saldo
       } else if (simulateRole === 'ADMIN_DO' && (!simulateColaborador || isNaN(Number(simulateColaborador)))) {
-        simulateColaborador = '383'; // Tania Hurtado (Admin DO)
+        simulateColaborador = usingMock ? '383' : '29'; // Tania Hurtado (Admin DO activa)
       }
     }
 

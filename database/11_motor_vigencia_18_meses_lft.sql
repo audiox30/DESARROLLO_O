@@ -239,17 +239,29 @@ BEGIN
     BEGIN TRY
         BEGIN TRANSACTION;
 
-        DECLARE @Activo BIT, @Jornada INT, @IdJefe INT, @DiasDescanso VARCHAR(150);
+        DECLARE @Activo BIT, @EstatusNomina VARCHAR(20), @Jornada INT, @IdJefe INT, @DiasDescanso VARCHAR(150);
         SELECT 
             @Activo = Activo, 
+            @EstatusNomina = UPPER(ISNULL(EstatusNomina, '')),
             @Jornada = ISNULL(JornadaLaboralDias, 6), 
             @IdJefe = IdJefeDirecto,
             @DiasDescanso = ISNULL(DiasDescanso, 'DOMINGO')
         FROM dbo.Colaboradores
         WHERE IdColaborador = @IdColaborador;
 
-        IF @Activo IS NULL OR @Activo = 0
+        DECLARE @EstaActivo BIT = CASE 
+            WHEN @Activo = 1 THEN 1
+            WHEN @EstatusNomina IN ('A', 'ALTA', 'R') THEN 1
+            ELSE 0 
+        END;
+
+        IF @EstaActivo = 0
             THROW 50001, 'El colaborador especificado no está activo en el sistema.', 1;
+
+        IF @Activo = 0 OR @Activo IS NULL
+        BEGIN
+            UPDATE dbo.Colaboradores SET Activo = 1 WHERE IdColaborador = @IdColaborador;
+        END
 
         DECLARE @DescansoNormSP VARCHAR(200) = UPPER(@DiasDescanso);
 

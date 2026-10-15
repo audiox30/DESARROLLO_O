@@ -73,7 +73,7 @@ export default function AdminConfiguracionPage({ currentUser, onNavigateTab }) {
     // EMAIL
     SMTP_HOST: '192.168.20.16',
     SMTP_PORT: '25',
-    SMTP_USER: 'comprobante.fiscal@grupojama.com',
+    SMTP_USER: 'comprobante.fiscal@grupojamacfdi.com',
     SMTP_PASS: '',
     SMTP_SECURE: 'false',
     SMTP_FROM_NAME: 'Control de Vacaciones Grupo JAMA',

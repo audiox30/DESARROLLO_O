@@ -100,13 +100,33 @@ const solicitudesController = {
   create: async (req, res) => {
     try {
       const { fechaInicio, fechaFin, motivoComentarios } = req.body;
-      const idColaborador = req.user.id_colaborador || req.user.id;
+      const idColaborador = req.body.idColaborador || req.user.id_colaborador || req.user.id;
 
       if (!fechaInicio || !fechaFin) {
         return res.status(400).json({ error: 'Las fechas de inicio y fin son obligatorias.' });
       }
 
       if (isUsingMock()) {
+        const colab = mockStore.colaboradores.find(c => c.id === Number(idColaborador));
+        if (!colab) {
+          return res.status(404).json({ error: 'Colaborador no encontrado en el sistema.' });
+        }
+
+        // Validar si el colaborador está activo (soporta bit 1/0, booleanos o strings '1'/'true')
+        const estaActivo = colab.Activo === 1 || colab.Activo === true || colab.Activo === '1' || colab.Activo === 'true' ||
+          colab.activo === 1 || colab.activo === true || colab.activo === '1' || colab.activo === 'true' ||
+          String(colab.EstatusNomina || colab.estatusNomina).toUpperCase() === 'ALTA' ||
+          String(colab.EstatusNomina || colab.estatusNomina).toUpperCase() === 'A' ||
+          String(colab.EstatusNomina || colab.estatusNomina).toUpperCase() === 'R';
+
+        const rolUsuario = req.user.rol || req.user.realRol || req.user.RolApp || '';
+        const esPrivilegiado = req.user.rol === 'SISTEMAS' || req.user.rol === 'ADMIN_DO' ||
+                              rolUsuario === 'SISTEMAS' || rolUsuario === 'ADMIN_DO' || rolUsuario === 'SUPERADMIN';
+
+        if (!estaActivo && !esPrivilegiado) {
+          return res.status(400).json({ error: 'El colaborador especificado no está activo en el sistema.' });
+        }
+
         const solicitud = mockStore.crearSolicitud(idColaborador, fechaInicio, fechaFin, motivoComentarios);
         setImmediate(() => {
           emailService.notificarNuevaSolicitud(solicitud.idSolicitud).catch(err => {
@@ -121,6 +141,43 @@ const solicitudesController = {
         });
       } else {
         const pool = await getPool();
+
+        // 1. Obtener datos del colaborador para validación previa flexible
+        const colabRes = await pool.request()
+          .input('IdColaborador', idColaborador)
+          .query(`
+            SELECT TOP 1 IdColaborador, CodigoEmpleado, NombreCompleto, Activo, EstatusNomina
+            FROM dbo.Colaboradores
+            WHERE IdColaborador = @IdColaborador
+          `);
+
+        if (colabRes.recordset.length === 0) {
+          return res.status(404).json({ error: 'El colaborador especificado no existe en el sistema.' });
+        }
+
+        const colab = colabRes.recordset[0];
+
+        // Validar si el colaborador está activo (soporta bit 1/0, booleanos o strings '1'/'true')
+        const estaActivo = colab.Activo === 1 || colab.Activo === true || colab.Activo === '1' || colab.Activo === 'true' ||
+          String(colab.EstatusNomina).toUpperCase() === 'ALTA' ||
+          String(colab.EstatusNomina).toUpperCase() === 'A' ||
+          String(colab.EstatusNomina).toUpperCase() === 'R';
+
+        const rolUsuario = req.user.rol || req.user.realRol || req.user.RolApp || '';
+        const esPrivilegiado = req.user.rol === 'SISTEMAS' || req.user.rol === 'ADMIN_DO' ||
+                              rolUsuario === 'SISTEMAS' || rolUsuario === 'ADMIN_DO' || rolUsuario === 'SUPERADMIN';
+
+        if (!estaActivo && !esPrivilegiado) {
+          return res.status(400).json({ error: 'El colaborador especificado no está activo en el sistema.' });
+        }
+
+        // Si es considerado activo o el rol es privilegiado pero en la BD Activo era 0 o NULL, normalizar a Activo = 1
+        if ((estaActivo || esPrivilegiado) && (colab.Activo === false || colab.Activo === 0 || colab.Activo === null)) {
+          await pool.request()
+            .input('IdColaborador', idColaborador)
+            .query('UPDATE dbo.Colaboradores SET Activo = 1 WHERE IdColaborador = @IdColaborador');
+        }
+
         const request = pool.request();
         request.input('IdColaborador', idColaborador);
         request.input('FechaInicio', fechaInicio);

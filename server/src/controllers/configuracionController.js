@@ -169,7 +169,7 @@ const configuracionController = {
       user = user !== undefined ? user : (process.env.SMTP_USER || '');
       pass = pass !== undefined ? pass : (process.env.SMTP_PASS || '');
       const isSecure = secure === true || secure === 'true' || port === 465;
-      const rawFrom = process.env.SMTP_FROM || `${fromName || 'Control de Vacaciones Grupo JAMA'} <${user || 'comprobante.fiscal@grupojama.com'}>`;
+      const rawFrom = process.env.SMTP_FROM || `${fromName || 'Control de Vacaciones Grupo JAMA'} <${user || 'comprobante.fiscal@grupojamacfdi.com'}>`;
       const remitente = rawFrom.replace(/^["']|["']$/g, '');
       const targetEmail = destinatario || req.user?.email || req.user?.Email || 'soporte@grupojama.com';
 
@@ -189,36 +189,89 @@ const configuracionController = {
       });
 
       const htmlContent = `
-        <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; max-width: 600px; margin: 0 auto; background-color: #ffffff; border: 1px solid #e2e8f0; border-radius: 16px; overflow: hidden; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);">
-          <div style="background-color: #0f172a; padding: 24px; text-align: center; border-bottom: 3px solid #7c3aed;">
-            <h2 style="color: #ffffff; margin: 0; font-size: 18px; font-weight: 800; letter-spacing: 0.5px;">GRUPO JAMA • ÁREA DE TI</h2>
-            <p style="color: #94a3b8; margin: 4px 0 0 0; font-size: 12px;">SISTEMA DE CONTROL DE VACACIONES LFT</p>
-          </div>
-          <div style="padding: 28px 24px;">
-            <div style="display: inline-block; background-color: #ecfdf5; border: 1px solid #a7f3d0; color: #065f46; font-size: 11px; font-weight: 700; padding: 4px 12px; rounded: 9999px; margin-bottom: 16px;">
-              ✓ PRUEBA DE CONECTIVIDAD SMTP EXITOSA
-            </div>
-            <h3 style="color: #1e293b; margin: 0 0 12px 0; font-size: 16px;">Confirmación de Notificaciones por Correo</h3>
-            <p style="color: #475569; font-size: 13px; line-height: 1.6; margin: 0 0 20px 0;">
-              Este es un correo de comprobación emitido desde el <strong>Panel de Configuración Global de Sistemas</strong> para verificar la comunicación con el servidor de correo institucional.
-            </p>
-            <div style="background-color: #f8fafc; border: 1px solid #e2e8f0; border-radius: 12px; padding: 16px; margin-bottom: 20px;">
-              <table style="width: 100%; font-size: 12px; color: #334155; border-collapse: collapse;">
-                <tr><td style="padding: 4px 0; font-weight: 600; width: 140px;">Servidor SMTP:</td><td>${host}:${port}</td></tr>
-                <tr><td style="padding: 4px 0; font-weight: 600;">Seguridad SSL/TLS:</td><td>${isSecure ? 'SSL Directo (Puerto 465)' : 'STARTTLS (Puerto 587/25)'}</td></tr>
-                <tr><td style="padding: 4px 0; font-weight: 600;">Cuenta Remitente:</td><td>${user || 'Sin autenticación (Relay Anónimo)'}</td></tr>
-                <tr><td style="padding: 4px 0; font-weight: 600;">Destinatario:</td><td>${targetEmail}</td></tr>
-                <tr><td style="padding: 4px 0; font-weight: 600;">Fecha / Hora:</td><td>${new Date().toLocaleString('es-MX')}</td></tr>
-              </table>
-            </div>
-            <p style="color: #64748b; font-size: 11px; margin: 0;">
-              Si ha recibido este mensaje, las alertas de solicitudes, autorizaciones de líderes y Vo.Bo. de DO operarán con normalidad.
-            </p>
-          </div>
-          <div style="background-color: #f1f5f9; padding: 12px 24px; text-align: center; border-top: 1px solid #e2e8f0; font-size: 11px; color: #64748b;">
-            Infraestructura Local On-Premise • Base de Datos DESARROLLO_O • SuperAdmin TI
-          </div>
-        </div>
+        <!DOCTYPE html>
+        <html lang="es">
+        <head>
+          <meta charset="UTF-8">
+          <title>Prueba de Conectividad SMTP - Grupo JAMA</title>
+        </head>
+        <body style="margin:0; padding:0; background-color:#F4F7F9; font-family:Arial, 'Segoe UI', Tahoma, sans-serif; -webkit-font-smoothing:antialiased; color:#333333;">
+          <table width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color:#F4F7F9; padding:24px 12px;">
+            <tr>
+              <td align="center">
+                <table width="100%" cellpadding="0" cellspacing="0" border="0" style="max-width:600px; background-color:#ffffff; border-radius:8px; overflow:hidden; border:1px solid #002D62; box-shadow:0 4px 12px rgba(0, 45, 98, 0.08);">
+                  
+                  <!-- Cabecera Institucional Azul Marino #002D62 -->
+                  <tr>
+                    <td style="background-color:#002D62; padding:28px 24px; text-align:center;">
+                      <a href="https://www.grupojama.com" target="_blank" style="text-decoration:none; display:inline-block;">
+                        <img src="https://www.grupojama.com/img/logo.png" alt="Grupo JAMA" width="160" style="max-width:160px; height:auto; display:block; margin:0 auto;" border="0" />
+                      </a>
+                      <p style="margin:12px 0 0 0; color:#E2E8F0; font-size:12px; font-weight:600; letter-spacing:0.8px; text-transform:uppercase; font-family:Arial, 'Segoe UI', sans-serif;">
+                        Control de Vacaciones • Sistema Corporativo
+                      </p>
+                    </td>
+                  </tr>
+
+                  <!-- Tarjeta Blanca Interior -->
+                  <tr>
+                    <td style="background-color:#ffffff; padding:24px;">
+                      <div style="margin-bottom:16px;">
+                        <span style="display:inline-block; padding:4px 12px; font-size:11px; font-weight:bold; border-radius:9999px; text-transform:uppercase; letter-spacing:0.5px; color:#065f46; background-color:#ecfdf5; border:1px solid #a7f3d0; font-family:Arial, 'Segoe UI', sans-serif;">
+                          ✓ PRUEBA DE CONECTIVIDAD SMTP EXITOSA
+                        </span>
+                      </div>
+
+                      <h1 style="color:#002D62; font-size:19px; font-weight:bold; margin:0 0 16px 0; line-height:1.35; font-family:Arial, 'Segoe UI', sans-serif;">
+                        Confirmación de Notificaciones por Correo
+                      </h1>
+
+                      <p style="color:#475569; font-size:13px; line-height:1.6; margin:0 0 20px 0; font-family:Arial, 'Segoe UI', sans-serif;">
+                        Este es un correo de comprobación emitido desde el <strong>Panel de Configuración Global de Sistemas</strong> para verificar la comunicación con el servidor de correo institucional.
+                      </p>
+
+                      <div style="background-color:#F8FAFC; border:1px solid #E2E8F0; border-radius:6px; padding:16px; margin-bottom:20px;">
+                        <table style="width:100%; font-size:12px; color:#334155; border-collapse:collapse; font-family:Arial, 'Segoe UI', sans-serif;">
+                          <tr><td style="padding:4px 0; font-weight:600; width:140px; color:#64748b;">Servidor SMTP:</td><td><strong>${host}:${port}</strong></td></tr>
+                          <tr><td style="padding:4px 0; font-weight:600; color:#64748b;">Seguridad SSL/TLS:</td><td>${isSecure ? 'SSL Directo (Puerto 465)' : 'STARTTLS / Relay Local (Puerto 25)'}</td></tr>
+                          <tr><td style="padding:4px 0; font-weight:600; color:#64748b;">Cuenta Remitente:</td><td>${user || 'Sin autenticación (Relay Anónimo)'}</td></tr>
+                          <tr><td style="padding:4px 0; font-weight:600; color:#64748b;">Destinatario Previsto:</td><td>${targetEmail}</td></tr>
+                          <tr><td style="padding:4px 0; font-weight:600; color:#64748b;">Fecha / Hora:</td><td>${new Date().toLocaleString('es-MX')}</td></tr>
+                        </table>
+                      </div>
+
+                      <p style="color:#64748b; font-size:12px; margin:0; line-height:1.5; font-family:Arial, 'Segoe UI', sans-serif;">
+                        Las alertas de solicitudes, autorizaciones de líderes y Vo.Bo. de Desarrollo Organizacional operarán bajo esta plantilla institucional.
+                      </p>
+                    </td>
+                  </tr>
+
+                  <!-- Mensaje Ecológico al Pie del Correo -->
+                  <tr>
+                    <td style="background-color:#ffffff; padding:0 24px 24px 24px; text-align:center;">
+                      <div style="background-color:#f0fdf4; border:1px solid #bbf7d0; border-radius:6px; padding:10px 16px; margin:0 auto; display:inline-block; max-width:92%;">
+                        <p style="margin:0; font-size:12px; font-weight:bold; color:#15803d; line-height:1.45; font-family:Arial, 'Segoe UI', sans-serif;">
+                          🌿 “Antes de imprimir, piensa en el medio ambiente. Cada hoja cuenta, cada árbol importa.” ♻️
+                        </p>
+                      </div>
+                    </td>
+                  </tr>
+
+                  <!-- Pie de Página (Footer) -->
+                  <tr>
+                    <td style="background-color:#F4F7F9; padding:20px 24px; border-top:1px solid #E2E8F0; text-align:center;">
+                      <p style="margin:0; font-size:11px; color:#555555; line-height:1.5; font-family:Arial, 'Segoe UI', sans-serif;">
+                        Este es un mensaje automático generado por el Sistema de Control de Vacaciones de Grupo JAMA. Por favor no responda directamente a este correo.
+                      </p>
+                    </td>
+                  </tr>
+
+                </table>
+              </td>
+            </tr>
+          </table>
+        </body>
+        </html>
       `;
 
       const modoAuditoria = process.env.MODO_PRUEBAS_CORREO === 'true' || Boolean(process.env.CORREO_AUDITORIA);

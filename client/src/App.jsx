@@ -138,9 +138,9 @@ export default function App() {
       setSimulationHeaders({});
     } else if (newRole === 'ADMIN_DO') {
       const adminColab = sampleColab || {
-        idColaborador: 383,
-        id: 383,
-        codigoEmpleado: 'CONT-906',
+        idColaborador: 29,
+        id: 29,
+        codigoEmpleado: '0906',
         nombreCompleto: 'TANIA DEL CARMEN HURTADO AVALOS',
         empresa: 'CONTROLADORA JAMA, S.C.',
         rolApp: 'ADMIN_DO',
@@ -150,9 +150,9 @@ export default function App() {
       setActiveSimulation('ADMIN_DO', adminColab.idColaborador);
     } else if (newRole === 'LIDER') {
       const leader = sampleColab || {
-        idColaborador: 46,
-        id: 46,
-        codigoEmpleado: 'LAT-155',
+        idColaborador: 850,
+        id: 850,
+        codigoEmpleado: '0155',
         nombreCompleto: 'ULISES ANTONIO GARCES RODRIGUEZ',
         empresa: 'LATINO CONCRETOS, S.A. DE C.V.',
         rolApp: 'LIDER',
@@ -162,10 +162,10 @@ export default function App() {
       setActiveSimulation('LIDER', leader.idColaborador);
     } else if (newRole === 'COLABORADOR') {
       const colab = sampleColab || {
-        idColaborador: 594,
-        id: 594,
-        codigoEmpleado: 'LAT-1077',
-        nombreCompleto: 'GONZALO RAMIREZ GALLARDO',
+        idColaborador: 852,
+        id: 852,
+        codigoEmpleado: '0157',
+        nombreCompleto: 'JOSE LUIS CAMPOS REGINO',
         empresa: 'LATINO CONCRETOS, S.A. DE C.V.',
         rolApp: 'COLABORADOR',
         rol: 'COLABORADOR'

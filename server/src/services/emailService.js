@@ -65,7 +65,7 @@ async function obtenerConfiguracionEmail() {
           pass: process.env.SMTP_PASS !== undefined && process.env.SMTP_PASS !== '' ? process.env.SMTP_PASS : (map['SMTP_PASS'] || ''),
           secure: process.env.SMTP_SECURE === 'true' || map['SMTP_SECURE'] === 'true',
           fromName: map['SMTP_FROM_NAME'] || 'Control de Vacaciones Grupo JAMA',
-          from: process.env.SMTP_FROM || `${map['SMTP_FROM_NAME'] || 'Control de Vacaciones Grupo JAMA'} <${map['SMTP_USER'] || 'comprobante.fiscal@grupojama.com'}>`,
+          from: process.env.SMTP_FROM || `${map['SMTP_FROM_NAME'] || 'Control de Vacaciones Grupo JAMA'} <${map['SMTP_USER'] || 'comprobante.fiscal@grupojamacfdi.com'}>`,
           enabled: map['SMTP_NOTIF_ENABLED'] !== 'false'
         };
         lastCacheTime = now;
@@ -83,7 +83,7 @@ async function obtenerConfiguracionEmail() {
     pass: process.env.SMTP_PASS || '',
     secure: process.env.SMTP_SECURE === 'true',
     fromName: process.env.SMTP_FROM_NAME || 'Control de Vacaciones Grupo JAMA',
-    from: process.env.SMTP_FROM || 'Control de Vacaciones Grupo JAMA <comprobante.fiscal@grupojama.com>',
+    from: process.env.SMTP_FROM || 'Control de Vacaciones Grupo JAMA <comprobante.fiscal@grupojamacfdi.com>',
     enabled: true
   };
   lastCacheTime = now;
@@ -121,8 +121,8 @@ function formatFecha(fechaStr) {
  * Plantilla Base HTML con identidad corporativa de Grupo JAMA
  */
 function generarPlantillaHtml({ titulo, badgeTexto, badgeColor, badgeBg, badgeBorder, cuerpoHtml, ctaTexto, ctaUrl }) {
-  const appUrl = process.env.APP_URL || 'http://localhost:5000';
-  const finalCtaUrl = ctaUrl.startsWith('http') ? ctaUrl : `${appUrl}${ctaUrl}`;
+  const appUrl = process.env.APP_URL || 'http://localhost:5001';
+  const finalCtaUrl = ctaUrl ? (ctaUrl.startsWith('http') ? ctaUrl : `${appUrl}${ctaUrl}`) : null;
 
   return `
 <!DOCTYPE html>
@@ -132,55 +132,57 @@ function generarPlantillaHtml({ titulo, badgeTexto, badgeColor, badgeBg, badgeBo
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>${titulo}</title>
 </head>
-<body style="margin:0; padding:0; background-color:#f1f5f9; font-family:-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; -webkit-font-smoothing:antialiased;">
-  <table width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color:#f1f5f9; padding:24px 0;">
+<body style="margin:0; padding:0; background-color:#F4F7F9; font-family:Arial, 'Segoe UI', Tahoma, sans-serif; -webkit-font-smoothing:antialiased; color:#333333;">
+  <table width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color:#F4F7F9; padding:24px 12px;">
     <tr>
       <td align="center">
-        <!-- Contenedor Principal de la Tarjeta -->
-        <table width="100%" cellpadding="0" cellspacing="0" border="0" style="max-width:600px; background-color:#ffffff; border-radius:16px; overflow:hidden; border:1px solid #e2e8f0; box-shadow:0 4px 6px -1px rgba(0, 0, 0, 0.05);">
+        <!-- Contenedor Principal (Max 600px, bordes redondeados sutiles 8px, borde delgado #002D62) -->
+        <table width="100%" cellpadding="0" cellspacing="0" border="0" style="max-width:600px; background-color:#ffffff; border-radius:8px; overflow:hidden; border:1px solid #002D62; box-shadow:0 4px 12px rgba(0, 45, 98, 0.08);">
           
-          <!-- Encabezado Corporativo Grupo JAMA -->
+          <!-- Cabecera Institucional Azul Marino #002D62 con Logotipo Oficial Grupo JAMA -->
           <tr>
-            <td style="background-color:#0f2744; padding:26px 32px; border-bottom:4px solid #d97706; text-align:left;">
+            <td style="background-color:#002D62; padding:28px 24px; text-align:center;">
               <table width="100%" cellpadding="0" cellspacing="0" border="0">
                 <tr>
-                  <td>
-                    <span style="color:#ffffff; font-size:20px; font-weight:900; letter-spacing:1px; display:block; text-transform:uppercase;">
-                      GRUPO JAMA
-                    </span>
-                    <span style="color:#94a3b8; font-size:11px; font-weight:600; text-transform:uppercase; letter-spacing:0.5px; display:block; margin-top:2px;">
-                      Desarrollo Organizacional • Control de Vacaciones
-                    </span>
+                  <td align="center">
+                    <a href="https://www.grupojama.com" target="_blank" style="text-decoration:none; display:inline-block;">
+                      <img src="https://www.grupojama.com/img/logo.png" alt="Grupo JAMA" width="160" style="max-width: 160px; height: auto; display: block; margin: 0 auto;" border="0" />
+                    </a>
+                    <p style="margin:12px 0 0 0; color:#E2E8F0; font-size:12px; font-weight:600; letter-spacing:0.8px; text-transform:uppercase; font-family:Arial, 'Segoe UI', sans-serif;">
+                      Control de Vacaciones • Sistema Corporativo
+                    </p>
                   </td>
                 </tr>
               </table>
             </td>
           </tr>
 
-          <!-- Cuerpo Principal -->
+          <!-- Cuerpo Principal: Tarjeta Blanca Interior con padding de 24px -->
           <tr>
-            <td style="padding:32px 32px 24px 32px;">
+            <td style="background-color:#ffffff; padding:24px;">
               <!-- Badge de Estado -->
-              <div style="margin-bottom:16px;">
-                <span style="display:inline-block; padding:4px 12px; font-size:11px; font-weight:800; border-radius:9999px; text-transform:uppercase; letter-spacing:0.5px; color:${badgeColor}; background-color:${badgeBg}; border:1px solid ${badgeBorder};">
-                  ${badgeTexto}
-                </span>
-              </div>
+              ${badgeTexto ? `
+                <div style="margin-bottom:16px;">
+                  <span style="display:inline-block; padding:4px 12px; font-size:11px; font-weight:bold; border-radius:9999px; text-transform:uppercase; letter-spacing:0.5px; color:${badgeColor || '#002D62'}; background-color:${badgeBg || '#EEF2F6'}; border:1px solid ${badgeBorder || '#CBD5E1'}; font-family:Arial, 'Segoe UI', sans-serif;">
+                    ${badgeTexto}
+                  </span>
+                </div>
+              ` : ''}
 
               <!-- Título del Mensaje -->
-              <h1 style="color:#0f172a; font-size:20px; font-weight:800; margin:0 0 16px 0; line-height:1.3;">
+              <h1 style="color:#002D62; font-size:19px; font-weight:bold; margin:0 0 16px 0; line-height:1.35; font-family:Arial, 'Segoe UI', sans-serif;">
                 ${titulo}
               </h1>
 
-              <!-- Contenido Dinámico -->
-              <div style="color:#334155; font-size:14px; line-height:1.6;">
+              <!-- Contenido Dinámico (Detalles de la Solicitud) -->
+              <div style="color:#333333; font-size:14px; line-height:1.6; font-family:Arial, 'Segoe UI', sans-serif;">
                 ${cuerpoHtml}
               </div>
 
               <!-- Botón de Llamado a la Acción (CTA) -->
               ${ctaTexto && finalCtaUrl ? `
                 <div style="margin:28px 0 12px 0; text-align:center;">
-                  <a href="${finalCtaUrl}" target="_blank" style="display:inline-block; background-color:#1d4ed8; color:#ffffff; font-weight:bold; font-size:13px; text-decoration:none; padding:12px 28px; border-radius:10px; box-shadow:0 2px 4px rgba(29, 78, 216, 0.2); letter-spacing:0.3px;">
+                  <a href="${finalCtaUrl}" target="_blank" style="display:inline-block; background-color:#002D62; color:#ffffff; font-weight:bold; font-size:13px; text-decoration:none; padding:12px 28px; border-radius:6px; box-shadow:0 2px 4px rgba(0, 45, 98, 0.25); letter-spacing:0.3px; font-family:Arial, 'Segoe UI', sans-serif;">
                     ${ctaTexto} &rarr;
                   </a>
                 </div>
@@ -188,14 +190,22 @@ function generarPlantillaHtml({ titulo, badgeTexto, badgeColor, badgeBg, badgeBo
             </td>
           </tr>
 
-          <!-- Pie de Página Institucional -->
+          <!-- Mensaje Ecológico al Pie del Correo -->
           <tr>
-            <td style="background-color:#f8fafc; padding:20px 32px; border-top:1px solid #e2e8f0; text-align:center;">
-              <p style="margin:0 0 6px 0; font-size:11px; color:#64748b; line-height:1.4;">
-                Este es un mensaje institucional automatizado generado por el <strong>Sistema de Control de Vacaciones</strong> de Grupo JAMA.
-              </p>
-              <p style="margin:0; font-size:11px; color:#94a3b8;">
-                Por favor, no respondas a este correo. Para dudas o aclaraciones, contacta al departamento de Desarrollo Organizacional.
+            <td style="background-color:#ffffff; padding:0 24px 24px 24px; text-align:center;">
+              <div style="background-color:#f0fdf4; border:1px solid #bbf7d0; border-radius:6px; padding:10px 16px; margin:0 auto; display:inline-block; max-width:92%;">
+                <p style="margin:0; font-size:12px; font-weight:bold; color:#15803d; line-height:1.45; font-family:Arial, 'Segoe UI', sans-serif;">
+                  🌿 “Antes de imprimir, piensa en el medio ambiente. Cada hoja cuenta, cada árbol importa.” ♻️
+                </p>
+              </div>
+            </td>
+          </tr>
+
+          <!-- Pie de Página (Footer) -->
+          <tr>
+            <td style="background-color:#F4F7F9; padding:20px 24px; border-top:1px solid #E2E8F0; text-align:center;">
+              <p style="margin:0; font-size:11px; color:#555555; line-height:1.5; font-family:Arial, 'Segoe UI', sans-serif;">
+                Este es un mensaje automático generado por el Sistema de Control de Vacaciones de Grupo JAMA. Por favor no responda directamente a este correo.
               </p>
             </td>
           </tr>
@@ -332,7 +342,7 @@ async function enviarEmail({
   }
 
   const transporter = await getTransporter();
-  const rawFrom = config.from || process.env.SMTP_FROM || 'Control de Vacaciones Grupo JAMA <comprobante.fiscal@grupojama.com>';
+  const rawFrom = config.from || process.env.SMTP_FROM || 'Control de Vacaciones Grupo JAMA <comprobante.fiscal@grupojamacfdi.com>';
   const from = rawFrom.replace(/^["']|["']$/g, '');
 
   if (!transporter) {
@@ -360,12 +370,12 @@ async function enviarEmail({
   if (modoAuditoria) {
     const bannerHtml = `
               <!-- BANNER MODO AUDITORIA / SANDBOXING -->
-              <div style="background-color:#fffbeb; border:1px solid #fde68a; border-left:4px solid #d97706; padding:12px 16px; margin:0 0 20px 0; border-radius:10px; font-family:-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; font-size:12px; color:#92400e; box-shadow:0 1px 2px rgba(0,0,0,0.04);">
-                <div style="font-weight:bold; font-size:11px; text-transform:uppercase; letter-spacing:0.5px; color:#b45309; margin-bottom:4px;">
+              <div style="background-color:#fffbeb; border:1px solid #fde68a; border-left:4px solid #002D62; padding:12px 16px; margin:0 0 20px 0; border-radius:6px; font-family:Arial, 'Segoe UI', sans-serif; font-size:12px; color:#92400e; box-shadow:0 1px 2px rgba(0,0,0,0.04);">
+                <div style="font-weight:bold; font-size:11px; text-transform:uppercase; letter-spacing:0.5px; color:#002D62; margin-bottom:4px;">
                   ⚠️ Modo Auditoría / Sandbox de Pruebas Activo
                 </div>
                 <div>
-                  [Modo Auditoría - Destinatario original previsto: <code style="background-color:#fef3c7; padding:2px 6px; border-radius:4px; font-weight:bold; color:#78350f; font-size:12px; font-family:monospace;">${destinatarioOriginal}</code>${ccOriginal ? ` (Copia CC a: <code style="background-color:#fef3c7; padding:2px 6px; border-radius:4px; font-weight:bold; color:#78350f; font-size:12px; font-family:monospace;">${ccOriginal}</code>)` : ''}]
+                  [AUDITORÍA: Destinatario original previsto: <code style="background-color:#fef3c7; padding:2px 6px; border-radius:4px; font-weight:bold; color:#78350f; font-size:12px; font-family:monospace;">${destinatarioOriginal}</code>${ccOriginal ? ` (Copia CC a: <code style="background-color:#fef3c7; padding:2px 6px; border-radius:4px; font-weight:bold; color:#78350f; font-size:12px; font-family:monospace;">${ccOriginal}</code>)` : ''}]
                 </div>
               </div>
     `;
