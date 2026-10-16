@@ -97,7 +97,7 @@ export default function Navbar({
   }[rolEfectivo];
 
   const esEquipoActivo = activeTab === 'lider' || activeTab === 'mi-equipo';
-  const esGestionDOActivo = activeTab === 'admin' || activeTab === 'colaboradores' || activeTab === 'admin-do' || activeTab === 'sistemas' || activeTab === 'configuracion';
+  const esGestionDOActivo = activeTab === 'admin' || activeTab === 'colaboradores' || activeTab === 'admin-do' || activeTab === 'sistemas';
 
   const currentRoleConfig = {
     'SISTEMAS': { icon: '🛠️', label: 'Sistemas (TI)' },
@@ -386,8 +386,8 @@ export default function Navbar({
               </button>
             )}
 
-            {/* [Configuración Global] -> Enlace directo para SISTEMAS y ADMIN_DO */}
-            {(esSistemas || esAdminDO) && (
+            {/* [Configuración Global] -> Enlace directo exclusivo para SUPERADMIN / SISTEMAS */}
+            {esSistemas && (
               <button
                 onClick={() => {
                   onTabChange('configuracion');
@@ -811,7 +811,7 @@ export default function Navbar({
               </button>
             )}
 
-            {(esSistemas || esAdminDO) && (
+            {esSistemas && (
               <button
                 onClick={() => {
                   onTabChange('configuracion');

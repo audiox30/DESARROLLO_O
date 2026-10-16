@@ -84,7 +84,7 @@ export default function App() {
 
     const quiereConfig = rawPath === '/admin/configuracion' || rawPath === '/configuracion' || hash === 'configuracion' || tabParam === 'configuracion';
 
-    if (quiereConfig && (rolNorm === 'SUPERADMIN' || rolNorm === 'SISTEMAS' || rolNorm === 'ADMIN_DO')) {
+    if (quiereConfig && (rolNorm === 'SUPERADMIN' || rolNorm === 'SISTEMAS')) {
       setActiveTab('configuracion');
       return;
     }
@@ -127,7 +127,7 @@ export default function App() {
     const validTabsByRole = {
       'COLABORADOR': ['colaborador'],
       'LIDER': ['colaborador', 'lider', 'mi-equipo'],
-      'ADMIN_DO': ['colaborador', 'admin', 'colaboradores', 'admin-do', 'reportes', 'configuracion'],
+      'ADMIN_DO': ['colaborador', 'admin', 'colaboradores', 'admin-do', 'reportes'],
       'SISTEMAS': ['colaborador', 'lider', 'mi-equipo', 'admin', 'colaboradores', 'admin-do', 'reportes', 'sistemas', 'configuracion'],
       'SUPERADMIN': ['colaborador', 'lider', 'mi-equipo', 'admin', 'colaboradores', 'admin-do', 'reportes', 'sistemas', 'configuracion']
     };

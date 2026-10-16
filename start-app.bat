@@ -6,7 +6,7 @@ echo          GRUPO JAMA - CONTROL DE VACACIONES (ON-PREMISE)
 echo               Desarrollo Organizacional y TI
 echo =======================================================================
 echo.
-echo Iniciando servidor web unificado en http://localhost:5000...
+echo Iniciando servidor web unificado en http://localhost:5001...
 echo.
 cd /d "%~dp0server"
 node src/app.js
